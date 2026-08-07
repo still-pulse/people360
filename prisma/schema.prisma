@@ -1,0 +1,1133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ANALYST
+  SUPERINTENDENT
+  GERENTE
+  JURIDICO
+}
+
+enum ChamadoStatus {
+  ABERTO
+  EM_ANDAMENTO
+  PENDENTE
+  RESOLVIDO
+  FECHADO
+}
+
+enum ChamadoPrioridade {
+  BAIXA
+  NORMAL
+  ALTA
+  URGENTE
+}
+
+enum TipoSolicitacao {
+  BANCO_HORAS
+  FOLGA
+  AUSENCIA
+}
+
+enum AprovacaoStatus {
+  PENDENTE
+  APROVADO
+  REJEITADO
+}
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  WAITING
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum EventType {
+  PROCESSO_SELETIVO
+  REUNIAO
+  TREINAMENTO
+  VISITA
+  OUTRO
+}
+
+enum VagaStatus {
+  PENDENTE_APROVACAO
+  REJEITADA
+  ABERTA
+  DIVULGACAO
+  TRIAGEM
+  ENTREVISTAS
+  ENCAMINHADA_GESTOR
+  APROVADA_CONTRATACAO
+  ADMISSAO_EM_ANDAMENTO
+  CONTRATADA
+  FECHADA
+  CANCELADA
+}
+
+enum AprovacaoTipo {
+  SOLICITACAO_INFO
+  RESPOSTA
+  APROVACAO
+  REJEICAO
+}
+
+enum TipoVaga {
+  EFETIVO
+  TEMPORARIO
+  ESTAGIO
+  PJ
+  OUTROS
+}
+
+enum PeriodoTrabalho {
+  DIURNO
+  NOTURNO
+  MISTO
+  PLANTAO
+}
+
+enum TipoRequisicao {
+  SUBSTITUICAO
+  AUMENTO_QUADRO
+}
+
+enum TipoContrato {
+  DETERMINADO
+  INDETERMINADO
+}
+
+enum TipoRecrutamento {
+  INTERNO
+  EXTERNO
+}
+
+enum CandidatoStatus {
+  EM_PROCESSO
+  APROVADO
+  AGUARDANDO_ADMISSAO
+  ADMITIDO
+  DESISTENTE
+  REPROVADO
+}
+
+enum ControleCandidatoStatus {
+  REPROVADO
+  BANCO_TALENTOS
+  CONTRATADO
+  DESISTIU
+}
+
+enum DocumentoLinkStatus {
+  ATIVO
+  EXPIRADO
+  CONCLUIDO
+  REVOGADO
+}
+
+enum DocumentoItemStatus {
+  PENDENTE
+  ENVIADO
+  APROVADO
+  REJEITADO
+}
+
+enum ParecerResultado {
+  APROVADO
+  APROVADO_COM_RESTRICOES
+  REPROVADO
+  BANCO_TALENTOS
+}
+
+enum TipoVinculoParecer {
+  CLT
+  ESTAGIO
+  APRENDIZ
+  PCD
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(ANALYST)
+  active    Boolean  @default(true)
+  unitId    String?
+  phone      String?
+  jobTitle   String?
+  bio        String?
+  avatarUrl  String?
+  mfaSecret         String?
+  mfaEnabled        Boolean @default(false)
+  mustChangePassword Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit              Unit?           @relation(fields: [unitId], references: [id])
+  calendarEvents    CalendarEvent[]
+  tasksCreated      Task[]          @relation("TaskCreator")
+  taskResponsibles  TaskResponsible[] @relation("TaskResponsibles")
+  taskComments      TaskComment[]
+  taskHistories     TaskHistory[]
+  vagas                Vaga[]
+  vagaHistorico        VagaHistorico[]
+  vagaAcompanhamentos  VagaAcompanhamento[]   @relation("VagaAcompanhamentos")
+  vagaAprovacaoComentarios VagaAprovacaoComentario[]
+  controleCandidatos         ControleCandidato[]
+  candidatosSnapshots        CandidatosMonthSnapshot[]   @relation("SnapshotCreatedBy")
+  notifications        Notification[]
+  eventParticipations  CalendarEventParticipant[]
+  chamadosAbertos      Chamado[]          @relation("ChamadoAutor")
+  chamadosAtribuidos   Chamado[]          @relation("ChamadoAtribuido")
+  chamadoMensagens     ChamadoMensagem[]  @relation("ChamadoMensagens")
+  chamadosAprovados    Chamado[]          @relation("ChamadoAprovador")
+  pcdEvidencias        PcdEvidencia[]     @relation("PcdEvidenciaCreatedBy")
+  managedUnits         UserUnit[]
+  documentoLinksCriados DocumentoLink[]     @relation("DocumentoLinkCreatedBy")
+  documentoItensRevisados DocumentoLinkItem[] @relation("DocumentoItemRevisor")
+  pareceresElaborados  Parecer[]           @relation("ParecerElaborador")
+  testeConvitesCriados TesteConvite[]      @relation("TesteConviteCreatedBy")
+
+  @@map("users")
+}
+
+model Unit {
+  id                  String   @id @default(cuid())
+  name                String   @unique
+  color               String   @default("#15AFA4")
+  description         String?
+  active              Boolean  @default(true)
+  exibirIndicadores   Boolean  @default(true)
+  /// Último mês em que a unidade entra no indicador (ex.: jul/2026). Null = sem limite.
+  indicadoresAteYear  Int?
+  indicadoresAteMonth Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  users                       User[]
+  calendarEvents              CalendarEvent[]
+  tasks                       Task[]
+  pcdIndicators               PCDIndicator[]
+  apprenticeIndicators        ApprenticeIndicator[]
+  turnoverIndicators          TurnoverIndicator[]
+  absenteeismIndicators       AbsenteeismIndicator[]
+  headcountEntries            HeadcountEntry[]
+  vagas                       Vaga[]
+  chamados                    Chamado[]
+  engagementIndicators        EngagementIndicator[]
+  npsIndicators               NpsIndicator[]
+  payrollIndicators           PayrollIndicator[]
+  hiringCostIndicators        HiringCostIndicator[]
+  tenureDistributionIndicators TenureDistributionIndicator[]
+  trainingIndicators          TrainingIndicator[]
+  pcdEvidencias               PcdEvidencia[]
+  pcdWeeklySnapshots          PcdWeeklySnapshot[]
+  managedByUsers              UserUnit[]
+  pareceres                   Parecer[]
+
+  @@map("units")
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  pauta       String?
+  meetingLink String?
+  startDate   DateTime
+  endDate     DateTime
+  allDay      Boolean   @default(false)
+  eventType   EventType @default(OUTRO)
+  reminders   Int[]     @default([15, 5])
+  unitId      String?
+  userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  unit         Unit?                        @relation(fields: [unitId], references: [id])
+  user         User                         @relation(fields: [userId], references: [id])
+  participants CalendarEventParticipant[]
+
+  @@map("calendar_events")
+}
+
+model CalendarEventParticipant {
+  eventId String
+  userId  String
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@map("calendar_event_participants")
+}
+
+model Competencia {
+  id        String   @id @default(cuid())
+  mes       Int
+  ano       Int
+  createdAt DateTime @default(now())
+  tasks     Task[]
+
+  @@unique([mes, ano])
+  @@map("competencias")
+}
+
+model Task {
+  id            String       @id @default(cuid())
+  title         String
+  description   String?
+  status        TaskStatus   @default(BACKLOG)
+  priority      TaskPriority @default(MEDIUM)
+  position      Int          @default(0)
+  dueDate       DateTime?
+  createdById   String?
+  unitId        String?
+  competenciaId String?
+  chamadoId     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  createdBy    User?             @relation("TaskCreator", fields: [createdById], references: [id])
+  unit         Unit?             @relation(fields: [unitId], references: [id])
+  competencia  Competencia?      @relation(fields: [competenciaId], references: [id])
+  chamado      Chamado?          @relation(fields: [chamadoId], references: [id])
+  comments     TaskComment[]
+  history      TaskHistory[]
+  responsibles TaskResponsible[]
+
+  @@index([chamadoId])
+  @@map("tasks")
+}
+
+model TaskResponsible {
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation("TaskResponsibles", fields: [userId], references: [id])
+
+  @@id([taskId, userId])
+  @@map("task_responsibles")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("task_comments")
+}
+
+model TaskHistory {
+  id         String     @id @default(cuid())
+  taskId     String
+  userId     String
+  fromStatus TaskStatus
+  toStatus   TaskStatus
+  createdAt  DateTime   @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("task_histories")
+}
+
+model PCDIndicator {
+  id             String   @id @default(cuid())
+  unitId         String
+  year           Int
+  month          Int
+  totalEmployees Int
+  metaPercentage Float    @default(5)
+  currentPcd     Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("pcd_indicators")
+}
+
+model PcdWeeklySnapshot {
+  id             String   @id @default(cuid())
+  unitId         String
+  year           Int
+  month          Int
+  weekDate       DateTime
+  totalEmployees Int
+  metaPercentage Float    @default(5)
+  currentPcd     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, weekDate])
+  @@index([year, month])
+  @@map("pcd_weekly_snapshots")
+}
+
+model ApprenticeIndicator {
+  id             String   @id @default(cuid())
+  unitId         String
+  year           Int
+  month          Int
+  totalEmployees Int
+  requiredCount  Int      @default(0)
+  currentCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("apprentice_indicators")
+}
+
+model TurnoverIndicator {
+  id             String   @id @default(cuid())
+  unitId         String
+  year           Int
+  month          Int
+  admissions     Int      @default(0)
+  dismissals     Int      @default(0)
+  headcountStart Int      @default(0)
+  headcountEnd   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("turnover_indicators")
+}
+
+model AbsenteeismIndicator {
+  id                 String   @id @default(cuid())
+  unitId             String
+  year               Int
+  month              Int
+  totalCertificates  Int      @default(0)
+  totalDaysLost      Int      @default(0)
+  totalEmployees     Int      @default(0)
+  workingDaysInMonth Int      @default(22)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("absenteeism_indicators")
+}
+
+model Position {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  codigoInterno   String?
+  categoria       String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  headcountEntries HeadcountEntry[]
+  vagas            Vaga[]        @relation("VagaCargo")
+  aliases          CargoAlias[]
+
+  @@map("positions")
+}
+
+model CargoAlias {
+  id         String   @id @default(cuid())
+  positionId String
+  alias      String   @unique
+  createdAt  DateTime @default(now())
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@index([positionId])
+  @@map("cargo_aliases")
+}
+
+model HeadcountEntry {
+  id         String   @id @default(cuid())
+  unitId     String
+  positionId String
+  year       Int
+  month      Int
+  count      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  unit     Unit     @relation(fields: [unitId], references: [id])
+  position Position @relation(fields: [positionId], references: [id])
+
+  @@unique([unitId, positionId, year, month])
+  @@map("headcount_entries")
+}
+
+// ─── Chamados Internos ───────────────────────────────────────────────────────
+
+model Chamado {
+  id          String            @id @default(cuid())
+  titulo      String
+  descricao   String
+  status      ChamadoStatus     @default(ABERTO)
+  prioridade  ChamadoPrioridade @default(NORMAL)
+  categoria   String            @default("Outros")
+  autorId     String
+  atribuidoId String?
+  unitId      String?
+  resolvidoAt DateTime?
+  tipoSolicitacao        TipoSolicitacao?
+  aprovacaoStatus        AprovacaoStatus?
+  dataInicio             DateTime?
+  dataFim                DateTime?
+  horasSolicitadas       Float?
+  aprovacaoJustificativa String?
+  aprovadoPorId          String?
+  aprovadoAt             DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  autor       User               @relation("ChamadoAutor",     fields: [autorId],     references: [id])
+  atribuido   User?              @relation("ChamadoAtribuido", fields: [atribuidoId], references: [id])
+  unit        Unit?              @relation(fields: [unitId], references: [id])
+  mensagens   ChamadoMensagem[]
+  aprovadoPor User?              @relation("ChamadoAprovador", fields: [aprovadoPorId], references: [id])
+  tasks       Task[]
+
+  @@index([autorId])
+  @@index([status])
+  @@index([tipoSolicitacao])
+  @@index([aprovacaoStatus])
+  @@map("chamados")
+}
+
+model ChamadoMensagem {
+  id        String          @id @default(cuid())
+  chamadoId String
+  autorId   String
+  conteudo  String
+  lida      Boolean         @default(false)
+  createdAt DateTime        @default(now())
+
+  chamado   Chamado         @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+  autor     User            @relation("ChamadoMensagens", fields: [autorId], references: [id])
+  anexos    ChamadoAnexo[]
+
+  @@index([chamadoId])
+  @@map("chamado_mensagens")
+}
+
+model ChamadoAnexo {
+  id         String          @id @default(cuid())
+  mensagemId String
+  nome       String
+  url        String
+  tamanho    Int
+  tipo       String
+  createdAt  DateTime        @default(now())
+
+  mensagem   ChamadoMensagem @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+
+  @@map("chamado_anexos")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userName   String?
+  userRole   String?
+  action     String
+  entity     String
+  entityId   String?
+  entityName String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Notificações ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?
+  href      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// ─── Logs de E-mail ───────────────────────────────────────────────────────────
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  status    String
+  response  String?
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_logs")
+}
+
+// ─── Configurações do Sistema ────────────────────────────────────────────────
+
+model SystemSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// ─── Módulo de Controle de Vagas ─────────────────────────────────────────────
+
+model Vaga {
+  id                     String           @id @default(cuid())
+  titulo                 String
+  unidadeId              String?
+  municipio              String?
+  cargo                  String
+  setor                  String?
+  quantidade             Int              @default(1)
+  tipoVaga               TipoVaga         @default(EFETIVO)
+  periodoTrabalho        PeriodoTrabalho?
+  cargaHoraria           String?
+  horarioTrabalho        String?
+  escala                 String?
+  plantaoColaboradorSaiu String?
+  salarioMin             Float?
+  salarioMax             Float?
+  tipoRequisicao         TipoRequisicao?
+  tipoContrato           TipoContrato?
+  tipoRecrutamento       TipoRecrutamento?
+  nomeColaboradorSaiu    String?
+  nomeColaborador        String?
+  disponibilidadeHorario String?
+  vagaPcd                Boolean          @default(false)
+  gestorRequisitante     String?
+  setorRequisitante      String?
+  numProcessoAdmissao    String?
+  numProtocoloOnvio      String?
+  requisicaoNextId       String?
+  cargoId                String?
+  controleCandidatoId    String?           @unique
+  dataAbertura           DateTime         @default(now())
+  dataPrevistaFechamento DateTime?
+  dataFechamento         DateTime?
+  dataInicioIntegracao   DateTime?
+  status                 VagaStatus       @default(ABERTA)
+  observacoes            String?
+  position               Int              @default(0)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  unit                 Unit?                 @relation(fields: [unidadeId], references: [id])
+  analistas            User[]
+  cargo_rel            Position?             @relation("VagaCargo", fields: [cargoId], references: [id])
+  controleCandidato    ControleCandidato?    @relation("VagaAprovado", fields: [controleCandidatoId], references: [id], onDelete: SetNull)
+  candidatos           Candidato[]
+  historico            VagaHistorico[]
+  acompanhamentos      VagaAcompanhamento[]
+  aprovacaoComentarios VagaAprovacaoComentario[]
+  documentoLinks       DocumentoLink[]
+
+  @@index([cargoId])
+  @@map("vagas")
+}
+
+model VagaAcompanhamento {
+  id       String   @id @default(cuid())
+  vagaId   String
+  userId   String
+  data     DateTime @default(now())
+  decisao  String
+  notas    String?
+
+  vaga     Vaga     @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+  user     User     @relation("VagaAcompanhamentos", fields: [userId], references: [id])
+
+  @@index([vagaId])
+  @@map("vaga_acompanhamentos")
+}
+
+model Candidato {
+  id             String          @id @default(cuid())
+  vagaId         String
+  nome           String
+  telefone       String?
+  email          String?
+  dataAprovacao  DateTime?
+  status         CandidatoStatus @default(EM_PROCESSO)
+  observacoes    String?
+  cvFileName     String?
+  cvOriginalName String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  vaga Vaga @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+  documentoLinks DocumentoLink[]
+
+  @@map("candidatos")
+}
+
+model VagaHistorico {
+  id         String     @id @default(cuid())
+  vagaId     String
+  userId     String?
+  fromStatus VagaStatus?
+  toStatus   VagaStatus?
+  descricao  String?
+  createdAt  DateTime   @default(now())
+
+  vaga Vaga  @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("vaga_historico")
+}
+
+model VagaAprovacaoComentario {
+  id        String        @id @default(cuid())
+  vagaId    String
+  userId    String
+  tipo      AprovacaoTipo
+  mensagem  String
+  createdAt DateTime      @default(now())
+
+  vaga Vaga @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([vagaId])
+  @@map("vaga_aprovacao_comentarios")
+}
+
+// ─── Indicadores de Pessoas ──────────────────────────────────────────────────
+
+model EngagementIndicator {
+  id               String   @id @default(cuid())
+  unitId           String
+  year             Int
+  month            Int
+  rate             Float    @default(0)
+  totalRespondents Int      @default(0)
+  totalEmployees   Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("engagement_indicators")
+}
+
+model NpsIndicator {
+  id               String   @id @default(cuid())
+  unitId           String
+  year             Int
+  month            Int
+  promoters        Int      @default(0)
+  neutrals         Int      @default(0)
+  detractors       Int      @default(0)
+  totalRespondents Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("nps_indicators")
+}
+
+model PayrollIndicator {
+  id             String   @id @default(cuid())
+  unitId         String
+  year           Int
+  month          Int
+  totalPayroll   Float    @default(0)
+  totalEmployees Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("payroll_indicators")
+}
+
+model HiringCostIndicator {
+  id         String   @id @default(cuid())
+  unitId     String
+  year       Int
+  month      Int
+  totalCost  Float    @default(0)
+  totalHires Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("hiring_cost_indicators")
+}
+
+model TenureDistributionIndicator {
+  id        String   @id @default(cuid())
+  unitId    String
+  year      Int
+  month     Int
+  ate1ano   Int      @default(0)
+  de1a3     Int      @default(0)
+  de3a5     Int      @default(0)
+  de5a10    Int      @default(0)
+  acima10   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("tenure_distribution_indicators")
+}
+
+model TrainingIndicator {
+  id                String   @id @default(cuid())
+  unitId            String
+  year              Int
+  month             Int
+  totalHours        Float    @default(0)
+  totalParticipants Int      @default(0)
+  totalEmployees    Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, year, month])
+  @@map("training_indicators")
+}
+
+// ─── Multi-unidade por usuário ───────────────────────────────────────────────
+
+model UserUnit {
+  userId String
+  unitId String
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  unit   Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@id([userId, unitId])
+  @@map("user_units")
+}
+
+// ─── PCD Evidências ──────────────────────────────────────────────────────────
+
+model PcdEvidencia {
+  id          String       @id @default(cuid())
+  categoria   String
+  year        Int
+  month       Int
+  unitId      String?
+  descricao   String?
+  nomePCD     String?
+  createdAt   DateTime     @default(now())
+  createdById String
+
+  createdBy   User         @relation("PcdEvidenciaCreatedBy", fields: [createdById], references: [id])
+  unit        Unit?        @relation(fields: [unitId], references: [id])
+  arquivos    PcdArquivo[]
+
+  @@index([categoria, year, month])
+  @@map("pcd_evidencias")
+}
+
+model PcdArquivo {
+  id          String       @id @default(cuid())
+  evidenciaId String
+  nome        String
+  url         String
+  tamanho     Int
+  tipo        String
+  tipoDoc     String?
+  createdAt   DateTime     @default(now())
+
+  evidencia   PcdEvidencia @relation(fields: [evidenciaId], references: [id], onDelete: Cascade)
+
+  @@map("pcd_arquivos")
+}
+
+// ─── Controle de Candidatos ──────────────────────────────────────────────────
+
+model ControleCandidato {
+  id           String                  @id @default(cuid())
+  nome         String
+  telefone     String?
+  funcao       String
+  dataProcesso DateTime
+  municipio    String?
+  status       ControleCandidatoStatus @default(BANCO_TALENTOS)
+  observacoes  String?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  analistas      User[]
+  vagaContratada Vaga?  @relation("VagaAprovado")
+  pareceres      Parecer[]
+  testeConvites  TesteConvite[]
+
+  @@index([status])
+  @@index([dataProcesso])
+  @@map("controle_candidatos")
+}
+
+model CandidatosMonthSnapshot {
+  id            String   @id @default(cuid())
+  year          Int
+  month         Int
+  reprovado     Int      @default(0)
+  bancoTalentos Int      @default(0)
+  contratado    Int      @default(0)
+  desistiu      Int      @default(0)
+  total         Int      @default(0)
+  createdAt     DateTime @default(now())
+  createdById   String?
+
+  createdBy User? @relation("SnapshotCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([year, month])
+  @@map("candidatos_month_snapshots")
+}
+
+// ─── Documentos de Contratação (link por candidato) ─────────────────────────
+
+model DocumentoTipo {
+  id              String   @id @default(cuid())
+  chave           String   @unique
+  nome            String
+  condicional     Boolean  @default(false)
+  condicionalTipo String?
+  ordem           Int      @default(0)
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  itens DocumentoLinkItem[]
+
+  @@map("documento_tipos")
+}
+
+model DocumentoLink {
+  id               String              @id @default(cuid())
+  token            String              @unique
+  candidatoId      String
+  vagaId           String
+  createdById      String
+  status           DocumentoLinkStatus @default(ATIVO)
+  expiresAt        DateTime
+  exigeConselho    Boolean             @default(false)
+  temDependentes   Boolean             @default(false)
+  militarAplicavel Boolean             @default(false)
+  concluidoAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  candidato Candidato           @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+  vaga      Vaga                @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+  createdBy User                @relation("DocumentoLinkCreatedBy", fields: [createdById], references: [id])
+  itens     DocumentoLinkItem[]
+
+  @@index([candidatoId])
+  @@map("documento_links")
+}
+
+model DocumentoLinkItem {
+  id             String              @id @default(cuid())
+  linkId         String
+  tipoId         String
+  status         DocumentoItemStatus @default(PENDENTE)
+  motivoRejeicao String?
+  revisadoPorId  String?
+  revisadoAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  link        DocumentoLink      @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  tipo        DocumentoTipo      @relation(fields: [tipoId], references: [id])
+  revisadoPor User?              @relation("DocumentoItemRevisor", fields: [revisadoPorId], references: [id])
+  arquivos    DocumentoArquivo[]
+
+  @@unique([linkId, tipoId])
+  @@map("documento_link_itens")
+}
+
+model DocumentoArquivo {
+  id             String   @id @default(cuid())
+  itemId         String
+  nomeOriginal   String
+  nomeArmazenado String
+  tamanho        Int
+  tipo           String
+  createdAt      DateTime @default(now())
+
+  item DocumentoLinkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@map("documento_arquivos")
+}
+
+// ─── Pareceres de Recrutamento e Seleção (FP.RH.09.001) ──────────────────────
+
+model Parecer {
+  id                  String             @id @default(cuid())
+  codigo              String             @default("FP.RH.09.001-00")
+  revisao             String             @default("00")
+  razaoSocial         String             @default("Beneficência Hospitalar de Cesário Lange - BHCL")
+  cnpj                String             @default("50.351.626/0001-10")
+  unitId              String?
+  controleCandidatoId String?
+  candidatoNome       String
+  cargo               String
+  dataAvaliacao       DateTime
+  idade               Int?
+  tipoVinculo         TipoVinculoParecer @default(CLT)
+
+  /// Traços comportamentais da apresentação (checkboxes)
+  apresentacao String[] @default([])
+  /// Verbalização (checkboxes)
+  verbalizacao String[] @default([])
+  /// Técnicas utilizadas (checkboxes)
+  tecnicas       String[] @default([])
+  tecnicasOutros String?
+
+  /// Perfil comportamental 0–100 (lado direito do espectro, estilo 16personalities)
+  traitEI Int @default(50) // Extravertido (0) ↔ Introvertido (100)
+  traitNS Int @default(50) // Intuitivo (0) ↔ Observador (100)
+  traitTF Int @default(50) // Pensamento (0) ↔ Sentimento (100)
+  traitJP Int @default(50) // Julgamento (0) ↔ Prospecção (100)
+  traitAT Int @default(50) // Assertivo (0) ↔ Turbulento (100)
+
+  /// Competências de suporte 1–5: { chave: nota }
+  competencias Json @default("{}")
+
+  analiseTexto   String?
+  resultado      ParecerResultado?
+  dataAssinatura DateTime?
+  elaboradorId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit              Unit?              @relation(fields: [unitId], references: [id])
+  elaborador        User?              @relation("ParecerElaborador", fields: [elaboradorId], references: [id])
+  controleCandidato ControleCandidato? @relation(fields: [controleCandidatoId], references: [id], onDelete: SetNull)
+
+  @@index([candidatoNome])
+  @@index([controleCandidatoId])
+  @@index([dataAvaliacao])
+  @@index([resultado])
+  @@map("pareceres")
+}
+
+// ─── Testes comportamentais (Big Five / DISC) ────────────────────────────────
+
+enum TipoTeste {
+  BIG_FIVE
+  DISC
+}
+
+enum TesteConviteStatus {
+  PENDENTE
+  EM_ANDAMENTO
+  CONCLUIDO
+  EXPIRADO
+  REVOGADO
+}
+
+/// Convite/link personalizado para o candidato ou colaborador realizar o teste.
+model TesteConvite {
+  id                  String             @id @default(cuid())
+  token               String             @unique
+  tipo                TipoTeste
+  status              TesteConviteStatus @default(PENDENTE)
+  nome                String
+  email               String?
+  cargo               String?
+  telefone            String?
+  controleCandidatoId String?
+  createdById         String
+  expiresAt           DateTime
+  enviadoAt           DateTime?
+  iniciadoAt          DateTime?
+  concluidoAt         DateTime?
+  observacoes         String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  createdBy         User               @relation("TesteConviteCreatedBy", fields: [createdById], references: [id])
+  controleCandidato ControleCandidato? @relation(fields: [controleCandidatoId], references: [id], onDelete: SetNull)
+  resultado         TesteResultado?
+
+  @@index([tipo])
+  @@index([status])
+  @@index([nome])
+  @@index([createdById])
+  @@index([controleCandidatoId])
+  @@map("teste_convites")
+}
+
+/// Resultado calculado no servidor (visível apenas para ADMIN no dashboard).
+model TesteResultado {
+  id                 String   @id @default(cuid())
+  conviteId          String   @unique
+  /// Big Five: { E,A,C,N,O: { raw, max, pct, level } }
+  /// DISC: { scores: {D,I,S,C}, pcts, perfil, perfilSecundario? }
+  scores             Json
+  /// Respostas brutas (auditoria / reprocessamento)
+  answers            Json
+  perfilPredominante String?
+  completedAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  convite TesteConvite @relation(fields: [conviteId], references: [id], onDelete: Cascade)
+
+  @@index([completedAt])
+  @@map("teste_resultados")
+}

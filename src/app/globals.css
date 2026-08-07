@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --radius: 0.5rem;
+  --primary: #15AFA4;
+  --sidebar-bg: #0F1724;
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #F8FAFB;
+    color: #1A1A2E;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #E2E8F0 transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #CBD5E1;
+    border-radius: 20px;
+  }
+}
+
+/* React Big Calendar custom styles */
+.rbc-calendar {
+  font-family: 'Inter', sans-serif;
+}
+.rbc-header {
+  padding: 8px 4px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #64748b;
+}
+.rbc-today {
+  background-color: #e8faf9;
+}
+.rbc-event {
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 6px;
+}
+.rbc-toolbar button {
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 13px;
+  padding: 6px 14px;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  background: white;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.rbc-toolbar button:hover {
+  background: #f8fafb;
+  border-color: #15AFA4;
+  color: #15AFA4;
+}
+.rbc-toolbar button.rbc-active {
+  background: #15AFA4;
+  border-color: #15AFA4;
+  color: white;
+}
+.rbc-toolbar-label {
+  font-weight: 700;
+  font-size: 16px;
+  color: #1e293b;
+}
+.rbc-month-view, .rbc-time-view {
+  border-color: #f1f5f9;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.rbc-day-bg + .rbc-day-bg,
+.rbc-month-row + .rbc-month-row {
+  border-color: #f1f5f9;
+}
+.rbc-header + .rbc-header {
+  border-color: #f1f5f9;
+}

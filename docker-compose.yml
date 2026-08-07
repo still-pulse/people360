@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gestaorh-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gestaorh}
+      POSTGRES_USER: ${POSTGRES_USER:-gestaorh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gestaorh-app
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Garante host Docker "db" mesmo se .env tiver localhost
+      DATABASE_URL: ${DATABASE_URL:-postgresql://gestaorh:${POSTGRES_PASSWORD}@db:5432/gestaorh?client_encoding=UTF8}
+    volumes:
+      - uploads_data:/app/public/uploads
+      - documentos_data:/app/storage
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+  documentos_data:
+    driver: local
