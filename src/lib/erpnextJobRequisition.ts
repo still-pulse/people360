@@ -7,6 +7,7 @@ import {
   erpnextConfigured,
   erpnextJrSyncEnabled,
   listPendingJobRequisitions,
+  listRecentlyApprovedJobRequisitions,
   getJobRequisition,
   applyJobRequisitionWorkflow,
   addJobRequisitionComment,
@@ -181,94 +182,91 @@ export type SyncResult = {
   configured: boolean
   enabled: boolean
   fetched: number
+  /** RPs aprovadas no ERPNext consideradas no sync (sem Vaga no People) */
+  fetchedApproved: number
   created: number
+  /** Vagas criadas já como ABERTA (RP aprovada no ERPNext) */
+  createdOpen: number
   updated: number
   skipped: number
   errors: { name: string; error: string }[]
   createdIds: string[]
 }
 
-export async function syncPendingJobRequisitions(): Promise<SyncResult> {
-  const empty: SyncResult = {
-    configured: erpnextConfigured(),
-    enabled: erpnextJrSyncEnabled(),
-    fetched: 0,
-    created: 0,
-    updated: 0,
-    skipped: 0,
-    errors: [],
-    createdIds: [],
-  }
+/** Coloca a vaga no fim da coluna ABERTA do kanban/lista de recrutamento. */
+export async function openVagaInRecruitmentList(
+  vagaId: string,
+  opts?: {
+    erpnextStatus?: string | null
+    historicoUserId?: string | null
+    historicoDescricao?: string
+    fromStatus?: string | null
+  },
+) {
+  const maxPos = await prisma.vaga.aggregate({
+    where: { status: 'ABERTA' },
+    _max: { position: true },
+  })
 
-  if (!empty.configured || !empty.enabled) return empty
+  const updated = await prisma.vaga.update({
+    where: { id: vagaId },
+    data: {
+      status: 'ABERTA',
+      position: (maxPos._max.position ?? -1) + 1,
+      ...(opts?.erpnextStatus
+        ? { erpnextStatus: opts.erpnextStatus, erpnextSyncedAt: new Date() }
+        : {}),
+    },
+  })
 
-  let list: JobRequisitionListItem[]
-  try {
-    list = await listPendingJobRequisitions(100)
-  } catch (e) {
-    const err = e as ErpnextApiError
-    return { ...empty, errors: [{ name: '*', error: err.message || String(e) }] }
-  }
+  await prisma.vagaHistorico.create({
+    data: {
+      vagaId,
+      userId: opts?.historicoUserId ?? null,
+      fromStatus: (opts?.fromStatus as any) ?? null,
+      toStatus: 'ABERTA' as any,
+      descricao:
+        opts?.historicoDescricao ??
+        'Vaga aberta na lista de recrutamento (status ABERTA)',
+    },
+  })
 
-  empty.fetched = list.length
+  return updated
+}
 
-  for (const item of list) {
-    try {
-      // GET completo (child table de substituídos etc.)
-      const doc = await getJobRequisition(item.name)
-      const mapped = await mapJobRequisitionToVagaData(doc)
+type UpsertMode = 'pending' | 'approved'
 
-      const existing = await prisma.vaga.findFirst({
-        where: { requisicaoNextId: doc.name },
+async function upsertJobRequisitionAsVaga(
+  doc: JobRequisitionDoc,
+  mode: UpsertMode,
+  result: SyncResult,
+) {
+  const mapped = await mapJobRequisitionToVagaData(doc)
+  const existing = await prisma.vaga.findFirst({
+    where: { requisicaoNextId: doc.name },
+  })
+
+  const targetStatus = mode === 'approved' ? 'ABERTA' : 'PENDENTE_APROVACAO'
+
+  if (existing) {
+    // Não rebaixa status se já saiu de pendente no People
+    if (existing.status !== 'PENDENTE_APROVACAO') {
+      // Se estava rejeitada e ERP reabriu/aprovou — não força
+      await prisma.vaga.update({
+        where: { id: existing.id },
+        data: {
+          erpnextStatus: mapped.erpnextStatus,
+          erpnextSyncedAt: mapped.erpnextSyncedAt,
+        },
       })
+      result.skipped++
+      return
+    }
 
-      if (existing) {
-        // Não rebaixa status se já saiu de pendente no People
-        if (existing.status !== 'PENDENTE_APROVACAO') {
-          await prisma.vaga.update({
-            where: { id: existing.id },
-            data: {
-              erpnextStatus: mapped.erpnextStatus,
-              erpnextSyncedAt: mapped.erpnextSyncedAt,
-            },
-          })
-          empty.skipped++
-          continue
-        }
-
-        await prisma.vaga.update({
-          where: { id: existing.id },
-          data: {
-            titulo: mapped.titulo,
-            cargo: mapped.cargo,
-            cargoId: mapped.cargoId,
-            unidadeId: mapped.unidadeId,
-            setor: mapped.setor,
-            quantidade: mapped.quantidade,
-            salarioMin: mapped.salarioMin,
-            salarioMax: mapped.salarioMax,
-            tipoRequisicao: mapped.tipoRequisicao,
-            periodoTrabalho: mapped.periodoTrabalho,
-            gestorRequisitante: mapped.gestorRequisitante,
-            setorRequisitante: mapped.setorRequisitante,
-            nomeColaboradorSaiu: mapped.nomeColaboradorSaiu,
-            dataAbertura: mapped.dataAbertura,
-            dataPrevistaFechamento: mapped.dataPrevistaFechamento,
-            observacoes: mapped.observacoes,
-            erpnextStatus: mapped.erpnextStatus,
-            erpnextSyncedAt: mapped.erpnextSyncedAt,
-          },
-        })
-        empty.updated++
-        continue
-      }
-
-      const maxPos = await prisma.vaga.aggregate({
-        where: { status: 'PENDENTE_APROVACAO' },
-        _max: { position: true },
-      })
-
-      const vaga = await prisma.vaga.create({
+    // Pendente no People: atualiza campos; se mode approved, abre na lista
+    if (mode === 'approved') {
+      await prisma.vaga.update({
+        where: { id: existing.id },
         data: {
           titulo: mapped.titulo,
           cargo: mapped.cargo,
@@ -276,7 +274,6 @@ export async function syncPendingJobRequisitions(): Promise<SyncResult> {
           unidadeId: mapped.unidadeId,
           setor: mapped.setor,
           quantidade: mapped.quantidade,
-          tipoVaga: 'EFETIVO',
           salarioMin: mapped.salarioMin,
           salarioMax: mapped.salarioMax,
           tipoRequisicao: mapped.tipoRequisicao,
@@ -287,31 +284,165 @@ export async function syncPendingJobRequisitions(): Promise<SyncResult> {
           dataAbertura: mapped.dataAbertura,
           dataPrevistaFechamento: mapped.dataPrevistaFechamento,
           observacoes: mapped.observacoes,
-          requisicaoNextId: mapped.requisicaoNextId,
           erpnextStatus: mapped.erpnextStatus,
           erpnextSyncedAt: mapped.erpnextSyncedAt,
-          status: 'PENDENTE_APROVACAO',
-          position: (maxPos._max.position ?? -1) + 1,
         },
       })
-
-      await prisma.vagaHistorico.create({
-        data: {
-          vagaId: vaga.id,
-          toStatus: 'PENDENTE_APROVACAO',
-          descricao: `Importada do ERPNext (${doc.name})`,
-        },
+      await openVagaInRecruitmentList(existing.id, {
+        erpnextStatus: mapped.erpnextStatus,
+        fromStatus: 'PENDENTE_APROVACAO',
+        historicoDescricao: `RP ${doc.name} aprovada no ERPNext — vaga aberta na lista`,
       })
+      result.updated++
+      result.createdOpen++
+      return
+    }
 
-      empty.created++
-      empty.createdIds.push(vaga.id)
+    await prisma.vaga.update({
+      where: { id: existing.id },
+      data: {
+        titulo: mapped.titulo,
+        cargo: mapped.cargo,
+        cargoId: mapped.cargoId,
+        unidadeId: mapped.unidadeId,
+        setor: mapped.setor,
+        quantidade: mapped.quantidade,
+        salarioMin: mapped.salarioMin,
+        salarioMax: mapped.salarioMax,
+        tipoRequisicao: mapped.tipoRequisicao,
+        periodoTrabalho: mapped.periodoTrabalho,
+        gestorRequisitante: mapped.gestorRequisitante,
+        setorRequisitante: mapped.setorRequisitante,
+        nomeColaboradorSaiu: mapped.nomeColaboradorSaiu,
+        dataAbertura: mapped.dataAbertura,
+        dataPrevistaFechamento: mapped.dataPrevistaFechamento,
+        observacoes: mapped.observacoes,
+        erpnextStatus: mapped.erpnextStatus,
+        erpnextSyncedAt: mapped.erpnextSyncedAt,
+      },
+    })
+    result.updated++
+    return
+  }
 
-      await notifyAdmins({
-        type: 'VAGA',
-        title: `Nova RP do ERPNext: ${mapped.cargo}`,
-        body: `${doc.name}${mapped.gestorRequisitante ? ` — ${mapped.gestorRequisitante}` : ''}`,
-        href: `/vagas/pendentes`,
+  // Nova vaga
+  const maxPos = await prisma.vaga.aggregate({
+    where: { status: targetStatus as any },
+    _max: { position: true },
+  })
+
+  const vaga = await prisma.vaga.create({
+    data: {
+      titulo: mapped.titulo,
+      cargo: mapped.cargo,
+      cargoId: mapped.cargoId,
+      unidadeId: mapped.unidadeId,
+      setor: mapped.setor,
+      quantidade: mapped.quantidade,
+      tipoVaga: 'EFETIVO',
+      salarioMin: mapped.salarioMin,
+      salarioMax: mapped.salarioMax,
+      tipoRequisicao: mapped.tipoRequisicao,
+      periodoTrabalho: mapped.periodoTrabalho,
+      gestorRequisitante: mapped.gestorRequisitante,
+      setorRequisitante: mapped.setorRequisitante,
+      nomeColaboradorSaiu: mapped.nomeColaboradorSaiu,
+      dataAbertura: mapped.dataAbertura,
+      dataPrevistaFechamento: mapped.dataPrevistaFechamento,
+      observacoes: mapped.observacoes,
+      requisicaoNextId: mapped.requisicaoNextId,
+      erpnextStatus: mapped.erpnextStatus,
+      erpnextSyncedAt: mapped.erpnextSyncedAt,
+      status: targetStatus as any,
+      position: (maxPos._max.position ?? -1) + 1,
+    },
+  })
+
+  await prisma.vagaHistorico.create({
+    data: {
+      vagaId: vaga.id,
+      toStatus: targetStatus as any,
+      descricao:
+        mode === 'approved'
+          ? `Importada do ERPNext já aprovada (${doc.name}) — aberta na lista de vagas`
+          : `Importada do ERPNext (${doc.name})`,
+    },
+  })
+
+  result.created++
+  result.createdIds.push(vaga.id)
+  if (mode === 'approved') result.createdOpen++
+
+  await notifyAdmins({
+    type: 'VAGA',
+    title:
+      mode === 'approved'
+        ? `Nova vaga aberta (ERPNext): ${mapped.cargo}`
+        : `Nova RP do ERPNext: ${mapped.cargo}`,
+    body: `${doc.name}${mapped.gestorRequisitante ? ` — ${mapped.gestorRequisitante}` : ''}`,
+    href: mode === 'approved' ? `/vagas/${vaga.id}` : `/vagas/pendentes`,
+  })
+}
+
+export async function syncPendingJobRequisitions(): Promise<SyncResult> {
+  const empty: SyncResult = {
+    configured: erpnextConfigured(),
+    enabled: erpnextJrSyncEnabled(),
+    fetched: 0,
+    fetchedApproved: 0,
+    created: 0,
+    createdOpen: 0,
+    updated: 0,
+    skipped: 0,
+    errors: [],
+    createdIds: [],
+  }
+
+  if (!empty.configured || !empty.enabled) return empty
+
+  // 1) Pendentes de aprovação no ERPNext → PENDENTE_APROVACAO no People
+  let pending: JobRequisitionListItem[]
+  try {
+    pending = await listPendingJobRequisitions(100)
+  } catch (e) {
+    const err = e as ErpnextApiError
+    return { ...empty, errors: [{ name: '*', error: err.message || String(e) }] }
+  }
+  empty.fetched = pending.length
+
+  for (const item of pending) {
+    try {
+      const doc = await getJobRequisition(item.name)
+      await upsertJobRequisitionAsVaga(doc, 'pending', empty)
+    } catch (e) {
+      const err = e as Error
+      empty.errors.push({ name: item.name, error: err.message || String(e) })
+    }
+  }
+
+  // 2) Aprovadas recentemente no ERPNext sem Vaga no People → cria já ABERTA na lista
+  let approved: JobRequisitionListItem[] = []
+  try {
+    approved = await listRecentlyApprovedJobRequisitions(40, 30)
+  } catch (e) {
+    const err = e as ErpnextApiError
+    empty.errors.push({ name: 'approved-list', error: err.message || String(e) })
+  }
+  empty.fetchedApproved = approved.length
+
+  for (const item of approved) {
+    try {
+      const exists = await prisma.vaga.findFirst({
+        where: { requisicaoNextId: item.name },
+        select: { id: true },
       })
+      // Só importa se ainda não existe no People (evita reabrir histórico)
+      if (exists) {
+        empty.skipped++
+        continue
+      }
+      const doc = await getJobRequisition(item.name)
+      await upsertJobRequisitionAsVaga(doc, 'approved', empty)
     } catch (e) {
       const err = e as Error
       empty.errors.push({ name: item.name, error: err.message || String(e) })

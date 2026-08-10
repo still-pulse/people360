@@ -94,7 +94,11 @@ export default function VagasPendentesPage() {
         setSyncMsg(`Erro: ${data.errors[0]?.error || 'sync falhou'}`)
       } else {
         setSyncMsg(
-          `ERPNext: ${data.fetched} pendente(s) · ${data.created} nova(s) · ${data.updated} atualizada(s)` +
+          `ERPNext: ${data.fetched ?? 0} pendente(s)` +
+            (data.fetchedApproved ? ` · ${data.fetchedApproved} aprovada(s) recentes` : '') +
+            ` · ${data.created ?? 0} nova(s)` +
+            (data.createdOpen ? ` (${data.createdOpen} já aberta(s) na lista)` : '') +
+            ` · ${data.updated ?? 0} atualizada(s)` +
             (data.errors?.length ? ` · ${data.errors.length} erro(s)` : ''),
         )
         await load()
@@ -120,8 +124,14 @@ export default function VagasPendentesPage() {
     })
     setIsSaving(false)
     if (res.ok) {
+      const d = await res.json().catch(() => ({} as any))
       setActionModal(null)
       setMensagem('')
+      // Após aprovar, a vaga sai de pendentes e entra na lista (ABERTA)
+      if (actionModal.acao === 'APROVAR' && d.href) {
+        router.push(d.href)
+        return
+      }
       load()
     } else {
       const d = await res.json()

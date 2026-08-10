@@ -152,6 +152,35 @@ export async function listPendingJobRequisitions(limit = 50): Promise<JobRequisi
   return res.data ?? []
 }
 
+/**
+ * RPs já aprovadas no ERPNext (úteis se a aprovação ocorreu no Desk e o People ainda não tem a Vaga).
+ * `sinceDays` limita o volume histórico (default 30 dias).
+ */
+export async function listRecentlyApprovedJobRequisitions(
+  limit = 30,
+  sinceDays = 30,
+): Promise<JobRequisitionListItem[]> {
+  const since = new Date()
+  since.setDate(since.getDate() - sinceDays)
+  const sinceStr = since.toISOString().slice(0, 19).replace('T', ' ')
+  const fields = JSON.stringify([...JR_LIST_FIELDS])
+  const filters = JSON.stringify([
+    ['status', '=', 'Open & Approved'],
+    ['modified', '>=', sinceStr],
+  ])
+  const qs = new URLSearchParams({
+    fields,
+    filters,
+    order_by: 'modified desc',
+    limit_page_length: String(limit),
+  })
+  const res = await request<{ data: JobRequisitionListItem[] }>(
+    'GET',
+    `/api/resource/Job%20Requisition?${qs}`,
+  )
+  return res.data ?? []
+}
+
 export async function getJobRequisition(name: string): Promise<JobRequisitionDoc> {
   const encoded = encodeURIComponent(name)
   const res = await request<{ data: JobRequisitionDoc }>(

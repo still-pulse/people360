@@ -4,7 +4,8 @@ import { getSessionOrUnauthorized, forbidIfReadOnly } from '@/lib/apiHelpers'
 import { notifyUsers } from '@/lib/notify'
 import { log, extractIp } from '@/lib/audit'
 import { erpnextConfigured } from '@/lib/erpnextClient'
-import { writeBackApproval } from '@/lib/erpnextJobRequisition'
+import { openVagaInRecruitmentList, writeBackApproval } from '@/lib/erpnextJobRequisition'
+import { notifyAdmins } from '@/lib/notify'
 
 // GET — retorna thread de comentários da aprovação
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -56,35 +57,38 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       erpnext = { status: wb.erpnextStatus, workflowState: wb.workflowState }
     }
 
-    await prisma.vaga.update({
-      where: { id: params.id },
-      data: {
-        status: 'ABERTA',
-        ...(erpnext
-          ? { erpnextStatus: erpnext.status || 'Open & Approved', erpnextSyncedAt: new Date() }
-          : {}),
-      },
+    // Abre na lista/kanban de recrutamento (status ABERTA + position na coluna)
+    await openVagaInRecruitmentList(params.id, {
+      erpnextStatus: erpnext?.status || (vaga.requisicaoNextId ? 'Open & Approved' : null),
+      historicoUserId: session!.user.id,
+      fromStatus: 'PENDENTE_APROVACAO',
+      historicoDescricao: vaga.requisicaoNextId
+        ? `RP ${vaga.requisicaoNextId} aprovada — vaga aberta na lista de recrutamento`
+        : 'Vaga aprovada e aberta na lista de recrutamento',
     })
-    await prisma.vagaHistorico.create({
+    await prisma.vagaAprovacaoComentario.create({
       data: {
         vagaId: params.id,
         userId: session!.user.id,
-        fromStatus: 'PENDENTE_APROVACAO' as any,
-        toStatus: 'ABERTA' as any,
-        descricao: vaga.requisicaoNextId
-          ? `Vaga aprovada (ERPNext ${vaga.requisicaoNextId})`
-          : 'Vaga aprovada',
+        tipo: 'APROVACAO',
+        mensagem: mensagem || 'Vaga aprovada e liberada na lista de vagas.',
       },
-    })
-    await prisma.vagaAprovacaoComentario.create({
-      data: { vagaId: params.id, userId: session!.user.id, tipo: 'APROVACAO', mensagem: mensagem || 'Vaga aprovada.' },
     })
     const analistaIds49 = vaga.analistas.map((a) => a.id)
     if (analistaIds49.length) {
       await notifyUsers(analistaIds49, {
         type: 'VAGA',
-        title: `Vaga aprovada: ${vaga.cargo}`,
-        body: mensagem || 'Sua vaga foi aprovada e está disponível.',
+        title: `Vaga aberta: ${vaga.cargo}`,
+        body: mensagem || 'A RP foi aprovada e a vaga está na lista de recrutamento.',
+        href: `/vagas/${params.id}`,
+      }, session!.user.id)
+    } else {
+      await notifyAdmins({
+        type: 'VAGA',
+        title: `Vaga aberta na lista: ${vaga.cargo}`,
+        body: vaga.requisicaoNextId
+          ? `${vaga.requisicaoNextId}${vaga.unit ? ` — ${vaga.unit.name}` : ''}`
+          : (mensagem || 'Disponível em Vagas → Lista / Kanban'),
         href: `/vagas/${params.id}`,
       }, session!.user.id)
     }
@@ -96,10 +100,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       entity: 'Vaga',
       entityId: params.id,
       entityName: vaga.titulo,
-      details: { acao: 'APROVACAO', requisicaoNextId: vaga.requisicaoNextId, erpnext },
+      details: { acao: 'APROVACAO', abertaNaLista: true, requisicaoNextId: vaga.requisicaoNextId, erpnext },
       ip: extractIp(req.headers),
     })
-    return NextResponse.json({ ok: true, newStatus: 'ABERTA', erpnext })
+    return NextResponse.json({
+      ok: true,
+      newStatus: 'ABERTA',
+      abertaNaLista: true,
+      href: `/vagas/${params.id}`,
+      erpnext,
+    })
   }
 
   if (acao === 'REJEITAR') {
