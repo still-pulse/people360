@@ -200,6 +200,9 @@ export interface VagaData {
   numProcessoAdmissao?: string | null
   numProtocoloOnvio?: string | null
   requisicaoNextId?: string | null
+  /** Status lido do ERPNext (Pending, Open & Approved, Rejected, …) */
+  erpnextStatus?: string | null
+  erpnextSyncedAt?: string | null
   dataAbertura: string
   dataPrevistaFechamento?: string | null
   dataFechamento?: string | null

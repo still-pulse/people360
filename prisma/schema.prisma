@@ -650,7 +650,12 @@ model Vaga {
   setorRequisitante      String?
   numProcessoAdmissao    String?
   numProtocoloOnvio      String?
-  requisicaoNextId       String?
+  /// ID da Job Requisition no ERPNext (ex.: RP-2026-00117). Unique para idempotência de sync.
+  requisicaoNextId       String?           @unique
+  /// Último status lido do ERPNext (Pending, Open & Approved, Rejected, …)
+  erpnextStatus          String?
+  /// Timestamp do último sync com o ERPNext
+  erpnextSyncedAt        DateTime?
   cargoId                String?
   controleCandidatoId    String?           @unique
   dataAbertura           DateTime         @default(now())
@@ -674,6 +679,7 @@ model Vaga {
   documentoLinks       DocumentoLink[]
 
   @@index([cargoId])
+  @@index([status])
   @@map("vagas")
 }
 

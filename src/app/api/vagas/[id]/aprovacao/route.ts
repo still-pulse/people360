@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { getSessionOrUnauthorized, forbidIfReadOnly } from '@/lib/apiHelpers'
 import { notifyUsers } from '@/lib/notify'
 import { log, extractIp } from '@/lib/audit'
+import { erpnextConfigured } from '@/lib/erpnextClient'
+import { writeBackApproval } from '@/lib/erpnextJobRequisition'
 
 // GET — retorna thread de comentários da aprovação
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -41,9 +43,38 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (acao === 'APROVAR') {
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    await prisma.vaga.update({ where: { id: params.id }, data: { status: 'ABERTA' } })
+    // Write-back ERPNext ANTES de alterar o People (evita desync)
+    let erpnext: { status?: string; workflowState?: string } | null = null
+    if (vaga.requisicaoNextId && erpnextConfigured()) {
+      const wb = await writeBackApproval(vaga.requisicaoNextId, 'Approve')
+      if (!wb.ok) {
+        return NextResponse.json(
+          { error: `Falha ao aprovar no ERPNext: ${wb.error}`, erpnext: true },
+          { status: wb.status && wb.status >= 400 && wb.status < 600 ? wb.status : 502 },
+        )
+      }
+      erpnext = { status: wb.erpnextStatus, workflowState: wb.workflowState }
+    }
+
+    await prisma.vaga.update({
+      where: { id: params.id },
+      data: {
+        status: 'ABERTA',
+        ...(erpnext
+          ? { erpnextStatus: erpnext.status || 'Open & Approved', erpnextSyncedAt: new Date() }
+          : {}),
+      },
+    })
     await prisma.vagaHistorico.create({
-      data: { vagaId: params.id, userId: session!.user.id, fromStatus: 'PENDENTE_APROVACAO' as any, toStatus: 'ABERTA' as any, descricao: 'Vaga aprovada' },
+      data: {
+        vagaId: params.id,
+        userId: session!.user.id,
+        fromStatus: 'PENDENTE_APROVACAO' as any,
+        toStatus: 'ABERTA' as any,
+        descricao: vaga.requisicaoNextId
+          ? `Vaga aprovada (ERPNext ${vaga.requisicaoNextId})`
+          : 'Vaga aprovada',
+      },
     })
     await prisma.vagaAprovacaoComentario.create({
       data: { vagaId: params.id, userId: session!.user.id, tipo: 'APROVACAO', mensagem: mensagem || 'Vaga aprovada.' },
@@ -57,17 +88,55 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         href: `/vagas/${params.id}`,
       }, session!.user.id)
     }
-    await log({ userId: session!.user.id, userName: session!.user.name, userRole: session!.user.role, action: 'UPDATE', entity: 'Vaga', entityId: params.id, entityName: vaga.titulo, details: { acao: 'APROVACAO' }, ip: extractIp(req.headers) })
-    return NextResponse.json({ ok: true, newStatus: 'ABERTA' })
+    await log({
+      userId: session!.user.id,
+      userName: session!.user.name,
+      userRole: session!.user.role,
+      action: 'UPDATE',
+      entity: 'Vaga',
+      entityId: params.id,
+      entityName: vaga.titulo,
+      details: { acao: 'APROVACAO', requisicaoNextId: vaga.requisicaoNextId, erpnext },
+      ip: extractIp(req.headers),
+    })
+    return NextResponse.json({ ok: true, newStatus: 'ABERTA', erpnext })
   }
 
   if (acao === 'REJEITAR') {
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (!mensagem?.trim()) return NextResponse.json({ error: 'Mensagem obrigatória para rejeição' }, { status: 400 })
 
-    await prisma.vaga.update({ where: { id: params.id }, data: { status: 'REJEITADA' as any } })
+    let erpnext: { status?: string; workflowState?: string } | null = null
+    if (vaga.requisicaoNextId && erpnextConfigured()) {
+      const wb = await writeBackApproval(vaga.requisicaoNextId, 'Reject', mensagem)
+      if (!wb.ok) {
+        return NextResponse.json(
+          { error: `Falha ao rejeitar no ERPNext: ${wb.error}`, erpnext: true },
+          { status: wb.status && wb.status >= 400 && wb.status < 600 ? wb.status : 502 },
+        )
+      }
+      erpnext = { status: wb.erpnextStatus, workflowState: wb.workflowState }
+    }
+
+    await prisma.vaga.update({
+      where: { id: params.id },
+      data: {
+        status: 'REJEITADA' as any,
+        ...(erpnext
+          ? { erpnextStatus: erpnext.status || 'Rejected', erpnextSyncedAt: new Date() }
+          : {}),
+      },
+    })
     await prisma.vagaHistorico.create({
-      data: { vagaId: params.id, userId: session!.user.id, fromStatus: 'PENDENTE_APROVACAO' as any, toStatus: 'REJEITADA' as any, descricao: 'Vaga rejeitada' },
+      data: {
+        vagaId: params.id,
+        userId: session!.user.id,
+        fromStatus: 'PENDENTE_APROVACAO' as any,
+        toStatus: 'REJEITADA' as any,
+        descricao: vaga.requisicaoNextId
+          ? `Vaga rejeitada (ERPNext ${vaga.requisicaoNextId})`
+          : 'Vaga rejeitada',
+      },
     })
     await prisma.vagaAprovacaoComentario.create({
       data: { vagaId: params.id, userId: session!.user.id, tipo: 'REJEICAO', mensagem },
@@ -81,8 +150,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         href: `/vagas/${params.id}`,
       }, session!.user.id)
     }
-    await log({ userId: session!.user.id, userName: session!.user.name, userRole: session!.user.role, action: 'UPDATE', entity: 'Vaga', entityId: params.id, entityName: vaga.titulo, details: { acao: 'REJEICAO', motivo: mensagem }, ip: extractIp(req.headers) })
-    return NextResponse.json({ ok: true, newStatus: 'REJEITADA' })
+    await log({
+      userId: session!.user.id,
+      userName: session!.user.name,
+      userRole: session!.user.role,
+      action: 'UPDATE',
+      entity: 'Vaga',
+      entityId: params.id,
+      entityName: vaga.titulo,
+      details: { acao: 'REJEICAO', motivo: mensagem, requisicaoNextId: vaga.requisicaoNextId, erpnext },
+      ip: extractIp(req.headers),
+    })
+    return NextResponse.json({ ok: true, newStatus: 'REJEITADA', erpnext })
   }
 
   if (acao === 'SOLICITAR_INFO') {

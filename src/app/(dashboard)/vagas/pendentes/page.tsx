@@ -30,8 +30,11 @@ interface VagaPendente {
   quantidade: number
   tipoVaga: string
   createdAt: string
+  requisicaoNextId?: string | null
+  erpnextStatus?: string | null
   unit?: { name: string; color: string } | null
   analista?: { id: string; name: string } | null
+  analistas?: { id: string; name: string }[]
   aprovacaoComentarios: VagaAprovacaoComentarioData[]
 }
 
@@ -52,6 +55,8 @@ export default function VagasPendentesPage() {
 
   const [vagas, setVagas] = useState<VagaPendente[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
 
   // Modal de ação
   const [actionModal, setActionModal] = useState<{ vaga: VagaPendente; acao: AcaoTipo } | null>(null)
@@ -73,6 +78,32 @@ export default function VagasPendentesPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  async function syncErpnext() {
+    if (!isAdmin) return
+    setIsSyncing(true)
+    setSyncMsg('')
+    try {
+      const res = await fetch('/api/integrations/erpnext/job-requisitions', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setSyncMsg(data.error || 'Falha no sync com ERPNext')
+      } else if (!data.configured) {
+        setSyncMsg('ERPNext não configurado no servidor (env).')
+      } else if (data.errors?.length && !data.created && !data.updated) {
+        setSyncMsg(`Erro: ${data.errors[0]?.error || 'sync falhou'}`)
+      } else {
+        setSyncMsg(
+          `ERPNext: ${data.fetched} pendente(s) · ${data.created} nova(s) · ${data.updated} atualizada(s)` +
+            (data.errors?.length ? ` · ${data.errors.length} erro(s)` : ''),
+        )
+        await load()
+      }
+    } catch {
+      setSyncMsg('Falha de rede ao sincronizar.')
+    }
+    setIsSyncing(false)
+  }
 
   async function submitAction() {
     if (!actionModal) return
@@ -132,17 +163,33 @@ export default function VagasPendentesPage() {
       <Header title="Vagas Pendentes de Aprovação" />
       <div className="p-6 space-y-5">
 
-        {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-          {TABS.filter(t => t.href !== '/vagas/pendentes' || isAdmin || !isAdmin).map((t) => (
-            <button key={t.href}
-              onClick={() => router.push(t.href)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                t.href === pathname ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              {t.label}
-            </button>
-          ))}
+        {/* Tabs + sync ERPNext */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+            {TABS.filter(t => t.href !== '/vagas/pendentes' || isAdmin || !isAdmin).map((t) => (
+              <button key={t.href}
+                onClick={() => router.push(t.href)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  t.href === pathname ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              {syncMsg && <span className="text-xs text-gray-500 max-w-xs truncate">{syncMsg}</span>}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSyncing}
+                onClick={syncErpnext}
+              >
+                {isSyncing ? 'Sincronizando…' : 'Sincronizar ERPNext'}
+              </Button>
+            </div>
+          )}
         </div>
 
         {isLoading ? (
@@ -180,6 +227,11 @@ export default function VagasPendentesPage() {
                               <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
                                 Pendente
                               </span>
+                              {vaga.requisicaoNextId && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-[#15AFA4]/15 text-[#0d7a72] font-semibold font-mono">
+                                  ERPNext · {vaga.requisicaoNextId}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
                               {vaga.unit && (
@@ -187,9 +239,9 @@ export default function VagasPendentesPage() {
                                   <Building2 className="w-3 h-3" />{vaga.unit.name}
                                 </span>
                               )}
-                              {vaga.analista && (
+                              {(vaga.analista || vaga.analistas?.[0]) && (
                                 <span className="flex items-center gap-1">
-                                  <User className="w-3 h-3" />{vaga.analista.name}
+                                  <User className="w-3 h-3" />{(vaga.analista || vaga.analistas![0]).name}
                                 </span>
                               )}
                               <span className="flex items-center gap-1">

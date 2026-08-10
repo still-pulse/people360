@@ -227,8 +227,31 @@ export function startCronJobs() {
   if (started) return
   started = true
 
+  // Sync Job Requisition (ERPNext) → Vaga — independente de SMTP/Slack
+  const erpnextEnabled =
+    !!(process.env.ERPNEXT_BASE_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET) &&
+    process.env.ERPNEXT_JR_SYNC_ENABLED !== 'false' &&
+    process.env.ERPNEXT_JR_SYNC_ENABLED !== '0'
+
+  if (erpnextEnabled) {
+    const expr = process.env.ERPNEXT_JR_SYNC_CRON || '*/5 * * * *'
+    cron.schedule(expr, () => {
+      import('./erpnextJobRequisition')
+        .then(({ syncPendingJobRequisitions }) => syncPendingJobRequisitions())
+        .then((r) => {
+          if (r.created || r.updated || r.errors.length) {
+            console.log(
+              `[cron] ERPNext JR sync: fetched=${r.fetched} created=${r.created} updated=${r.updated} skipped=${r.skipped} errors=${r.errors.length}`,
+            )
+          }
+        })
+        .catch((err) => console.error('[cron] erro no sync Job Requisition ERPNext:', err))
+    }, { timezone: 'America/Sao_Paulo' })
+    console.log(`[cron] Sync ERPNext Job Requisition agendado (${expr}, America/Sao_Paulo).`)
+  }
+
   if (!process.env.SMTP_HOST && !isSlackConfigured()) {
-    console.log('[cron] SMTP e Slack não configurados — jobs não agendados.')
+    console.log('[cron] SMTP e Slack não configurados — digests não agendados.')
     return
   }
 

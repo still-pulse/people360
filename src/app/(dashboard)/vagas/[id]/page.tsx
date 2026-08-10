@@ -304,8 +304,11 @@ export default function VagaDetailPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   {vaga.requisicaoNextId && (
                     <div>
-                      <p className="text-xs text-blue-500">Next (ID RP)</p>
+                      <p className="text-xs text-blue-500">ERPNext (ID RP)</p>
                       <p className="font-bold text-blue-900 font-mono">{vaga.requisicaoNextId}</p>
+                      {vaga.erpnextStatus && (
+                        <p className="text-[11px] text-blue-600 mt-0.5">Status ERP: {vaga.erpnextStatus}</p>
+                      )}
                     </div>
                   )}
                   {vaga.tipoRequisicao && (
