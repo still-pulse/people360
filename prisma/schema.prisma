@@ -243,8 +243,56 @@ model Unit {
   pcdWeeklySnapshots          PcdWeeklySnapshot[]
   managedByUsers              UserUnit[]
   pareceres                   Parecer[]
+  colaboradores               Colaborador[]
 
   @@map("units")
+}
+
+// ─── Colaboradores (espelho Employee ERPNext) ────────────────────────────────
+
+model Colaborador {
+  id               String    @id @default(cuid())
+  /// Employee.name no ERPNext (ex.: RH-COLAB-00532 ou nome)
+  erpnextId        String    @unique
+  employeeName     String
+  status           String    @default("Active")
+  company          String?
+  department       String?
+  designation      String?
+  cellNumber       String?
+  personalEmail    String?
+  companyEmail     String?
+  dateOfJoining    DateTime?
+  dateOfBirth      DateTime?
+  gender           String?
+  reportsTo        String?
+  reportsToName    String?
+  imagePath        String?
+  employmentType   String?
+  relievingDate    DateTime?
+  matricula        String?
+  cpf              String?
+  rg               String?
+  secao            String?
+  pcd              Boolean   @default(false)
+  tipoDeficiencia  String?
+  etnia            String?
+  cargaHoraria     String?
+  naturalidade     String?
+  unitId           String?
+  erpnextModified  DateTime?
+  syncedAt         DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  unit Unit? @relation(fields: [unitId], references: [id])
+
+  @@index([status])
+  @@index([company])
+  @@index([designation])
+  @@index([employeeName])
+  @@index([unitId])
+  @@map("colaboradores")
 }
 
 model CalendarEvent {

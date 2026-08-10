@@ -15,9 +15,9 @@ export default withAuth(
       return NextResponse.redirect(new URL('/calendario', req.url))
     }
 
-    // Superintendente só acessa: calendário, tarefas, vagas, candidatos, admissão, pareceres e evidências PCD
+    // Superintendente só acessa: calendário, tarefas, vagas, candidatos, admissão, pareceres, colaboradores e evidências PCD
     if (token?.role === 'SUPERINTENDENT') {
-      const allowed = ['/calendario', '/tarefas', '/vagas', '/candidatos', '/admissao', '/pareceres', '/indicadores/pcd/evidencias', '/perfil', '/trocar-senha']
+      const allowed = ['/calendario', '/tarefas', '/vagas', '/candidatos', '/admissao', '/pareceres', '/colaboradores', '/indicadores/pcd/evidencias', '/perfil', '/trocar-senha']
       const isAllowed = allowed.some((p) => pathname === p || pathname.startsWith(p + '/'))
       if (!isAllowed) return NextResponse.redirect(new URL('/calendario', req.url))
     }
@@ -65,6 +65,8 @@ export const config = {
     '/vagas/:path*',
     '/candidatos',
     '/candidatos/:path*',
+    '/colaboradores',
+    '/colaboradores/:path*',
     '/admissao',
     '/admissao/:path*',
     '/pareceres',

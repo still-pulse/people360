@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Calendar, KanbanSquare, Users, BarChart3,
   Building2, Settings, ChevronRight, FileBarChart, UserPlus, Headphones, FileCheck, ClipboardList,
-  ClipboardCheck, Brain, UserCheck,
+  ClipboardCheck, Brain, UserCheck, Contact,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/components/providers/SettingsProvider'
@@ -58,6 +58,12 @@ const navItems: NavItem[] = [
   { href: '/indicadores/pcd', label: 'Indicador PCD', icon: BarChart3, allowedRoles: ['JURIDICO'] },
   { href: '/indicadores/pcd/evidencias', label: 'Evidências PCD', icon: FileCheck, allowedRoles: ['JURIDICO'] },
   { href: '/headcount', label: 'Headcount', icon: Users, allowedRoles: ['ADMIN'] },
+  {
+    href: '/colaboradores',
+    label: 'Colaboradores',
+    icon: Contact,
+    allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'],
+  },
   {
     href: '/vagas',
     label: 'Controle de Vagas',

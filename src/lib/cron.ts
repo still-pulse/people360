@@ -248,6 +248,22 @@ export function startCronJobs() {
         .catch((err) => console.error('[cron] erro no sync Job Requisition ERPNext:', err))
     }, { timezone: 'America/Sao_Paulo' })
     console.log(`[cron] Sync ERPNext Job Requisition agendado (${expr}, America/Sao_Paulo).`)
+
+    // Colaboradores (Employee) — default 1x por hora (volume maior que JR)
+    if (process.env.ERPNEXT_EMPLOYEE_SYNC_ENABLED !== 'false' && process.env.ERPNEXT_EMPLOYEE_SYNC_ENABLED !== '0') {
+      const empExpr = process.env.ERPNEXT_EMPLOYEE_SYNC_CRON || '15 * * * *'
+      cron.schedule(empExpr, () => {
+        import('./erpnextEmployees')
+          .then(({ syncEmployeesFromErpnext }) => syncEmployeesFromErpnext())
+          .then((r) => {
+            console.log(
+              `[cron] ERPNext Employees sync: upserted=${r.upserted}/${r.totalRemote} pages=${r.pages} errors=${r.errors.length}`,
+            )
+          })
+          .catch((err) => console.error('[cron] erro no sync Employees ERPNext:', err))
+      }, { timezone: 'America/Sao_Paulo' })
+      console.log(`[cron] Sync ERPNext Employees agendado (${empExpr}, America/Sao_Paulo).`)
+    }
   }
 
   if (!process.env.SMTP_HOST && !isSlackConfigured()) {

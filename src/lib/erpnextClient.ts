@@ -11,6 +11,10 @@ export function erpnextConfigured(): boolean {
   return !!(BASE && KEY && SECRET)
 }
 
+export function erpnextBaseUrl(): string | null {
+  return BASE || null
+}
+
 export function erpnextJrSyncEnabled(): boolean {
   if (!erpnextConfigured()) return false
   const flag = process.env.ERPNEXT_JR_SYNC_ENABLED
@@ -248,4 +252,112 @@ export async function pingErpnext(): Promise<{ ok: boolean; user?: string; error
     const err = e as ErpnextApiError
     return { ok: false, error: err.message || String(e) }
   }
+}
+
+// ─── Employee (Colaborador) ──────────────────────────────────────────────────
+
+export const EMPLOYEE_SYNC_FIELDS = [
+  'name',
+  'employee_name',
+  'status',
+  'company',
+  'department',
+  'designation',
+  'cell_number',
+  'personal_email',
+  'company_email',
+  'date_of_joining',
+  'date_of_birth',
+  'gender',
+  'reports_to',
+  'image',
+  'employment_type',
+  'relieving_date',
+  'employee_number',
+  'modified',
+  'custom_cpf',
+  'custom_rg',
+  'custom_seção',
+  'custom_pessoa_com_deficiência',
+  'custom_tipo_de_deficiencia',
+  'custom_etnia',
+  'custom_carga_horária_mensal',
+  'custom_naturalidade_cidade',
+  'custom_matricula',
+] as const
+
+export type EmployeeDoc = {
+  name: string
+  employee_name?: string
+  status?: string
+  company?: string | null
+  department?: string | null
+  designation?: string | null
+  cell_number?: string | null
+  personal_email?: string | null
+  company_email?: string | null
+  date_of_joining?: string | null
+  date_of_birth?: string | null
+  gender?: string | null
+  reports_to?: string | null
+  image?: string | null
+  employment_type?: string | null
+  relieving_date?: string | null
+  employee_number?: string | null
+  modified?: string
+  custom_cpf?: string | null
+  custom_rg?: string | null
+  custom_seção?: string | null
+  custom_pessoa_com_deficiência?: number | string | boolean | null
+  custom_tipo_de_deficiencia?: string | null
+  custom_etnia?: string | null
+  custom_carga_horária_mensal?: string | number | null
+  custom_naturalidade_cidade?: string | null
+  custom_matricula?: string | null
+  [key: string]: unknown
+}
+
+export async function listEmployeesPage(opts: {
+  limit?: number
+  start?: number
+  status?: string | null
+}): Promise<EmployeeDoc[]> {
+  const limit = opts.limit ?? 100
+  const start = opts.start ?? 0
+  const fields = JSON.stringify([...EMPLOYEE_SYNC_FIELDS])
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: String(limit),
+    limit_start: String(start),
+    order_by: 'modified desc',
+  })
+  if (opts.status) {
+    params.set('filters', JSON.stringify([['status', '=', opts.status]]))
+  }
+  const res = await request<{ data: EmployeeDoc[] }>(
+    'GET',
+    `/api/resource/Employee?${params}`,
+  )
+  return res.data ?? []
+}
+
+export async function getEmployee(name: string): Promise<EmployeeDoc> {
+  const encoded = encodeURIComponent(name)
+  const res = await request<{ data: EmployeeDoc }>(
+    'GET',
+    `/api/resource/Employee/${encoded}`,
+  )
+  if (!res.data) throw new ErpnextApiError(`Employee ${name} não encontrado`, 404)
+  return res.data
+}
+
+export async function countEmployees(status?: string | null): Promise<number> {
+  const body: Record<string, unknown> = { doctype: 'Employee' }
+  if (status) body.filters = [['status', '=', status]]
+  const res = await request<{ message: number }>(
+    'POST',
+    '/api/method/frappe.client.get_count',
+    body,
+  )
+  return Number(res.message) || 0
 }
