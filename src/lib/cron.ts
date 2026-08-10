@@ -227,43 +227,89 @@ export function startCronJobs() {
   if (started) return
   started = true
 
-  // Sync Job Requisition (ERPNext) → Vaga — independente de SMTP/Slack
-  const erpnextEnabled =
-    !!(process.env.ERPNEXT_BASE_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET) &&
+  // ─── Sync ERPNext (hora em hora) ───────────────────────────────────────────
+  // Roda Job Requisition (pendentes + aprovadas recentes) e Colaboradores (Employee).
+  // Default: a cada hora no minuto 5 (America/Sao_Paulo). Override: ERPNEXT_SYNC_CRON
+  const erpnextCreds =
+    !!(process.env.ERPNEXT_BASE_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET)
+
+  const jrEnabled =
+    erpnextCreds &&
     process.env.ERPNEXT_JR_SYNC_ENABLED !== 'false' &&
     process.env.ERPNEXT_JR_SYNC_ENABLED !== '0'
 
-  if (erpnextEnabled) {
-    const expr = process.env.ERPNEXT_JR_SYNC_CRON || '*/5 * * * *'
-    cron.schedule(expr, () => {
-      import('./erpnextJobRequisition')
-        .then(({ syncPendingJobRequisitions }) => syncPendingJobRequisitions())
-        .then((r) => {
-          if (r.created || r.updated || r.errors.length) {
-            console.log(
-              `[cron] ERPNext JR sync: fetched=${r.fetched} created=${r.created} updated=${r.updated} skipped=${r.skipped} errors=${r.errors.length}`,
-            )
-          }
-        })
-        .catch((err) => console.error('[cron] erro no sync Job Requisition ERPNext:', err))
-    }, { timezone: 'America/Sao_Paulo' })
-    console.log(`[cron] Sync ERPNext Job Requisition agendado (${expr}, America/Sao_Paulo).`)
+  const empEnabled =
+    erpnextCreds &&
+    process.env.ERPNEXT_EMPLOYEE_SYNC_ENABLED !== 'false' &&
+    process.env.ERPNEXT_EMPLOYEE_SYNC_ENABLED !== '0'
 
-    // Colaboradores (Employee) — default 1x por hora (volume maior que JR)
-    if (process.env.ERPNEXT_EMPLOYEE_SYNC_ENABLED !== 'false' && process.env.ERPNEXT_EMPLOYEE_SYNC_ENABLED !== '0') {
-      const empExpr = process.env.ERPNEXT_EMPLOYEE_SYNC_CRON || '15 * * * *'
-      cron.schedule(empExpr, () => {
-        import('./erpnextEmployees')
-          .then(({ syncEmployeesFromErpnext }) => syncEmployeesFromErpnext())
-          .then((r) => {
-            console.log(
-              `[cron] ERPNext Employees sync: upserted=${r.upserted}/${r.totalRemote} pages=${r.pages} errors=${r.errors.length}`,
-            )
-          })
-          .catch((err) => console.error('[cron] erro no sync Employees ERPNext:', err))
-      }, { timezone: 'America/Sao_Paulo' })
-      console.log(`[cron] Sync ERPNext Employees agendado (${empExpr}, America/Sao_Paulo).`)
+  if (jrEnabled || empEnabled) {
+    // Preferência: ERPNEXT_SYNC_CRON (global). Fallbacks legados por módulo.
+    const expr =
+      process.env.ERPNEXT_SYNC_CRON ||
+      process.env.ERPNEXT_JR_SYNC_CRON ||
+      process.env.ERPNEXT_EMPLOYEE_SYNC_CRON ||
+      '5 * * * *'
+
+    const runErpnextHourlySync = async () => {
+      const startedAt = Date.now()
+      console.log(`[cron] ERPNext sync horário iniciado (JR=${jrEnabled} Employees=${empEnabled})`)
+
+      if (jrEnabled) {
+        try {
+          const { syncPendingJobRequisitions } = await import('./erpnextJobRequisition')
+          const r = await syncPendingJobRequisitions()
+          console.log(
+            `[cron] ERPNext JR: pending=${r.fetched} approvedRecent=${r.fetchedApproved} ` +
+              `created=${r.created} open=${r.createdOpen} updated=${r.updated} skipped=${r.skipped} errors=${r.errors.length}`,
+          )
+          if (r.errors.length) {
+            console.error('[cron] ERPNext JR erros:', JSON.stringify(r.errors.slice(0, 5)))
+          }
+        } catch (err) {
+          console.error('[cron] erro no sync Job Requisition ERPNext:', err)
+        }
+      }
+
+      if (empEnabled) {
+        try {
+          const { syncEmployeesFromErpnext } = await import('./erpnextEmployees')
+          const r = await syncEmployeesFromErpnext()
+          console.log(
+            `[cron] ERPNext Employees: upserted=${r.upserted}/${r.totalRemote} pages=${r.pages} errors=${r.errors.length}`,
+          )
+          if (r.errors.length) {
+            console.error('[cron] ERPNext Employees erros:', JSON.stringify(r.errors.slice(0, 5)))
+          }
+        } catch (err) {
+          console.error('[cron] erro no sync Employees ERPNext:', err)
+        }
+      }
+
+      console.log(`[cron] ERPNext sync horário finalizado em ${Date.now() - startedAt}ms`)
     }
+
+    cron.schedule(expr, () => {
+      runErpnextHourlySync().catch((err) =>
+        console.error('[cron] falha no sync horário ERPNext:', err),
+      )
+    }, { timezone: 'America/Sao_Paulo' })
+
+    console.log(
+      `[cron] Sync ERPNext horário agendado (${expr}, America/Sao_Paulo) — JR=${jrEnabled} Employees=${empEnabled}`,
+    )
+
+    // Opcional: rodar uma vez na subida do processo (útil após deploy)
+    if (process.env.ERPNEXT_SYNC_ON_BOOT === 'true' || process.env.ERPNEXT_SYNC_ON_BOOT === '1') {
+      setTimeout(() => {
+        runErpnextHourlySync().catch((err) =>
+          console.error('[cron] falha no sync ERPNext on-boot:', err),
+        )
+      }, 15_000)
+      console.log('[cron] Sync ERPNext on-boot habilitado (delay 15s).')
+    }
+  } else if (erpnextCreds) {
+    console.log('[cron] Credenciais ERPNext presentes, mas JR e Employees sync estão desabilitados.')
   }
 
   if (!process.env.SMTP_HOST && !isSlackConfigured()) {
