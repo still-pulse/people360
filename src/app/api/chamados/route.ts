@@ -26,6 +26,17 @@ function formatDateBR(iso: string) {
   return `${d}/${m}/${y}`
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+/** Diff em horas (0.5 step). Se saída ≤ entrada, assume virada de dia (plantão). */
+function hoursBetween(entrada: string, saida: string): number {
+  const [eh, em] = entrada.split(':').map(Number)
+  const [sh, sm] = saida.split(':').map(Number)
+  let mins = sh * 60 + sm - (eh * 60 + em)
+  if (mins <= 0) mins += 24 * 60
+  return Math.round((mins / 60) * 2) / 2
+}
+
 function getSaoPauloMonthYear(): { mes: number; ano: number } {
   const now = new Date()
   const sp = new Date(now.getTime() - 3 * 60 * 60 * 1000)
@@ -123,6 +134,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tipo de solicitação inválido.' }, { status: 400 })
   }
 
+  const isTipoHoras =
+    body.tipoSolicitacao === 'HORAS_EXTRAS' || body.tipoSolicitacao === 'BANCO_HORAS'
+
+  let horaEntrada: string | null = null
+  let horaSaida: string | null = null
+  let horasSolicitadas: number | null = body.horasSolicitadas
+    ? parseFloat(body.horasSolicitadas)
+    : null
+
+  if (isTipoHoras) {
+    const he = String(body.horaEntrada || '').trim()
+    const hs = String(body.horaSaida || '').trim()
+    if (!he || !hs) {
+      return NextResponse.json(
+        { error: 'Horário de entrada e de saída são obrigatórios para este tipo de solicitação.' },
+        { status: 400 },
+      )
+    }
+    if (!TIME_RE.test(he) || !TIME_RE.test(hs)) {
+      return NextResponse.json(
+        { error: 'Horários inválidos. Use o formato HH:mm (ex.: 08:00, 18:30).' },
+        { status: 400 },
+      )
+    }
+    if (he === hs) {
+      return NextResponse.json(
+        { error: 'Horário de entrada e saída não podem ser iguais.' },
+        { status: 400 },
+      )
+    }
+    horaEntrada = he
+    horaSaida = hs
+    // Se o usuário não informou horas, calcula pelo intervalo (plantão noturno = virada de dia)
+    if (horasSolicitadas == null || Number.isNaN(horasSolicitadas) || horasSolicitadas <= 0) {
+      horasSolicitadas = hoursBetween(he, hs)
+    }
+  }
+
   const unitId = session.user.role === 'ANALYST' ? session.user.unitId : (body.unitId || null)
 
   const tipoLabel = isSolicitacao ? TIPO_LABELS[body.tipoSolicitacao] : null
@@ -131,7 +180,10 @@ export async function POST(req: NextRequest) {
   if (isSolicitacao && !titulo) {
     const inicio = formatDateBR(body.dataInicio)
     const fim    = body.dataFim ? formatDateBR(body.dataFim) : null
-    titulo = fim ? `${tipoLabel} — ${inicio} a ${fim}` : `${tipoLabel} — ${inicio}`
+    const periodo = fim ? `${inicio} a ${fim}` : inicio
+    const faixa =
+      horaEntrada && horaSaida ? ` · ${horaEntrada}–${horaSaida}` : ''
+    titulo = `${tipoLabel} — ${periodo}${faixa}`
   }
 
   const solicitacaoData = isSolicitacao ? {
@@ -139,7 +191,9 @@ export async function POST(req: NextRequest) {
     aprovacaoStatus: 'PENDENTE' as const,
     dataInicio:      new Date(body.dataInicio),
     dataFim:         body.dataFim ? new Date(body.dataFim) : null,
-    horasSolicitadas: body.horasSolicitadas ? parseFloat(body.horasSolicitadas) : null,
+    horaEntrada,
+    horaSaida,
+    horasSolicitadas,
   } : {}
 
   const chamado = await prisma.chamado.create({

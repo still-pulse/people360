@@ -45,6 +45,8 @@ interface ChamadoDetalhe {
   aprovacaoStatus?: string | null
   dataInicio?: string | null
   dataFim?: string | null
+  horaEntrada?: string | null
+  horaSaida?: string | null
   horasSolicitadas?: number | null
   aprovacaoJustificativa?: string | null
   aprovadoAt?: string | null
@@ -424,6 +426,18 @@ export default function ChamadoDetalhePage() {
                       <p className="font-medium text-gray-700">
                         {formatDateBR(chamado.dataInicio)}
                         {chamado.dataFim && ` a ${formatDateBR(chamado.dataFim)}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {(chamado.horaEntrada || chamado.horaSaida) && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <Clock className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">Horário</p>
+                      <p className="font-medium text-gray-700 font-mono">
+                        {chamado.horaEntrada || '—'} → {chamado.horaSaida || '—'}
                       </p>
                     </div>
                   </div>

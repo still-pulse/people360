@@ -112,7 +112,8 @@ export default function ChamadosPage() {
   const [tipoAbertura, setTipoAbertura] = useState<TipoAbertura>('')
   const [form, setForm] = useState({
     titulo: '', descricao: '', categoria: 'Dúvida', prioridade: 'NORMAL',
-    dataInicio: '', dataFim: '', horasSolicitadas: '', atribuidoId: '', criarTarefa: false,
+    dataInicio: '', dataFim: '', horaEntrada: '', horaSaida: '',
+    horasSolicitadas: '', atribuidoId: '', criarTarefa: false,
   })
   const [submitting, setSubmit] = useState(false)
   const [analistas, setAnalistas] = useState<{ id: string; name: string }[]>([])
@@ -156,7 +157,31 @@ export default function ChamadosPage() {
     setTipoAbertura('')
     setForm({
       titulo: '', descricao: '', categoria: 'Dúvida', prioridade: 'NORMAL',
-      dataInicio: '', dataFim: '', horasSolicitadas: '', atribuidoId: '', criarTarefa: false,
+      dataInicio: '', dataFim: '', horaEntrada: '', horaSaida: '',
+      horasSolicitadas: '', atribuidoId: '', criarTarefa: false,
+    })
+  }
+
+  /** Diff em horas; se saída ≤ entrada, assume virada de dia. */
+  function hoursBetween(entrada: string, saida: string): number | null {
+    if (!entrada || !saida) return null
+    const [eh, em] = entrada.split(':').map(Number)
+    const [sh, sm] = saida.split(':').map(Number)
+    if ([eh, em, sh, sm].some((n) => Number.isNaN(n))) return null
+    let mins = sh * 60 + sm - (eh * 60 + em)
+    if (mins <= 0) mins += 24 * 60
+    return Math.round((mins / 60) * 2) / 2
+  }
+
+  function setHorario(field: 'horaEntrada' | 'horaSaida', value: string) {
+    setForm((f) => {
+      const next = { ...f, [field]: value }
+      const calc = hoursBetween(
+        field === 'horaEntrada' ? value : f.horaEntrada,
+        field === 'horaSaida' ? value : f.horaSaida,
+      )
+      if (calc != null && calc > 0) next.horasSolicitadas = String(calc)
+      return next
     })
   }
 
@@ -169,6 +194,17 @@ export default function ChamadosPage() {
   }
 
   async function submit() {
+    if (TIPOS_COM_HORAS.includes(tipoAbertura)) {
+      if (!form.horaEntrada || !form.horaSaida) {
+        alert('Informe o horário de entrada e o de saída.')
+        return
+      }
+      if (form.horaEntrada === form.horaSaida) {
+        alert('Horário de entrada e saída não podem ser iguais.')
+        return
+      }
+    }
+
     setSubmit(true)
     const body: any = tipoAbertura
       ? {
@@ -177,6 +213,8 @@ export default function ChamadosPage() {
           prioridade: 'NORMAL',
           dataInicio: form.dataInicio,
           dataFim: form.dataFim || undefined,
+          horaEntrada: TIPOS_COM_HORAS.includes(tipoAbertura) ? form.horaEntrada : undefined,
+          horaSaida: TIPOS_COM_HORAS.includes(tipoAbertura) ? form.horaSaida : undefined,
           horasSolicitadas: TIPOS_COM_HORAS.includes(tipoAbertura) && form.horasSolicitadas
             ? parseFloat(form.horasSolicitadas)
             : undefined,
@@ -527,27 +565,50 @@ export default function ChamadosPage() {
               </div>
 
               {TIPOS_COM_HORAS.includes(tipoAbertura) && (
-                <Input
-                  type="number"
-                  label={tipoAbertura === 'HORAS_EXTRAS' ? 'Horas extras (crédito)' : 'Horas a usar do banco (débito)'}
-                  value={form.horasSolicitadas}
-                  onChange={(e) => setForm((f) => ({ ...f, horasSolicitadas: e.target.value }))}
-                  placeholder="Ex.: 2"
-                  min="0.5"
-                  step="0.5"
-                />
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      type="time"
+                      label="Horário de entrada *"
+                      value={form.horaEntrada}
+                      onChange={(e) => setHorario('horaEntrada', e.target.value)}
+                      required
+                    />
+                    <Input
+                      type="time"
+                      label="Horário de saída *"
+                      value={form.horaSaida}
+                      onChange={(e) => setHorario('horaSaida', e.target.value)}
+                      required
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 -mt-2">
+                    Plantão que vira o dia: saída menor que entrada é aceito (ex.: 20:00 → 02:00).
+                  </p>
+                  <Input
+                    type="number"
+                    label={tipoAbertura === 'HORAS_EXTRAS' ? 'Total de horas (crédito)' : 'Total de horas (débito no banco)'}
+                    value={form.horasSolicitadas}
+                    onChange={(e) => setForm((f) => ({ ...f, horasSolicitadas: e.target.value }))}
+                    placeholder="Calculado pelos horários — pode ajustar"
+                    min="0.5"
+                    step="0.5"
+                  />
+                </>
               )}
 
               {tipoAbertura === 'HORAS_EXTRAS' && (
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2.5 text-xs text-indigo-800 leading-relaxed">
                   Use este tipo para <strong>registrar hora extra</strong> (ficou até mais tarde / trabalhou além do horário).
                   Isso é <strong>crédito</strong> no banco — não use para “sair mais cedo”.
+                  Informe o período real de entrada e saída do trecho extra.
                 </div>
               )}
               {tipoAbertura === 'BANCO_HORAS' && (
                 <div className="rounded-xl border border-purple-100 bg-purple-50/80 px-3 py-2.5 text-xs text-purple-800 leading-relaxed">
                   Use este tipo para <strong>usar o saldo do banco</strong> (sair mais cedo, compensar ou abater horas).
                   Isso é <strong>débito</strong> — não use para pedir ficar até mais tarde.
+                  Informe o horário em que entrou e o horário em que pretende sair (ou saiu).
                 </div>
               )}
 

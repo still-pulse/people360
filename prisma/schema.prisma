@@ -507,6 +507,10 @@ model Chamado {
   aprovacaoStatus        AprovacaoStatus?
   dataInicio             DateTime?
   dataFim                DateTime?
+  /// Horário de entrada no dia da solicitação (HH:mm) — obrigatório em HORAS_EXTRAS / BANCO_HORAS
+  horaEntrada            String?
+  /// Horário de saída no dia da solicitação (HH:mm) — obrigatório em HORAS_EXTRAS / BANCO_HORAS
+  horaSaida              String?
   horasSolicitadas       Float?
   aprovacaoJustificativa String?
   aprovadoPorId          String?
