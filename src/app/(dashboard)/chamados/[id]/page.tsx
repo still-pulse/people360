@@ -71,9 +71,10 @@ const PRIO_META: Record<string, { label: string; color: string }> = {
 }
 
 const TIPO_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  BANCO_HORAS: { label: 'Banco de Horas', icon: Timer,    color: 'text-purple-700', bg: 'bg-purple-50 border-purple-100' },
-  FOLGA:       { label: 'Folga',          icon: Palmtree, color: 'text-teal-700',   bg: 'bg-teal-50 border-teal-100' },
-  AUSENCIA:    { label: 'Ausência',       icon: UserX,    color: 'text-orange-700', bg: 'bg-orange-50 border-orange-100' },
+  HORAS_EXTRAS: { label: 'Horas extras (crédito)',     icon: Clock,    color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-100' },
+  BANCO_HORAS:  { label: 'Usar banco de horas (débito)', icon: Timer,   color: 'text-purple-700', bg: 'bg-purple-50 border-purple-100' },
+  FOLGA:        { label: 'Folga',                      icon: Palmtree, color: 'text-teal-700',   bg: 'bg-teal-50 border-teal-100' },
+  AUSENCIA:     { label: 'Ausência',                   icon: UserX,    color: 'text-orange-700', bg: 'bg-orange-50 border-orange-100' },
 }
 
 const APROV_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
@@ -129,7 +130,7 @@ export default function ChamadoDetalhePage() {
   const [msg, setMsg]               = useState('')
   const [sending, setSending]       = useState(false)
   const [updating, setUpdating]     = useState(false)
-  const [admins, setAdmins]         = useState<{ id: string; name: string }[]>([])
+  const [assignableUsers, setAssignableUsers] = useState<{ id: string; name: string }[]>([])
   const [selectedFiles, setFiles]   = useState<File[]>([])
   const [uploading, setUploading]   = useState(false)
 
@@ -152,7 +153,14 @@ export default function ChamadoDetalhePage() {
 
   useEffect(() => {
     if (isAdmin) {
-      fetch('/api/users').then((r) => r.json()).then((u) => setAdmins(u.filter((x: any) => x.role === 'ADMIN'))).catch(() => {})
+      fetch('/api/users')
+        .then((r) => r.json())
+        .then((u) =>
+          setAssignableUsers(
+            u.filter((x: any) => ['ADMIN', 'ANALYST', 'GERENTE', 'SUPERINTENDENT'].includes(x.role) && x.active !== false),
+          ),
+        )
+        .catch(() => {})
     }
   }, [isAdmin])
 
@@ -519,12 +527,12 @@ export default function ChamadoDetalhePage() {
                   </Select>
                 </div>
 
-                {admins.length > 0 && (
+                {assignableUsers.length > 0 && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-600">Atribuído a</label>
                     <Select value={chamado.atribuido?.id ?? ''} onChange={(e) => updateChamado({ atribuidoId: e.target.value })} disabled={updating}>
                       <option value="">Não atribuído</option>
-                      {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      {assignableUsers.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </Select>
                   </div>
                 )}

@@ -8,9 +8,10 @@ import { log, extractIp } from '@/lib/audit'
 export const dynamic = 'force-dynamic'
 
 const TIPO_LABELS: Record<string, string> = {
-  BANCO_HORAS: 'Banco de Horas',
-  FOLGA: 'Folga',
-  AUSENCIA: 'Ausência',
+  HORAS_EXTRAS: 'Horas extras',
+  BANCO_HORAS:  'Usar banco de horas',
+  FOLGA:        'Folga',
+  AUSENCIA:     'Ausência',
 }
 
 const PRIORIDADE_PARA_TASK: Record<string, 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'> = {

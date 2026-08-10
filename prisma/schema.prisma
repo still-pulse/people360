@@ -31,6 +31,9 @@ enum ChamadoPrioridade {
 }
 
 enum TipoSolicitacao {
+  /// Registrar hora extra / ficar até mais tarde (crédito no banco)
+  HORAS_EXTRAS
+  /// Usar saldo do banco / sair mais cedo ou compensar (débito)
   BANCO_HORAS
   FOLGA
   AUSENCIA

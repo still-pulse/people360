@@ -51,9 +51,10 @@ const PRIO_META: Record<string, { label: string; color: string }> = {
 }
 
 const TIPO_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  BANCO_HORAS: { label: 'Banco de Horas', icon: Timer,    color: 'text-purple-600 bg-purple-50' },
-  FOLGA:       { label: 'Folga',          icon: Palmtree, color: 'text-teal-600 bg-teal-50' },
-  AUSENCIA:    { label: 'Ausência',       icon: UserX,    color: 'text-orange-600 bg-orange-50' },
+  HORAS_EXTRAS: { label: 'Horas extras',        icon: Clock,    color: 'text-indigo-600 bg-indigo-50' },
+  BANCO_HORAS:  { label: 'Usar banco de horas',  icon: Timer,    color: 'text-purple-600 bg-purple-50' },
+  FOLGA:        { label: 'Folga',               icon: Palmtree, color: 'text-teal-600 bg-teal-50' },
+  AUSENCIA:     { label: 'Ausência',            icon: UserX,    color: 'text-orange-600 bg-orange-50' },
 }
 
 const APROV_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -64,7 +65,9 @@ const APROV_META: Record<string, { label: string; icon: React.ElementType; color
 
 const CATEGORIAS = ['Dúvida', 'Problema', 'Solicitação', 'Outros']
 
-type TipoAbertura = '' | 'BANCO_HORAS' | 'FOLGA' | 'AUSENCIA'
+type TipoAbertura = '' | 'HORAS_EXTRAS' | 'BANCO_HORAS' | 'FOLGA' | 'AUSENCIA'
+
+const TIPOS_COM_HORAS: TipoAbertura[] = ['HORAS_EXTRAS', 'BANCO_HORAS']
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -174,9 +177,12 @@ export default function ChamadosPage() {
           prioridade: 'NORMAL',
           dataInicio: form.dataInicio,
           dataFim: form.dataFim || undefined,
-          horasSolicitadas: tipoAbertura === 'BANCO_HORAS' && form.horasSolicitadas
+          horasSolicitadas: TIPOS_COM_HORAS.includes(tipoAbertura) && form.horasSolicitadas
             ? parseFloat(form.horasSolicitadas)
             : undefined,
+          // Admin pode atribuir analista também em solicitações de jornada
+          atribuidoId: form.atribuidoId || undefined,
+          criarTarefa: form.atribuidoId ? form.criarTarefa : false,
         }
       : {
           titulo: form.titulo,
@@ -202,10 +208,11 @@ export default function ChamadosPage() {
   }
 
   const TIPO_BUTTONS: { value: TipoAbertura; label: string; icon: React.ElementType; desc: string }[] = [
-    { value: '',           label: 'Chamado',       icon: MessageSquare, desc: 'Dúvida, problema ou solicitação geral' },
-    { value: 'BANCO_HORAS', label: 'Banco de Horas', icon: Timer,         desc: 'Solicitar compensação de horas' },
-    { value: 'FOLGA',       label: 'Folga',          icon: Palmtree,      desc: 'Solicitar dia(s) de folga' },
-    { value: 'AUSENCIA',    label: 'Ausência',        icon: UserX,         desc: 'Registrar ausência ou falta' },
+    { value: '',             label: 'Chamado',              icon: MessageSquare, desc: 'Dúvida, problema ou solicitação geral' },
+    { value: 'HORAS_EXTRAS', label: 'Horas extras',         icon: Clock,         desc: 'Ficar até mais tarde / registrar crédito no banco' },
+    { value: 'BANCO_HORAS',  label: 'Usar banco de horas',   icon: Timer,         desc: 'Sair mais cedo ou compensar com o saldo do banco' },
+    { value: 'FOLGA',        label: 'Folga',                icon: Palmtree,      desc: 'Solicitar dia(s) de folga' },
+    { value: 'AUSENCIA',     label: 'Ausência',             icon: UserX,         desc: 'Registrar ausência ou falta' },
   ]
 
   const solicitacoesPendentes = chamados.filter(
@@ -228,11 +235,12 @@ export default function ChamadosPage() {
         {isAdmin && (
           <div className="flex gap-2 flex-wrap">
             {[
-              { value: '',            label: 'Todos' },
-              { value: 'SOLICITACAO', label: `Solicitações${solicitacoesPendentes > 0 ? ` (${solicitacoesPendentes} pendentes)` : ''}` },
-              { value: 'BANCO_HORAS', label: 'Banco de Horas' },
-              { value: 'FOLGA',       label: 'Folga' },
-              { value: 'AUSENCIA',    label: 'Ausência' },
+              { value: '',              label: 'Todos' },
+              { value: 'SOLICITACAO',   label: `Solicitações${solicitacoesPendentes > 0 ? ` (${solicitacoesPendentes} pendentes)` : ''}` },
+              { value: 'HORAS_EXTRAS',  label: 'Horas extras' },
+              { value: 'BANCO_HORAS',   label: 'Usar banco' },
+              { value: 'FOLGA',         label: 'Folga' },
+              { value: 'AUSENCIA',      label: 'Ausência' },
             ].map((f) => (
               <button
                 key={f.value}
@@ -518,16 +526,29 @@ export default function ChamadosPage() {
                 />
               </div>
 
-              {tipoAbertura === 'BANCO_HORAS' && (
+              {TIPOS_COM_HORAS.includes(tipoAbertura) && (
                 <Input
                   type="number"
-                  label="Horas solicitadas"
+                  label={tipoAbertura === 'HORAS_EXTRAS' ? 'Horas extras (crédito)' : 'Horas a usar do banco (débito)'}
                   value={form.horasSolicitadas}
                   onChange={(e) => setForm((f) => ({ ...f, horasSolicitadas: e.target.value }))}
-                  placeholder="Ex.: 4"
+                  placeholder="Ex.: 2"
                   min="0.5"
                   step="0.5"
                 />
+              )}
+
+              {tipoAbertura === 'HORAS_EXTRAS' && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2.5 text-xs text-indigo-800 leading-relaxed">
+                  Use este tipo para <strong>registrar hora extra</strong> (ficou até mais tarde / trabalhou além do horário).
+                  Isso é <strong>crédito</strong> no banco — não use para “sair mais cedo”.
+                </div>
+              )}
+              {tipoAbertura === 'BANCO_HORAS' && (
+                <div className="rounded-xl border border-purple-100 bg-purple-50/80 px-3 py-2.5 text-xs text-purple-800 leading-relaxed">
+                  Use este tipo para <strong>usar o saldo do banco</strong> (sair mais cedo, compensar ou abater horas).
+                  Isso é <strong>débito</strong> — não use para pedir ficar até mais tarde.
+                </div>
               )}
 
               <Textarea
@@ -535,8 +556,10 @@ export default function ChamadosPage() {
                 value={form.descricao}
                 onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
                 placeholder={
-                  tipoAbertura === 'BANCO_HORAS'
-                    ? 'Explique quando e por que as horas extras foram realizadas…'
+                  tipoAbertura === 'HORAS_EXTRAS'
+                    ? 'Ex.: Fiquei até 20h no plantão do dia X para cobrir escala…'
+                    : tipoAbertura === 'BANCO_HORAS'
+                    ? 'Ex.: Quero sair 2h mais cedo no dia Y usando o banco de horas…'
                     : tipoAbertura === 'FOLGA'
                     ? 'Informe o motivo da solicitação de folga…'
                     : 'Informe o motivo da ausência…'
@@ -544,6 +567,32 @@ export default function ChamadosPage() {
                 rows={4}
                 required
               />
+
+              {isAdmin && (
+                <div className="space-y-2 pt-1">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Atribuir a (opcional)</label>
+                    <Select
+                      value={form.atribuidoId}
+                      onChange={(e) => setForm((f) => ({ ...f, atribuidoId: e.target.value, criarTarefa: e.target.value ? f.criarTarefa : false }))}
+                    >
+                      <option value="">Ninguém</option>
+                      {analistas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </Select>
+                  </div>
+                  {form.atribuidoId && (
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.criarTarefa}
+                        onChange={(e) => setForm((f) => ({ ...f, criarTarefa: e.target.checked }))}
+                        className="w-4 h-4 rounded accent-[#15AFA4]"
+                      />
+                      Abrir também uma tarefa para essa pessoa?
+                    </label>
+                  )}
+                </div>
+              )}
             </>
           )}
 
