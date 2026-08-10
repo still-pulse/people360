@@ -178,12 +178,18 @@ export async function applyJobRequisitionWorkflow(
   return res.message ?? doc
 }
 
+/**
+ * Grava comentário na timeline do documento.
+ * Preferir `frappe.desk.form.utils.add_comment` — POST em /api/resource/Comment
+ * retorna 403 para o user de integração (sem create em Comment).
+ */
 export async function addJobRequisitionComment(name: string, content: string): Promise<void> {
-  await request('POST', '/api/resource/Comment', {
-    comment_type: 'Comment',
+  await request('POST', '/api/method/frappe.desk.form.utils.add_comment', {
     reference_doctype: 'Job Requisition',
     reference_name: name,
     content,
+    comment_email: process.env.ERPNEXT_COMMENT_EMAIL || 'api-people360@ossbhcl.org.br',
+    comment_by: process.env.ERPNEXT_COMMENT_BY || 'People360',
   })
 }
 
