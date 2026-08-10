@@ -122,29 +122,62 @@ export async function GET(req: NextRequest) {
     return { year: d.getFullYear(), month: d.getMonth() + 1 }
   })()
 
-  // ─── Headcount ─────────────────────────────────────────────────────────────
-  const [hcCurrent, hcPrevious, units] = await Promise.all([
-    prisma.headcountEntry.groupBy({
-      by: ['unitId'],
-      where: { year: latestMonth.year, month: latestMonth.month, ...unitFilter },
-      _sum: { count: true },
-    }),
-    prisma.headcountEntry.groupBy({
-      by: ['unitId'],
-      where: { year: prevSingleMonth.year, month: prevSingleMonth.month, ...unitFilter },
-      _sum: { count: true },
-    }),
-    prisma.unit.findMany({ where: { active: true } }),
-  ])
+  // ─── Headcount (fonte: Colaboradores Active do ERPNext; fallback: headcountEntry) ──
+  const units = await prisma.unit.findMany({ where: { active: true } })
 
-  const headcountCurrent = hcCurrent.reduce((s, h) => s + (h._sum.count ?? 0), 0)
+  // Filtro unitId no espelho Employee (mesma forma do unitFilter de indicadores)
+  const colabUnitFilter: Record<string, unknown> = {}
+  if ('unitId' in unitFilter) {
+    colabUnitFilter.unitId = (unitFilter as { unitId: unknown }).unitId
+  }
+
+  const colabActiveBase = { status: 'Active' as const, ...colabUnitFilter }
+
+  const [colabActiveCount, colabAprendizCount, colabByUnit, colabPcdCount, hcPrevious, hcLegacyCurrent] =
+    await Promise.all([
+      prisma.colaborador.count({ where: colabActiveBase }),
+      prisma.colaborador.count({
+        where: {
+          ...colabActiveBase,
+          OR: [
+            { designation: { contains: 'APRENDIZ', mode: 'insensitive' } },
+            { employmentType: { contains: 'Aprendiz', mode: 'insensitive' } },
+            { employmentType: { contains: 'Apprentice', mode: 'insensitive' } },
+          ],
+        },
+      }),
+      prisma.colaborador.groupBy({
+        by: ['unitId'],
+        where: colabActiveBase,
+        _count: { _all: true },
+      }),
+      prisma.colaborador.count({ where: { ...colabActiveBase, pcd: true } }),
+      prisma.headcountEntry.groupBy({
+        by: ['unitId'],
+        where: { year: prevSingleMonth.year, month: prevSingleMonth.month, ...unitFilter },
+        _sum: { count: true },
+      }),
+      prisma.headcountEntry.groupBy({
+        by: ['unitId'],
+        where: { year: latestMonth.year, month: latestMonth.month, ...unitFilter },
+        _sum: { count: true },
+      }),
+    ])
+
+  // Preferir contagem real do ERPNext; se sync vazio, cai no headcount manual
+  const legacyHeadcount = hcLegacyCurrent.reduce((s, h) => s + (h._sum.count ?? 0), 0)
+  const headcountCurrent = colabActiveCount > 0 ? colabActiveCount : legacyHeadcount
   const headcountPrevious = hcPrevious.reduce((s, h) => s + (h._sum.count ?? 0), 0)
   const headcountChange = headcountPrevious > 0
     ? parseFloat(((headcountCurrent - headcountPrevious) / headcountPrevious * 100).toFixed(1))
     : 0
 
   const headcountSparkline = await Promise.all(
-    sparkMonths.map(async ({ year, month, label }) => {
+    sparkMonths.map(async ({ year, month, label }, idx, arr) => {
+      // Último ponto do sparkline = contagem real atual (ERPNext)
+      if (idx === arr.length - 1 && colabActiveCount > 0) {
+        return { month: label, value: colabActiveCount }
+      }
       const d = await prisma.headcountEntry.groupBy({
         by: ['unitId'],
         where: { year, month, ...unitFilter },
@@ -155,38 +188,47 @@ export async function GET(req: NextRequest) {
   )
 
   // ─── PCD + Aprendizes + Unidades (resumo topo) ────────────────────────────
-  const [pcdDataRaw, apprenticeData] = await Promise.all([
-    prisma.pCDIndicator.findMany({
-      where: { year: latestMonth.year, month: latestMonth.month, ...unitFilter },
-      include: { unit: true },
-    }),
-    prisma.apprenticeIndicator.findMany({
-      where: { year: latestMonth.year, month: latestMonth.month, ...unitFilter },
-    }),
-  ])
+  const pcdDataRaw = await prisma.pCDIndicator.findMany({
+    where: { year: latestMonth.year, month: latestMonth.month, ...unitFilter },
+    include: { unit: true },
+  })
   const pcdData = pcdDataRaw.filter((p) =>
     unitVisibleInIndicators(p.unit, latestMonth.year, latestMonth.month)
   )
-  const totalPcd = pcdData.reduce((s, p) => s + p.currentPcd, 0)
-  const totalAprendizes = apprenticeData.reduce((s, a) => s + a.currentCount, 0)
+  // PCD: indicador mensal (fonte oficial do módulo PCD); se vazio, fallback cadastro ERPNext
+  const totalPcdFromIndicator = pcdData.reduce((s, p) => s + p.currentPcd, 0)
+  const totalPcd = totalPcdFromIndicator > 0 ? totalPcdFromIndicator : colabPcdCount
+  // Aprendizes: cargo/tipo no Employee (JOVEM APRENDIZ etc.); se zero, mantém 0 (não usar planilha desatualizada)
+  const totalAprendizes = colabAprendizCount
   const totalUnidades = isAnalyst
     ? (analystEffectiveId ? 1 : analystUnitIds.length)
     : (unitIdParam ? 1 : units.length)
 
-  // Headcount by unit (for area chart)
-  const totalHcArea = hcCurrent.reduce((s, h) => s + (h._sum.count ?? 0), 0)
-  const collaboratorsByArea = hcCurrent
-    .map(h => {
-      const unit = units.find(u => u.id === h.unitId)
-      const value = h._sum.count ?? 0
-      return {
-        label: unit?.name ?? '—',
-        value,
-        color: unit?.color ?? '#15AFA4',
-        percentage: totalHcArea > 0 ? parseFloat(((value / totalHcArea) * 100).toFixed(1)) : 0,
-      }
-    })
-    .sort((a, b) => b.value - a.value)
+  // Distribuição por unidade a partir do cadastro real de colaboradores
+  const totalHcArea = headcountCurrent
+  const collaboratorsByArea = (colabActiveCount > 0
+    ? colabByUnit.map((h) => {
+        const unit = units.find((u) => u.id === h.unitId)
+        const value = h._count._all
+        // unitId null → "Sem unidade mapeada"
+        return {
+          label: unit?.name ?? (h.unitId ? '—' : 'Sem unidade mapeada'),
+          value,
+          color: unit?.color ?? '#94A3B8',
+          percentage: totalHcArea > 0 ? parseFloat(((value / totalHcArea) * 100).toFixed(1)) : 0,
+        }
+      })
+    : hcLegacyCurrent.map((h) => {
+        const unit = units.find((u) => u.id === h.unitId)
+        const value = h._sum.count ?? 0
+        return {
+          label: unit?.name ?? '—',
+          value,
+          color: unit?.color ?? '#15AFA4',
+          percentage: totalHcArea > 0 ? parseFloat(((value / totalHcArea) * 100).toFixed(1)) : 0,
+        }
+      })
+  ).sort((a, b) => b.value - a.value)
 
   // ─── Turnover ──────────────────────────────────────────────────────────────
   const [turnoverCur, turnoverPrev] = await Promise.all([

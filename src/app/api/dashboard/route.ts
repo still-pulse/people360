@@ -38,15 +38,36 @@ export async function GET() {
     return { year: d.getFullYear(), month: d.getMonth() + 1, label: formatMonthShort(d.getFullYear(), d.getMonth() + 1) }
   })
 
-  // Headcount
-  const headcountData = await prisma.headcountEntry.groupBy({
-    by: ['unitId'],
-    where: { year: currentYear, month: currentMonth, ...unitFilter },
-    _sum: { count: true },
-  })
-  const totalEmployees = headcountData.reduce((sum, h) => sum + (h._sum.count ?? 0), 0)
+  // Headcount / colaboradores — fonte: Employee ERPNext (Active); fallback headcountEntry
+  const colabUnitFilter: Record<string, unknown> = {}
+  if ('unitId' in unitFilter) {
+    colabUnitFilter.unitId = (unitFilter as { unitId: unknown }).unitId
+  }
+  const colabActiveBase = { status: 'Active' as const, ...colabUnitFilter }
 
-  // PCD (respeita data limite da unidade nos indicadores)
+  const [colabActiveCount, colabAprendizCount, colabPcdCount, headcountData] = await Promise.all([
+    prisma.colaborador.count({ where: colabActiveBase }),
+    prisma.colaborador.count({
+      where: {
+        ...colabActiveBase,
+        OR: [
+          { designation: { contains: 'APRENDIZ', mode: 'insensitive' } },
+          { employmentType: { contains: 'Aprendiz', mode: 'insensitive' } },
+          { employmentType: { contains: 'Apprentice', mode: 'insensitive' } },
+        ],
+      },
+    }),
+    prisma.colaborador.count({ where: { ...colabActiveBase, pcd: true } }),
+    prisma.headcountEntry.groupBy({
+      by: ['unitId'],
+      where: { year: currentYear, month: currentMonth, ...unitFilter },
+      _sum: { count: true },
+    }),
+  ])
+  const legacyEmployees = headcountData.reduce((sum, h) => sum + (h._sum.count ?? 0), 0)
+  const totalEmployees = colabActiveCount > 0 ? colabActiveCount : legacyEmployees
+
+  // PCD (cadastro real; fallback indicador mensal)
   const pcdDataRaw = await prisma.pCDIndicator.findMany({
     where: { year: currentYear, month: currentMonth, ...unitFilter },
     include: { unit: true },
@@ -54,14 +75,12 @@ export async function GET() {
   const pcdData = pcdDataRaw.filter((p) =>
     unitVisibleInIndicators(p.unit, currentYear, currentMonth)
   )
-  const totalPcd = pcdData.reduce((sum, p) => sum + p.currentPcd, 0)
+  const totalPcdIndicator = pcdData.reduce((sum, p) => sum + p.currentPcd, 0)
+  // PCD: indicador oficial; fallback cadastro se ainda não houver lançamento no mês
+  const totalPcd = totalPcdIndicator > 0 ? totalPcdIndicator : colabPcdCount
 
-  // Aprendizes
-  const apprenticeData = await prisma.apprenticeIndicator.findMany({
-    where: { year: currentYear, month: currentMonth, ...unitFilter },
-    include: { unit: true },
-  })
-  const totalApprentices = apprenticeData.reduce((sum, a) => sum + a.currentCount, 0)
+  // Aprendizes (cargo/tipo no Employee)
+  const totalApprentices = colabAprendizCount
 
   // Turnover
   const turnoverData = await prisma.turnoverIndicator.findMany({
