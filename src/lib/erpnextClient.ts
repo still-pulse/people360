@@ -19,6 +19,22 @@ export function erpnextJrSyncEnabled(): boolean {
   return flag === '1' || flag.toLowerCase() === 'true' || flag.toLowerCase() === 'yes'
 }
 
+/**
+ * Normaliza o name da Job Requisition.
+ * Cadastros manuais às vezes gravam "2026-00194" em vez de "RP-2026-00194".
+ */
+export function normalizeRequisicaoNextId(raw?: string | null): string | null {
+  if (!raw) return null
+  const s = String(raw).trim()
+  if (!s) return null
+  // Já no padrão RP-YYYY-#####
+  if (/^RP-\d{4}-\d+$/i.test(s)) return s.toUpperCase().replace(/^rp-/i, 'RP-')
+  // Só YYYY-##### → prefixa RP-
+  if (/^\d{4}-\d+$/.test(s)) return `RP-${s}`
+  // HR-HIREQ-… ou outros nomes oficiais: mantém
+  return s
+}
+
 export class ErpnextApiError extends Error {
   status: number
   body: unknown

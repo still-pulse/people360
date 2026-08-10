@@ -280,7 +280,7 @@ export function VagaModal({ open, onClose, onSaved, vaga, defaultStatus, units, 
               label="ID da Requisição (RP)"
               value={form.requisicaoNextId}
               onChange={(e) => f('requisicaoNextId', e.target.value)}
-              placeholder="Ex: RP-2026-00057"
+              placeholder="Ex: RP-2026-00057 (com prefixo RP-)"
             />
             <div className="flex items-end pb-0.5">
               <label className="flex items-center gap-2.5 cursor-pointer select-none">

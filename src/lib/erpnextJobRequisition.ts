@@ -11,6 +11,7 @@ import {
   getJobRequisition,
   applyJobRequisitionWorkflow,
   addJobRequisitionComment,
+  normalizeRequisicaoNextId,
   type JobRequisitionDoc,
   type JobRequisitionListItem,
   ErpnextApiError,
@@ -455,7 +456,7 @@ export async function syncPendingJobRequisitions(): Promise<SyncResult> {
 // ─── Write-back ──────────────────────────────────────────────────────────────
 
 export type WriteBackResult =
-  | { ok: true; erpnextStatus?: string; workflowState?: string }
+  | { ok: true; erpnextStatus?: string; workflowState?: string; resolvedName?: string }
   | { ok: false; error: string; status?: number }
 
 export async function writeBackApproval(
@@ -467,20 +468,46 @@ export async function writeBackApproval(
     return { ok: false, error: 'ERPNext não configurado', status: 503 }
   }
 
+  const name = normalizeRequisicaoNextId(requisicaoNextId) || requisicaoNextId.trim()
+
   try {
-    const doc = await getJobRequisition(requisicaoNextId)
+    let doc: JobRequisitionDoc
+    try {
+      doc = await getJobRequisition(name)
+    } catch (e) {
+      const err = e as ErpnextApiError
+      // Mensagem mais clara quando o ID está errado / RP sumiu
+      if (err.status === 404 || /DoesNotExist/i.test(err.message)) {
+        return {
+          ok: false,
+          error: `RP "${name}" não encontrada no ERPNext. Confira o campo "ERPNext (ID RP)" (ex.: RP-2026-00194).`,
+          status: 404,
+        }
+      }
+      throw e
+    }
 
     if (doc.workflow_state !== 'Pending' && doc.status !== 'Pending') {
       // Já processada no ERP — se o estado bate com a ação, aceita; senão erro
       if (action === 'Approve' && (doc.workflow_state === 'Approved' || doc.status === 'Open & Approved')) {
-        return { ok: true, erpnextStatus: doc.status, workflowState: doc.workflow_state }
+        return {
+          ok: true,
+          erpnextStatus: doc.status,
+          workflowState: doc.workflow_state,
+          resolvedName: doc.name,
+        }
       }
       if (action === 'Reject' && (doc.workflow_state === 'Rejected' || doc.status === 'Rejected')) {
-        return { ok: true, erpnextStatus: doc.status, workflowState: doc.workflow_state }
+        return {
+          ok: true,
+          erpnextStatus: doc.status,
+          workflowState: doc.workflow_state,
+          resolvedName: doc.name,
+        }
       }
       return {
         ok: false,
-        error: `RP ${requisicaoNextId} não está pendente no ERPNext (status=${doc.status}, workflow=${doc.workflow_state})`,
+        error: `RP ${doc.name} não está pendente no ERPNext (status=${doc.status}, workflow=${doc.workflow_state})`,
         status: 409,
       }
     }
@@ -489,7 +516,7 @@ export async function writeBackApproval(
 
     if (action === 'Reject' && rejectReason?.trim()) {
       try {
-        await addJobRequisitionComment(requisicaoNextId, `Motivo da rejeição (People360): ${rejectReason.trim()}`)
+        await addJobRequisitionComment(doc.name, `Motivo da rejeição (People360): ${rejectReason.trim()}`)
       } catch (commentErr) {
         console.error('[erpnext] falha ao gravar Comment de rejeição:', commentErr)
         // workflow já aplicado — não falha o fluxo
@@ -500,6 +527,7 @@ export async function writeBackApproval(
       ok: true,
       erpnextStatus: updated.status,
       workflowState: updated.workflow_state,
+      resolvedName: updated.name || doc.name,
     }
   } catch (e) {
     const err = e as ErpnextApiError

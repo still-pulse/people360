@@ -126,7 +126,13 @@ export async function POST(req: NextRequest) {
       setorRequisitante: body.setorRequisitante || null,
       numProcessoAdmissao: body.numProcessoAdmissao || null,
       numProtocoloOnvio: body.numProtocoloOnvio || null,
-      requisicaoNextId: body.requisicaoNextId || null,
+      requisicaoNextId: (() => {
+        const raw = (body.requisicaoNextId || '').trim()
+        if (!raw) return null
+        if (/^RP-\d{4}-\d+$/i.test(raw)) return raw.replace(/^rp-/i, 'RP-')
+        if (/^\d{4}-\d+$/.test(raw)) return `RP-${raw}`
+        return raw
+      })(),
       ...(analistaIds.length > 0 ? { analistas: { connect: analistaIds.map((id) => ({ id })) } } : {}),
       dataAbertura: parseDate(body.dataAbertura) ?? new Date(),
       dataPrevistaFechamento: parseDate(body.dataPrevistaFechamento),

@@ -139,7 +139,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       setorRequisitante: body.setorRequisitante || null,
       numProcessoAdmissao: body.numProcessoAdmissao || null,
       numProtocoloOnvio: body.numProtocoloOnvio || null,
-      requisicaoNextId: body.requisicaoNextId || null,
+      requisicaoNextId: (() => {
+        if (body.requisicaoNextId === undefined) return undefined as any
+        const raw = (body.requisicaoNextId || '').trim()
+        if (!raw) return null
+        if (/^RP-\d{4}-\d+$/i.test(raw)) return raw.replace(/^rp-/i, 'RP-')
+        if (/^\d{4}-\d+$/.test(raw)) return `RP-${raw}`
+        return raw
+      })(),
       analistas: { set: finalAnalistaIds.map((id) => ({ id })) },
       dataAbertura: parseDate(body.dataAbertura) ?? vaga.dataAbertura,
       dataPrevistaFechamento: parseDate(body.dataPrevistaFechamento),

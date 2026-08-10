@@ -46,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     // Write-back ERPNext ANTES de alterar o People (evita desync)
     let erpnext: { status?: string; workflowState?: string } | null = null
+    let resolvedRpName: string | null = null
     if (vaga.requisicaoNextId && erpnextConfigured()) {
       const wb = await writeBackApproval(vaga.requisicaoNextId, 'Approve')
       if (!wb.ok) {
@@ -55,15 +56,34 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         )
       }
       erpnext = { status: wb.erpnextStatus, workflowState: wb.workflowState }
+      resolvedRpName = wb.resolvedName || null
+      // Corrige ID sem prefixo RP- (ex.: 2026-00194 → RP-2026-00194), se não houver outra vaga com o mesmo ID
+      if (resolvedRpName && resolvedRpName !== vaga.requisicaoNextId) {
+        try {
+          const clash = await prisma.vaga.findFirst({
+            where: { requisicaoNextId: resolvedRpName, NOT: { id: params.id } },
+            select: { id: true },
+          })
+          if (!clash) {
+            await prisma.vaga.update({
+              where: { id: params.id },
+              data: { requisicaoNextId: resolvedRpName },
+            })
+          }
+        } catch (e) {
+          console.error('[aprovacao] não foi possível normalizar requisicaoNextId:', e)
+        }
+      }
     }
 
     // Abre na lista/kanban de recrutamento (status ABERTA + position na coluna)
+    const rpLabel = resolvedRpName || vaga.requisicaoNextId
     await openVagaInRecruitmentList(params.id, {
-      erpnextStatus: erpnext?.status || (vaga.requisicaoNextId ? 'Open & Approved' : null),
+      erpnextStatus: erpnext?.status || (rpLabel ? 'Open & Approved' : null),
       historicoUserId: session!.user.id,
       fromStatus: 'PENDENTE_APROVACAO',
-      historicoDescricao: vaga.requisicaoNextId
-        ? `RP ${vaga.requisicaoNextId} aprovada — vaga aberta na lista de recrutamento`
+      historicoDescricao: rpLabel
+        ? `RP ${rpLabel} aprovada — vaga aberta na lista de recrutamento`
         : 'Vaga aprovada e aberta na lista de recrutamento',
     })
     await prisma.vagaAprovacaoComentario.create({
@@ -117,6 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!mensagem?.trim()) return NextResponse.json({ error: 'Mensagem obrigatória para rejeição' }, { status: 400 })
 
     let erpnext: { status?: string; workflowState?: string } | null = null
+    let resolvedRpName: string | null = null
     if (vaga.requisicaoNextId && erpnextConfigured()) {
       const wb = await writeBackApproval(vaga.requisicaoNextId, 'Reject', mensagem)
       if (!wb.ok) {
@@ -126,12 +147,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         )
       }
       erpnext = { status: wb.erpnextStatus, workflowState: wb.workflowState }
+      resolvedRpName = wb.resolvedName || null
     }
 
+    const rpLabel = resolvedRpName || vaga.requisicaoNextId
     await prisma.vaga.update({
       where: { id: params.id },
       data: {
         status: 'REJEITADA' as any,
+        ...(resolvedRpName && resolvedRpName !== vaga.requisicaoNextId
+          ? { requisicaoNextId: resolvedRpName }
+          : {}),
         ...(erpnext
           ? { erpnextStatus: erpnext.status || 'Rejected', erpnextSyncedAt: new Date() }
           : {}),
@@ -143,8 +169,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         userId: session!.user.id,
         fromStatus: 'PENDENTE_APROVACAO' as any,
         toStatus: 'REJEITADA' as any,
-        descricao: vaga.requisicaoNextId
-          ? `Vaga rejeitada (ERPNext ${vaga.requisicaoNextId})`
+        descricao: rpLabel
+          ? `Vaga rejeitada (ERPNext ${rpLabel})`
           : 'Vaga rejeitada',
       },
     })
