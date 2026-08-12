@@ -11,9 +11,10 @@ import {
   AlertTriangle, User, Building2, Tag, Calendar, RefreshCw,
   Paperclip, X, FileText, FileImage, FileSpreadsheet, File, Download,
   Timer, Palmtree, UserX, ThumbsUp, ThumbsDown, Hourglass, CalendarDays, Trash2,
-  FileClock, Stethoscope,
+  FileClock, Stethoscope, Pencil,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatHoras } from '@/lib/chamadoMeta'
 
 interface Anexo {
   id: string
@@ -140,6 +141,7 @@ export default function ChamadoDetalhePage() {
   // Aprovação
   const [aprovJust, setAprovJust]   = useState('')
   const [aprovando, setAprovando]   = useState(false)
+  const [revisando, setRevisando]   = useState(false)
 
   const bottomRef    = useRef<HTMLDivElement>(null)
   const textRef      = useRef<HTMLTextAreaElement>(null)
@@ -235,16 +237,20 @@ export default function ChamadoDetalhePage() {
     else alert('Não foi possível excluir o chamado.')
   }
 
-  async function decidirAprovacao(decisao: 'APROVADO' | 'REJEITADO') {
+  async function decidirAprovacao(decisao: 'APROVADO' | 'REJEITADO', revisao = false) {
     setAprovando(true)
     const res = await fetch(`/api/chamados/${params.id}/aprovacao`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decisao, justificativa: aprovJust }),
+      body: JSON.stringify({ decisao, justificativa: aprovJust, revisao }),
     })
     if (res.ok) {
       await fetchChamado()
       setAprovJust('')
+      setRevisando(false)
+    } else {
+      const data = await res.json().catch(() => null)
+      alert(data?.error || 'Não foi possível registrar a decisão.')
     }
     setAprovando(false)
   }
@@ -449,7 +455,7 @@ export default function ChamadoDetalhePage() {
                     <Timer className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-xs text-gray-500">Horas</p>
-                      <p className="font-medium text-gray-700">{chamado.horasSolicitadas}h</p>
+                      <p className="font-medium text-gray-700">{formatHoras(chamado.horasSolicitadas)}</p>
                     </div>
                   </div>
                 )}
@@ -510,6 +516,64 @@ export default function ChamadoDetalhePage() {
                   </Button>
                 </div>
               </div>
+            )}
+
+            {/* Revisar decisão já tomada — admin */}
+            {isAdmin && am && !isPendente && (
+              revisando ? (
+                <div className="bg-white rounded-2xl border-2 border-blue-300 p-4 space-y-4">
+                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <Pencil className="w-3.5 h-3.5" /> Revisar decisão
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Isso substitui a decisão anterior ({am.label.toLowerCase()}) e avisa {chamado.autor.name}.
+                  </p>
+
+                  <Textarea
+                    label="Justificativa (obrigatória)"
+                    value={aprovJust}
+                    onChange={(e) => setAprovJust(e.target.value)}
+                    placeholder="Explique por que a decisão está sendo revisada…"
+                    rows={3}
+                    required
+                  />
+
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      isLoading={aprovando}
+                      disabled={!aprovJust.trim()}
+                      onClick={() => decidirAprovacao('APROVADO', true)}
+                      icon={<ThumbsUp className="w-4 h-4" />}
+                    >
+                      Aprovar
+                    </Button>
+                    <Button
+                      variant="danger"
+                      className="flex-1"
+                      isLoading={aprovando}
+                      disabled={!aprovJust.trim()}
+                      onClick={() => decidirAprovacao('REJEITADO', true)}
+                      icon={<ThumbsDown className="w-4 h-4" />}
+                    >
+                      Rejeitar
+                    </Button>
+                  </div>
+                  <button
+                    onClick={() => { setRevisando(false); setAprovJust('') }}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setRevisando(true)}
+                  className="flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 py-1.5 transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Revisar decisão
+                </button>
+              )
             )}
 
             {/* Status geral */}

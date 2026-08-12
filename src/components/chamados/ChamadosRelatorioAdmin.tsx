@@ -8,7 +8,7 @@ import { Loader2, Calendar, ClipboardList, Clock, Timer, UserX, Stethoscope } fr
 import { Modal } from '@/components/ui/modal'
 import { Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { TIPO_META } from '@/lib/chamadoMeta'
+import { TIPO_META, formatHoras } from '@/lib/chamadoMeta'
 
 interface Solicitacao {
   id: string
@@ -97,13 +97,20 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
     [solicitacoes, filterTipo],
   )
 
+  // Solicitações rejeitadas não aconteceram de fato — não entram nas contagens
+  // de horas/dias/tipo, só no contador de aprovação (pra manter o histórico visível).
+  const contadas = useMemo(
+    () => filtradas.filter((s) => s.aprovacaoStatus !== 'REJEITADO'),
+    [filtradas],
+  )
+
   const kpis = useMemo(() => {
-    const horasExtras     = filtradas.filter((s) => s.tipoSolicitacao === 'HORAS_EXTRAS')
-    const bancoHoras       = filtradas.filter((s) => s.tipoSolicitacao === 'BANCO_HORAS')
-    const ausencias        = filtradas.filter((s) => s.tipoSolicitacao === 'AUSENCIA')
-    const ausenciasParciais = filtradas.filter((s) => s.tipoSolicitacao === 'AUSENCIA_PARCIAL')
+    const horasExtras     = contadas.filter((s) => s.tipoSolicitacao === 'HORAS_EXTRAS')
+    const bancoHoras       = contadas.filter((s) => s.tipoSolicitacao === 'BANCO_HORAS')
+    const ausencias        = contadas.filter((s) => s.tipoSolicitacao === 'AUSENCIA')
+    const ausenciasParciais = contadas.filter((s) => s.tipoSolicitacao === 'AUSENCIA_PARCIAL')
     return {
-      total: filtradas.length,
+      total: contadas.length,
       horasExtras: {
         qtd: horasExtras.length,
         horas: horasExtras.reduce((s, c) => s + (c.horasSolicitadas ?? 0), 0),
@@ -121,7 +128,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
         horas: ausenciasParciais.reduce((s, c) => s + (c.horasSolicitadas ?? 0), 0),
       },
     }
-  }, [filtradas])
+  }, [contadas])
 
   const porAnalista = useMemo(() => {
     const map = new Map<string, {
@@ -143,15 +150,19 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
         })
       }
       const row = map.get(key)!
+      if (s.aprovacaoStatus === 'APROVADO')  row.aprovado += 1
+      else if (s.aprovacaoStatus === 'REJEITADO') row.rejeitado += 1
+      else row.pendente += 1
+
+      // Rejeitadas não aconteceram — não contam no tipo/horas/dias/total
+      if (s.aprovacaoStatus === 'REJEITADO') continue
+
       row[s.tipoSolicitacao] += 1
       row.total += 1
       if (s.tipoSolicitacao === 'HORAS_EXTRAS') row.horasExtras += s.horasSolicitadas ?? 0
       if (s.tipoSolicitacao === 'BANCO_HORAS')  row.bancoHoras  += s.horasSolicitadas ?? 0
       if (s.tipoSolicitacao === 'AUSENCIA' && s.dataInicio) row.dias += diasNoPeriodo(s.dataInicio, s.dataFim)
       if (s.tipoSolicitacao === 'AUSENCIA_PARCIAL') row.horasAusenciaParcial += s.horasSolicitadas ?? 0
-      if (s.aprovacaoStatus === 'APROVADO')  row.aprovado += 1
-      else if (s.aprovacaoStatus === 'REJEITADO') row.rejeitado += 1
-      else row.pendente += 1
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total)
   }, [filtradas])
@@ -164,7 +175,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
 
   const chartPorTipo = TIPOS_FILTRO.map((t) => ({
     name: TIPO_META[t].label,
-    value: filtradas.filter((s) => s.tipoSolicitacao === t).length,
+    value: contadas.filter((s) => s.tipoSolicitacao === t).length,
     color: TIPO_META[t].hex,
   }))
 
@@ -222,12 +233,12 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <Clock className="w-4 h-4 text-indigo-500 mb-1.5" />
                 <p className="text-2xl font-bold text-gray-900">{kpis.horasExtras.qtd}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Horas extras · {kpis.horasExtras.horas}h</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Horas extras · {formatHoras(kpis.horasExtras.horas)}</p>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <Timer className="w-4 h-4 text-purple-500 mb-1.5" />
                 <p className="text-2xl font-bold text-gray-900">{kpis.bancoHoras.qtd}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Banco de horas · {kpis.bancoHoras.horas}h</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Banco de horas · {formatHoras(kpis.bancoHoras.horas)}</p>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <UserX className="w-4 h-4 text-orange-500 mb-1.5" />
@@ -237,7 +248,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <Stethoscope className="w-4 h-4 text-rose-500 mb-1.5" />
                 <p className="text-2xl font-bold text-gray-900">{kpis.ausenciasParciais.qtd}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Ausência parcial · {kpis.ausenciasParciais.horas}h</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Ausência parcial · {formatHoras(kpis.ausenciasParciais.horas)}</p>
               </div>
             </div>
 
@@ -308,10 +319,10 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
                         {porAnalista.map((r) => (
                           <tr key={r.nome} className="hover:bg-gray-50/50">
                             <td className="px-3 py-2.5 font-medium text-gray-900">{r.nome}</td>
-                            <td className="px-3 py-2.5 text-gray-600">{r.HORAS_EXTRAS} <span className="text-gray-400">({r.horasExtras}h)</span></td>
-                            <td className="px-3 py-2.5 text-gray-600">{r.BANCO_HORAS} <span className="text-gray-400">({r.bancoHoras}h)</span></td>
+                            <td className="px-3 py-2.5 text-gray-600">{r.HORAS_EXTRAS} <span className="text-gray-400">({formatHoras(r.horasExtras)})</span></td>
+                            <td className="px-3 py-2.5 text-gray-600">{r.BANCO_HORAS} <span className="text-gray-400">({formatHoras(r.bancoHoras)})</span></td>
                             <td className="px-3 py-2.5 text-gray-600">{r.AUSENCIA} <span className="text-gray-400">({r.dias}d)</span></td>
-                            <td className="px-3 py-2.5 text-gray-600">{r.AUSENCIA_PARCIAL} <span className="text-gray-400">({r.horasAusenciaParcial}h)</span></td>
+                            <td className="px-3 py-2.5 text-gray-600">{r.AUSENCIA_PARCIAL} <span className="text-gray-400">({formatHoras(r.horasAusenciaParcial)})</span></td>
                             <td className="px-3 py-2.5 text-gray-600">{r.FOLGA}</td>
                             <td className="px-3 py-2.5 font-semibold text-gray-900">{r.total}</td>
                             <td className="px-3 py-2.5">

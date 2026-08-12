@@ -14,7 +14,7 @@ import {
   FileClock, BarChart3, Stethoscope,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { TIPO_META } from '@/lib/chamadoMeta'
+import { TIPO_META, formatHoras } from '@/lib/chamadoMeta'
 import { ChamadosRelatorioAdmin } from '@/components/chamados/ChamadosRelatorioAdmin'
 
 interface Chamado {
@@ -410,7 +410,7 @@ export default function ChamadosPage() {
                       )}
                       {/* Horas banco */}
                       {isSol && c.horasSolicitadas != null && (
-                        <span className="text-[11px] text-gray-500">{c.horasSolicitadas}h</span>
+                        <span className="text-[11px] text-gray-500">{formatHoras(c.horasSolicitadas)}</span>
                       )}
                       {/* Prioridade (só chamados comuns) */}
                       {!isSol && (

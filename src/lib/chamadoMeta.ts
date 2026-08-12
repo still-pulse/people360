@@ -7,3 +7,11 @@ export const TIPO_META: Record<string, { label: string; icon: React.ElementType;
   AUSENCIA:         { label: 'Ausência',            icon: UserX,       color: 'text-orange-600 bg-orange-50', hex: '#F97316' },
   AUSENCIA_PARCIAL: { label: 'Ausência Parcial',    icon: Stethoscope, color: 'text-rose-600 bg-rose-50',     hex: '#EC4899' },
 }
+
+/** Formata horas decimais como horário real (ex.: 1.83 -> "1h50", 2 -> "2h"). */
+export function formatHoras(horas: number): string {
+  const totalMin = Math.round(horas * 60)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
+}
