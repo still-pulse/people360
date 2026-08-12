@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
   const unitId          = searchParams.get('unitId')          ?? ''
   const tipoSolicitacao = searchParams.get('tipoSolicitacao') ?? ''
   const aprovacaoStatus = searchParams.get('aprovacaoStatus') ?? ''
+  const autorId         = searchParams.get('autorId')         ?? ''
   const page            = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
   const limit           = 20
 
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest) {
   if (status)     where.status     = status
   if (prioridade) where.prioridade = prioridade
   if (unitId && session.user.role === 'ADMIN') where.unitId = unitId
+  if (autorId && session.user.role === 'ADMIN') where.autorId = autorId
 
   if (tipoSolicitacao === 'SOLICITACAO') {
     where.tipoSolicitacao = { not: null }

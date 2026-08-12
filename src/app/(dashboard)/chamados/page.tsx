@@ -11,9 +11,11 @@ import {
   Plus, Search, MessageSquare, Clock, CheckCircle2,
   XCircle, AlertTriangle, ChevronRight, Circle,
   CalendarDays, Timer, Palmtree, UserX, ThumbsUp, ThumbsDown, Hourglass, Trash2,
-  FileClock,
+  FileClock, BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TIPO_META } from '@/lib/chamadoMeta'
+import { ChamadosRelatorioAdmin } from '@/components/chamados/ChamadosRelatorioAdmin'
 
 interface Chamado {
   id: string
@@ -48,13 +50,6 @@ const PRIO_META: Record<string, { label: string; color: string }> = {
   NORMAL:  { label: 'Normal',  color: 'text-blue-600 bg-blue-50' },
   ALTA:    { label: 'Alta',    color: 'text-amber-600 bg-amber-50' },
   URGENTE: { label: 'Urgente', color: 'text-red-600 bg-red-50' },
-}
-
-const TIPO_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  HORAS_EXTRAS: { label: 'Horas extras',        icon: Clock,    color: 'text-indigo-600 bg-indigo-50' },
-  BANCO_HORAS:  { label: 'Usar banco de horas',  icon: Timer,    color: 'text-purple-600 bg-purple-50' },
-  FOLGA:        { label: 'Folga',               icon: Palmtree, color: 'text-teal-600 bg-teal-50' },
-  AUSENCIA:     { label: 'Ausência',            icon: UserX,    color: 'text-orange-600 bg-orange-50' },
 }
 
 const APROV_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -107,6 +102,9 @@ export default function ChamadosPage() {
   const [filterStatus, setStatus]     = useState('')
   const [filterPrio, setPrio]         = useState('')
   const [filterTipo, setFilterTipo]   = useState('')
+  const [filterAutor, setFilterAutor] = useState('')
+
+  const [relatorioOpen, setRelatorioOpen] = useState(false)
 
   const [newOpen, setNewOpen]         = useState(false)
   const [tipoAbertura, setTipoAbertura] = useState<TipoAbertura>('')
@@ -116,16 +114,22 @@ export default function ChamadosPage() {
     horasSolicitadas: '', atribuidoId: '', criarTarefa: false,
   })
   const [submitting, setSubmit] = useState(false)
-  const [analistas, setAnalistas] = useState<{ id: string; name: string }[]>([])
+  const [analistas, setAnalistas] = useState<{ id: string; name: string; role?: string }[]>([])
 
   const isAdmin = session?.user?.role === 'ADMIN'
 
   useEffect(() => {
     if (!isAdmin) return
     fetch('/api/users').then((r) => r.json()).then((data) =>
-      setAnalistas(data.filter((u: any) => u.role === 'ANALYST' || u.role === 'GERENTE'))
+      setAnalistas(
+        data
+          .filter((u: any) => u.role === 'ANALYST' || u.role === 'GERENTE')
+          .map((u: any) => ({ id: u.id, name: u.name, role: u.role })),
+      )
     )
   }, [isAdmin])
+
+  const autores = analistas.filter((a) => a.role === 'ANALYST')
 
   const fetchChamados = useCallback(async () => {
     setLoading(true)
@@ -133,6 +137,7 @@ export default function ChamadosPage() {
     if (filterStatus) params.set('status', filterStatus)
     if (filterPrio)   params.set('prioridade', filterPrio)
     if (filterTipo)   params.set('tipoSolicitacao', filterTipo)
+    if (filterAutor)  params.set('autorId', filterAutor)
     const res = await fetch(`/api/chamados?${params}`)
     if (res.ok) {
       const data = await res.json()
@@ -149,7 +154,7 @@ export default function ChamadosPage() {
       setPages(data.pages)
     }
     setLoading(false)
-  }, [page, filterStatus, filterPrio, filterTipo, search])
+  }, [page, filterStatus, filterPrio, filterTipo, filterAutor, search])
 
   useEffect(() => { fetchChamados() }, [fetchChamados])
 
@@ -263,7 +268,12 @@ export default function ChamadosPage() {
 
       <div className="p-6 space-y-4">
         {/* Botão novo chamado */}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setRelatorioOpen(true)} icon={<BarChart3 className="w-4 h-4" />}>
+              Relatório
+            </Button>
+          )}
           <Button onClick={() => { resetForm(); setNewOpen(true) }} icon={<Plus className="w-4 h-4" />}>
             Novo chamado
           </Button>
@@ -315,6 +325,12 @@ export default function ChamadosPage() {
             <option value="">Todas as prioridades</option>
             {Object.entries(PRIO_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </Select>
+          {isAdmin && (
+            <Select value={filterAutor} onChange={(e) => { setFilterAutor(e.target.value); setPage(1) }} className="w-44">
+              <option value="">Todas as analistas</option>
+              {autores.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </Select>
+          )}
         </div>
 
         {/* Lista */}
@@ -666,6 +682,14 @@ export default function ChamadosPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Relatório admin — solicitações abertas pelas analistas */}
+      {relatorioOpen && (
+        <ChamadosRelatorioAdmin
+          analistas={autores}
+          onClose={() => setRelatorioOpen(false)}
+        />
+      )}
     </>
   )
 }
