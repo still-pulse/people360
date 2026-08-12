@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
-import { Loader2, Calendar, ClipboardList, Clock, Timer, UserX } from 'lucide-react'
+import { Loader2, Calendar, ClipboardList, Clock, Timer, UserX, Stethoscope } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,7 @@ import { TIPO_META } from '@/lib/chamadoMeta'
 
 interface Solicitacao {
   id: string
-  tipoSolicitacao: 'HORAS_EXTRAS' | 'BANCO_HORAS' | 'FOLGA' | 'AUSENCIA'
+  tipoSolicitacao: 'HORAS_EXTRAS' | 'BANCO_HORAS' | 'FOLGA' | 'AUSENCIA' | 'AUSENCIA_PARCIAL'
   aprovacaoStatus: 'PENDENTE' | 'APROVADO' | 'REJEITADO' | null
   dataInicio: string | null
   dataFim: string | null
@@ -26,7 +26,7 @@ interface Props {
   onClose: () => void
 }
 
-const TIPOS_FILTRO = ['HORAS_EXTRAS', 'BANCO_HORAS', 'AUSENCIA', 'FOLGA'] as const
+const TIPOS_FILTRO = ['HORAS_EXTRAS', 'BANCO_HORAS', 'AUSENCIA', 'AUSENCIA_PARCIAL', 'FOLGA'] as const
 
 function getWeekRange(offset = 0) {
   const now = new Date()
@@ -98,9 +98,10 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
   )
 
   const kpis = useMemo(() => {
-    const horasExtras = filtradas.filter((s) => s.tipoSolicitacao === 'HORAS_EXTRAS')
-    const bancoHoras   = filtradas.filter((s) => s.tipoSolicitacao === 'BANCO_HORAS')
-    const ausencias    = filtradas.filter((s) => s.tipoSolicitacao === 'AUSENCIA')
+    const horasExtras     = filtradas.filter((s) => s.tipoSolicitacao === 'HORAS_EXTRAS')
+    const bancoHoras       = filtradas.filter((s) => s.tipoSolicitacao === 'BANCO_HORAS')
+    const ausencias        = filtradas.filter((s) => s.tipoSolicitacao === 'AUSENCIA')
+    const ausenciasParciais = filtradas.filter((s) => s.tipoSolicitacao === 'AUSENCIA_PARCIAL')
     return {
       total: filtradas.length,
       horasExtras: {
@@ -115,14 +116,18 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
         qtd: ausencias.length,
         dias: ausencias.reduce((s, c) => s + (c.dataInicio ? diasNoPeriodo(c.dataInicio, c.dataFim) : 0), 0),
       },
+      ausenciasParciais: {
+        qtd: ausenciasParciais.length,
+        horas: ausenciasParciais.reduce((s, c) => s + (c.horasSolicitadas ?? 0), 0),
+      },
     }
   }, [filtradas])
 
   const porAnalista = useMemo(() => {
     const map = new Map<string, {
       nome: string
-      HORAS_EXTRAS: number; BANCO_HORAS: number; AUSENCIA: number; FOLGA: number
-      horasExtras: number; bancoHoras: number; dias: number
+      HORAS_EXTRAS: number; BANCO_HORAS: number; AUSENCIA: number; AUSENCIA_PARCIAL: number; FOLGA: number
+      horasExtras: number; bancoHoras: number; dias: number; horasAusenciaParcial: number
       aprovado: number; pendente: number; rejeitado: number
       total: number
     }>()
@@ -131,8 +136,8 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
       if (!map.has(key)) {
         map.set(key, {
           nome: s.autor.name,
-          HORAS_EXTRAS: 0, BANCO_HORAS: 0, AUSENCIA: 0, FOLGA: 0,
-          horasExtras: 0, bancoHoras: 0, dias: 0,
+          HORAS_EXTRAS: 0, BANCO_HORAS: 0, AUSENCIA: 0, AUSENCIA_PARCIAL: 0, FOLGA: 0,
+          horasExtras: 0, bancoHoras: 0, dias: 0, horasAusenciaParcial: 0,
           aprovado: 0, pendente: 0, rejeitado: 0,
           total: 0,
         })
@@ -143,6 +148,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
       if (s.tipoSolicitacao === 'HORAS_EXTRAS') row.horasExtras += s.horasSolicitadas ?? 0
       if (s.tipoSolicitacao === 'BANCO_HORAS')  row.bancoHoras  += s.horasSolicitadas ?? 0
       if (s.tipoSolicitacao === 'AUSENCIA' && s.dataInicio) row.dias += diasNoPeriodo(s.dataInicio, s.dataFim)
+      if (s.tipoSolicitacao === 'AUSENCIA_PARCIAL') row.horasAusenciaParcial += s.horasSolicitadas ?? 0
       if (s.aprovacaoStatus === 'APROVADO')  row.aprovado += 1
       else if (s.aprovacaoStatus === 'REJEITADO') row.rejeitado += 1
       else row.pendente += 1
@@ -207,7 +213,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
         ) : (
           <>
             {/* KPIs */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-5 gap-3">
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <ClipboardList className="w-4 h-4 text-gray-400 mb-1.5" />
                 <p className="text-2xl font-bold text-gray-900">{kpis.total}</p>
@@ -226,7 +232,12 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <UserX className="w-4 h-4 text-orange-500 mb-1.5" />
                 <p className="text-2xl font-bold text-gray-900">{kpis.ausencias.qtd}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Ausências · {kpis.ausencias.dias} dia(s)</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Ausência (dia inteiro) · {kpis.ausencias.dias} dia(s)</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <Stethoscope className="w-4 h-4 text-rose-500 mb-1.5" />
+                <p className="text-2xl font-bold text-gray-900">{kpis.ausenciasParciais.qtd}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Ausência parcial · {kpis.ausenciasParciais.horas}h</p>
               </div>
             </div>
 
@@ -288,7 +299,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                          {['Analista', 'Horas extras', 'Banco de horas', 'Ausência', 'Folga', 'Total', 'Aprovação'].map((h) => (
+                          {['Analista', 'Horas extras', 'Banco de horas', 'Ausência', 'Ausência parcial', 'Folga', 'Total', 'Aprovação'].map((h) => (
                             <th key={h} className="px-3 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wide text-[10px]">{h}</th>
                           ))}
                         </tr>
@@ -300,6 +311,7 @@ export function ChamadosRelatorioAdmin({ analistas, onClose }: Props) {
                             <td className="px-3 py-2.5 text-gray-600">{r.HORAS_EXTRAS} <span className="text-gray-400">({r.horasExtras}h)</span></td>
                             <td className="px-3 py-2.5 text-gray-600">{r.BANCO_HORAS} <span className="text-gray-400">({r.bancoHoras}h)</span></td>
                             <td className="px-3 py-2.5 text-gray-600">{r.AUSENCIA} <span className="text-gray-400">({r.dias}d)</span></td>
+                            <td className="px-3 py-2.5 text-gray-600">{r.AUSENCIA_PARCIAL} <span className="text-gray-400">({r.horasAusenciaParcial}h)</span></td>
                             <td className="px-3 py-2.5 text-gray-600">{r.FOLGA}</td>
                             <td className="px-3 py-2.5 font-semibold text-gray-900">{r.total}</td>
                             <td className="px-3 py-2.5">

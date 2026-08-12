@@ -11,7 +11,7 @@ import {
   Plus, Search, MessageSquare, Clock, CheckCircle2,
   XCircle, AlertTriangle, ChevronRight, Circle,
   CalendarDays, Timer, Palmtree, UserX, ThumbsUp, ThumbsDown, Hourglass, Trash2,
-  FileClock, BarChart3,
+  FileClock, BarChart3, Stethoscope,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TIPO_META } from '@/lib/chamadoMeta'
@@ -60,9 +60,9 @@ const APROV_META: Record<string, { label: string; icon: React.ElementType; color
 
 const CATEGORIAS = ['Dúvida', 'Problema', 'Solicitação', 'Outros']
 
-type TipoAbertura = '' | 'HORAS_EXTRAS' | 'BANCO_HORAS' | 'FOLGA' | 'AUSENCIA'
+type TipoAbertura = '' | 'HORAS_EXTRAS' | 'BANCO_HORAS' | 'FOLGA' | 'AUSENCIA' | 'AUSENCIA_PARCIAL'
 
-const TIPOS_COM_HORAS: TipoAbertura[] = ['HORAS_EXTRAS', 'BANCO_HORAS']
+const TIPOS_COM_HORAS: TipoAbertura[] = ['HORAS_EXTRAS', 'BANCO_HORAS', 'AUSENCIA_PARCIAL']
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -251,11 +251,12 @@ export default function ChamadosPage() {
   }
 
   const TIPO_BUTTONS: { value: TipoAbertura; label: string; icon: React.ElementType; desc: string }[] = [
-    { value: '',             label: 'Chamado',              icon: MessageSquare, desc: 'Dúvida, problema ou solicitação geral' },
-    { value: 'HORAS_EXTRAS', label: 'Horas extras',         icon: Clock,         desc: 'Ficar até mais tarde / registrar crédito no banco' },
-    { value: 'BANCO_HORAS',  label: 'Usar banco de horas',   icon: Timer,         desc: 'Sair mais cedo ou compensar com o saldo do banco' },
-    { value: 'FOLGA',        label: 'Folga',                icon: Palmtree,      desc: 'Solicitar dia(s) de folga' },
-    { value: 'AUSENCIA',     label: 'Ausência',             icon: UserX,         desc: 'Registrar ausência ou falta' },
+    { value: '',                 label: 'Chamado',              icon: MessageSquare, desc: 'Dúvida, problema ou solicitação geral' },
+    { value: 'HORAS_EXTRAS',     label: 'Horas extras',         icon: Clock,         desc: 'Ficar até mais tarde / registrar crédito no banco' },
+    { value: 'BANCO_HORAS',      label: 'Usar banco de horas',   icon: Timer,         desc: 'Sair mais cedo ou compensar com o saldo do banco' },
+    { value: 'FOLGA',            label: 'Folga',                icon: Palmtree,      desc: 'Solicitar dia(s) de folga' },
+    { value: 'AUSENCIA',         label: 'Ausência (dia inteiro)', icon: UserX,       desc: 'Falta ou atestado cobrindo o dia todo' },
+    { value: 'AUSENCIA_PARCIAL', label: 'Ausência Parcial',     icon: Stethoscope,   desc: 'Saiu por algumas horas (consulta, exame…) e voltou no mesmo dia' },
   ]
 
   const solicitacoesPendentes = chamados.filter(
@@ -285,10 +286,11 @@ export default function ChamadosPage() {
             {[
               { value: '',              label: 'Todos' },
               { value: 'SOLICITACAO',   label: `Solicitações${solicitacoesPendentes > 0 ? ` (${solicitacoesPendentes} pendentes)` : ''}` },
-              { value: 'HORAS_EXTRAS',  label: 'Horas extras' },
-              { value: 'BANCO_HORAS',   label: 'Usar banco' },
-              { value: 'FOLGA',         label: 'Folga' },
-              { value: 'AUSENCIA',      label: 'Ausência' },
+              { value: 'HORAS_EXTRAS',     label: 'Horas extras' },
+              { value: 'BANCO_HORAS',      label: 'Usar banco' },
+              { value: 'FOLGA',            label: 'Folga' },
+              { value: 'AUSENCIA',         label: 'Ausência' },
+              { value: 'AUSENCIA_PARCIAL', label: 'Ausência parcial' },
             ].map((f) => (
               <button
                 key={f.value}
@@ -603,7 +605,11 @@ export default function ChamadosPage() {
                   </p>
                   <Input
                     type="number"
-                    label={tipoAbertura === 'HORAS_EXTRAS' ? 'Total de horas (crédito)' : 'Total de horas (débito no banco)'}
+                    label={
+                      tipoAbertura === 'HORAS_EXTRAS' ? 'Total de horas (crédito)' :
+                      tipoAbertura === 'BANCO_HORAS'  ? 'Total de horas (débito no banco)' :
+                      'Total de horas fora'
+                    }
                     value={form.horasSolicitadas}
                     onChange={(e) => setForm((f) => ({ ...f, horasSolicitadas: e.target.value }))}
                     placeholder="Calculado pelos horários — pode ajustar"
@@ -627,6 +633,13 @@ export default function ChamadosPage() {
                   Informe o horário em que entrou e o horário em que pretende sair (ou saiu).
                 </div>
               )}
+              {tipoAbertura === 'AUSENCIA_PARCIAL' && (
+                <div className="rounded-xl border border-rose-100 bg-rose-50/80 px-3 py-2.5 text-xs text-rose-800 leading-relaxed">
+                  Use este tipo quando a pessoa se ausenta por <strong>algumas horas</strong> (consulta, exame etc.) e
+                  <strong> volta no mesmo dia</strong> — diferente de "Ausência (dia inteiro)", que é para falta ou atestado
+                  cobrindo o dia todo. Informe o horário de saída e o de retorno (ou o horário do expediente que foi perdido).
+                </div>
+              )}
 
               <Textarea
                 label="Motivo / Justificativa"
@@ -639,6 +652,8 @@ export default function ChamadosPage() {
                     ? 'Ex.: Quero sair 2h mais cedo no dia Y usando o banco de horas…'
                     : tipoAbertura === 'FOLGA'
                     ? 'Informe o motivo da solicitação de folga…'
+                    : tipoAbertura === 'AUSENCIA_PARCIAL'
+                    ? 'Ex.: Consulta médica às 15h40, saída às 15h20, retorno no mesmo dia…'
                     : 'Informe o motivo da ausência…'
                 }
                 rows={4}

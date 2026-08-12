@@ -36,7 +36,10 @@ enum TipoSolicitacao {
   /// Usar saldo do banco / sair mais cedo ou compensar (débito)
   BANCO_HORAS
   FOLGA
+  /// Ausência de dia inteiro (atestado, falta)
   AUSENCIA
+  /// Saída por algumas horas no mesmo dia (consulta, exame etc.) — não conta como dia de ausência
+  AUSENCIA_PARCIAL
 }
 
 enum AprovacaoStatus {

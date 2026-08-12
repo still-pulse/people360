@@ -8,10 +8,11 @@ import { log, extractIp } from '@/lib/audit'
 export const dynamic = 'force-dynamic'
 
 const TIPO_LABELS: Record<string, string> = {
-  HORAS_EXTRAS: 'Horas extras',
-  BANCO_HORAS:  'Usar banco de horas',
-  FOLGA:        'Folga',
-  AUSENCIA:     'Ausência',
+  HORAS_EXTRAS:     'Horas extras',
+  BANCO_HORAS:      'Usar banco de horas',
+  FOLGA:            'Folga',
+  AUSENCIA:         'Ausência',
+  AUSENCIA_PARCIAL: 'Ausência Parcial',
 }
 
 const PRIORIDADE_PARA_TASK: Record<string, 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'> = {
@@ -137,7 +138,9 @@ export async function POST(req: NextRequest) {
   }
 
   const isTipoHoras =
-    body.tipoSolicitacao === 'HORAS_EXTRAS' || body.tipoSolicitacao === 'BANCO_HORAS'
+    body.tipoSolicitacao === 'HORAS_EXTRAS' ||
+    body.tipoSolicitacao === 'BANCO_HORAS' ||
+    body.tipoSolicitacao === 'AUSENCIA_PARCIAL'
 
   let horaEntrada: string | null = null
   let horaSaida: string | null = null

@@ -11,7 +11,7 @@ import {
   AlertTriangle, User, Building2, Tag, Calendar, RefreshCw,
   Paperclip, X, FileText, FileImage, FileSpreadsheet, File, Download,
   Timer, Palmtree, UserX, ThumbsUp, ThumbsDown, Hourglass, CalendarDays, Trash2,
-  FileClock,
+  FileClock, Stethoscope,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -73,10 +73,11 @@ const PRIO_META: Record<string, { label: string; color: string }> = {
 }
 
 const TIPO_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  HORAS_EXTRAS: { label: 'Horas extras (crédito)',     icon: Clock,    color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-100' },
-  BANCO_HORAS:  { label: 'Usar banco de horas (débito)', icon: Timer,   color: 'text-purple-700', bg: 'bg-purple-50 border-purple-100' },
-  FOLGA:        { label: 'Folga',                      icon: Palmtree, color: 'text-teal-700',   bg: 'bg-teal-50 border-teal-100' },
-  AUSENCIA:     { label: 'Ausência',                   icon: UserX,    color: 'text-orange-700', bg: 'bg-orange-50 border-orange-100' },
+  HORAS_EXTRAS:     { label: 'Horas extras (crédito)',       icon: Clock,       color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-100' },
+  BANCO_HORAS:      { label: 'Usar banco de horas (débito)', icon: Timer,       color: 'text-purple-700', bg: 'bg-purple-50 border-purple-100' },
+  FOLGA:            { label: 'Folga',                        icon: Palmtree,    color: 'text-teal-700',   bg: 'bg-teal-50 border-teal-100' },
+  AUSENCIA:         { label: 'Ausência (dia inteiro)',       icon: UserX,       color: 'text-orange-700', bg: 'bg-orange-50 border-orange-100' },
+  AUSENCIA_PARCIAL: { label: 'Ausência Parcial (algumas horas)', icon: Stethoscope, color: 'text-rose-700', bg: 'bg-rose-50 border-rose-100' },
 }
 
 const APROV_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {

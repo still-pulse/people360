@@ -8,10 +8,11 @@ import { log, extractIp } from '@/lib/audit'
 export const dynamic = 'force-dynamic'
 
 const TIPO_LABELS: Record<string, string> = {
-  HORAS_EXTRAS: 'Horas extras',
-  BANCO_HORAS:  'Usar banco de horas',
-  FOLGA:        'Folga',
-  AUSENCIA:     'Ausência',
+  HORAS_EXTRAS:     'Horas extras',
+  BANCO_HORAS:      'Usar banco de horas',
+  FOLGA:            'Folga',
+  AUSENCIA:         'Ausência',
+  AUSENCIA_PARCIAL: 'Ausência Parcial',
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
