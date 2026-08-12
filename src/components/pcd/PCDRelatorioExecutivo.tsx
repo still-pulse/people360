@@ -128,14 +128,31 @@ const TABLE_COLUMNS: { label: string; key: SortKey | null }[] = [
   { label: 'Status', key: 'status' },
 ]
 
+function narrativaStorageKey(year: number, month: number) {
+  return `pcd-narrativa-custom-${year}-${month}`
+}
+
 export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, filterMonth, onClose }: Props) {
   const [emAndamento, setEmAndamento] = useState(0)
-  const [narrativaCustom, setNarrativaCustom] = useState<string | null>(null)
+  const [narrativaCustom, setNarrativaCustomState] = useState<string | null>(null)
   const [editando, setEditando] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Carrega texto editado salvo (sobrevive a fechar/reabrir o relatório)
+  useEffect(() => {
+    const saved = window.localStorage.getItem(narrativaStorageKey(filterYear, filterMonth))
+    setNarrativaCustomState(saved)
+  }, [filterYear, filterMonth])
+
+  function setNarrativaCustom(value: string | null) {
+    setNarrativaCustomState(value)
+    const key = narrativaStorageKey(filterYear, filterMonth)
+    if (value) window.localStorage.setItem(key, value)
+    else window.localStorage.removeItem(key)
+  }
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
