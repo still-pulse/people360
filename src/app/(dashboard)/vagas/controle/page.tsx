@@ -124,7 +124,8 @@ export default function VagasControlePage() {
         (v.gestorRequisitante ?? '').toLowerCase().includes(q) ||
         (v.requisicaoNextId ?? '').toLowerCase().includes(q) ||
         (v.nomeColaboradorSaiu ?? '').toLowerCase().includes(q) ||
-        (v.nomeColaborador ?? '').toLowerCase().includes(q)
+        (v.nomeColaborador ?? '').toLowerCase().includes(q) ||
+        (v.controleCandidato?.nome ?? '').toLowerCase().includes(q)
       )
     }
     // Vagas atrasadas (de períodos anteriores, ainda abertas) aparecem primeiro, das mais antigas para as mais recentes
@@ -144,7 +145,7 @@ export default function VagasControlePage() {
     const XLSX = await import('xlsx')
 
     const rows = filtered.map((v) => {
-      const candidatoAtivo = (v as any).candidatos?.[0]?.nome ?? null
+      const candidatoAtivo = v.controleCandidato?.nome ?? (v as any).candidatos?.[0]?.nome ?? null
       return {
         'Next (ID RP)':               v.requisicaoNextId ?? '',
         'Analistas':                  (v as any).analistas?.map((a: any) => a.name).join(', ') ?? '',
@@ -392,7 +393,7 @@ export default function VagasControlePage() {
                     </tr>
                   )}
                   {filtered.map((v) => {
-                    const candidatoAtivo = (v as any).candidatos?.[0]?.nome ?? v.nomeColaborador
+                    const candidatoAtivo = v.controleCandidato?.nome ?? (v as any).candidatos?.[0]?.nome ?? v.nomeColaborador
                     const atrasada = isAtrasada(v)
                     return (
                       <tr key={v.id}

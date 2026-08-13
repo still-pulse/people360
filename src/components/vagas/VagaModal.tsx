@@ -188,7 +188,7 @@ export function VagaModal({ open, onClose, onSaved, vaga, defaultStatus, units, 
           salario:               vaga.salarioMin != null ? vaga.salarioMin.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
           requisicaoNextId:      vaga.requisicaoNextId ?? '',
           nomeColaboradorSaiu:   vaga.nomeColaboradorSaiu ?? '',
-          nomeColaborador:       vaga.nomeColaborador ?? '',
+          nomeColaborador:       vaga.nomeColaborador ?? (vaga as any).candidatos?.[0]?.nome ?? '',
           disponibilidadeHorario:vaga.disponibilidadeHorario ?? '',
           vagaPcd:               vaga.vagaPcd ?? false,
           gestorRequisitante:    vaga.gestorRequisitante ?? '',
@@ -217,55 +217,63 @@ export function VagaModal({ open, onClose, onSaved, vaga, defaultStatus, units, 
   function f(key: string, value: any) { setForm((p: any) => ({ ...p, [key]: value })) }
 
   async function handleSave() {
-    if (!form.cargoId) { setError('Cargo é obrigatório.'); return }
+    if (!form.cargoId && !vaga?.cargo) { setError('Cargo é obrigatório.'); return }
     setError('')
     setIsSaving(true)
 
     const url    = isEdit ? `/api/vagas/${vaga!.id}` : '/api/vagas'
     const method = isEdit ? 'PUT' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cargoId:               form.cargoId,
-        controleCandidatoId:   form.controleCandidatoId || null,
-        setor:                 form.setor || null,
-        setorRequisitante:     form.setorRequisitante || null,
-        municipio:             form.municipio || null,
-        quantidade:            Number(form.quantidade),
-        tipoVaga:              form.tipoVaga,
-        tipoRequisicao:        form.tipoRequisicao || null,
-        tipoContrato:          form.tipoContrato || null,
-        tipoRecrutamento:      form.tipoRecrutamento || null,
-        periodoTrabalho:       form.periodoTrabalho || null,
-        cargaHoraria:          form.cargaHoraria || null,
-        horarioTrabalho:       form.horarioTrabalho || null,
-        escala:                form.escala || null,
-        plantaoColaboradorSaiu:form.plantaoColaboradorSaiu || null,
-        salarioMin:            form.salario !== '' ? parseFloat(String(form.salario).replace(/\./g, '').replace(',', '.')) || null : null,
-        salarioMax:            null,
-        requisicaoNextId:      form.requisicaoNextId || null,
-        nomeColaboradorSaiu:   form.nomeColaboradorSaiu || null,
-        nomeColaborador:       form.nomeColaborador || null,
-        disponibilidadeHorario:form.disponibilidadeHorario || null,
-        vagaPcd:               form.vagaPcd,
-        gestorRequisitante:    form.gestorRequisitante || null,
-        numProcessoAdmissao:   form.numProcessoAdmissao || null,
-        numProtocoloOnvio:     form.numProtocoloOnvio || null,
-        unidadeId:             form.unidadeId || null,
-        analistaIds:           form.analistaIds,
-        dataAbertura:          form.dataAbertura,
-        dataPrevistaFechamento:form.dataPrevistaFechamento || null,
-        dataFechamento:        form.dataFechamento || null,
-        dataInicioIntegracao:  form.dataInicioIntegracao || null,
-        observacoes:           form.observacoes || null,
-        status:                form.status,
-      }),
-    })
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cargo:                 vaga?.cargo || null,
+          cargoId:               form.cargoId || null,
+          controleCandidatoId:   form.controleCandidatoId || null,
+          setor:                 form.setor || null,
+          setorRequisitante:     form.setorRequisitante || null,
+          municipio:             form.municipio || null,
+          quantidade:            Number(form.quantidade),
+          tipoVaga:              form.tipoVaga,
+          tipoRequisicao:        form.tipoRequisicao || null,
+          tipoContrato:          form.tipoContrato || null,
+          tipoRecrutamento:      form.tipoRecrutamento || null,
+          periodoTrabalho:       form.periodoTrabalho || null,
+          cargaHoraria:          form.cargaHoraria || null,
+          horarioTrabalho:       form.horarioTrabalho || null,
+          escala:                form.escala || null,
+          plantaoColaboradorSaiu:form.plantaoColaboradorSaiu || null,
+          salarioMin:            form.salario !== '' ? parseFloat(String(form.salario).replace(/\./g, '').replace(',', '.')) || null : null,
+          salarioMax:            null,
+          requisicaoNextId:      form.requisicaoNextId || null,
+          nomeColaboradorSaiu:   form.nomeColaboradorSaiu || null,
+          nomeColaborador:       form.nomeColaborador || linkedCandidato?.nome || null,
+          disponibilidadeHorario:form.disponibilidadeHorario || null,
+          vagaPcd:               form.vagaPcd,
+          gestorRequisitante:    form.gestorRequisitante || null,
+          numProcessoAdmissao:   form.numProcessoAdmissao || null,
+          numProtocoloOnvio:     form.numProtocoloOnvio || null,
+          unidadeId:             form.unidadeId || null,
+          analistaIds:           form.analistaIds,
+          dataAbertura:          form.dataAbertura,
+          dataPrevistaFechamento:form.dataPrevistaFechamento || null,
+          dataFechamento:        form.dataFechamento || null,
+          dataInicioIntegracao:  form.dataInicioIntegracao || null,
+          observacoes:           form.observacoes || null,
+          status:                form.status,
+        }),
+      })
 
-    setIsSaving(false)
-    if (res.ok) { onClose(); onSaved() }
-    else { const d = await res.json(); setError(d.error ?? 'Erro ao salvar.') }
+      let data: any = {}
+      try { data = await res.json() } catch { /* resposta não-JSON (500 HTML) */ }
+      if (res.ok) { onClose(); onSaved() }
+      else { setError(data.error ?? `Erro ao salvar (${res.status}).`) }
+    } catch (e: any) {
+      setError(e?.message || 'Falha de rede ao salvar.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -306,6 +314,7 @@ export function VagaModal({ open, onClose, onSaved, vaga, defaultStatus, units, 
             label="Cargo *"
             required
             value={form.cargoId}
+            valueByName={vaga?.cargo}
             onChange={(id) => f('cargoId', id)}
             placeholder="Selecionar cargo..."
           />
@@ -477,6 +486,9 @@ export function VagaModal({ open, onClose, onSaved, vaga, defaultStatus, units, 
                       </div>
                     )}
                   </div>
+                )}
+                {form.status === 'ADMISSAO_EM_ANDAMENTO' && (
+                  <p className="text-xs text-[#15AFA4] font-medium">A vaga será salva como Admissão em Andamento.</p>
                 )}
               </div>
 

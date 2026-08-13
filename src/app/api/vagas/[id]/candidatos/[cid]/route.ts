@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionOrUnauthorized, forbidIfReadOnly } from '@/lib/apiHelpers'
 import { unlink } from 'fs/promises'
 import path from 'path'
+import { CANDIDATO_STATUS_APROVADO, devePromoverParaAdmissao } from '@/lib/vagaStatus'
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string; cid: string } }) {
   const { session, error } = await getSessionOrUnauthorized()
@@ -34,6 +35,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
   await prisma.vagaHistorico.create({
     data: { vagaId: params.id, userId: session!.user.id, descricao: `Candidato atualizado: ${candidato.nome} → ${body.status}` },
   })
+
+  if ((CANDIDATO_STATUS_APROVADO as readonly string[]).includes(body.status) && devePromoverParaAdmissao(vaga.status)) {
+    await prisma.vaga.update({
+      where: { id: params.id },
+      data: { status: 'ADMISSAO_EM_ANDAMENTO' },
+    })
+    await prisma.vagaHistorico.create({
+      data: {
+        vagaId: params.id,
+        userId: session!.user.id,
+        fromStatus: vaga.status,
+        toStatus: 'ADMISSAO_EM_ANDAMENTO',
+        descricao: `Status atualizado automaticamente: candidato aprovado (${candidato.nome}) — admissão em andamento`,
+      },
+    })
+  }
 
   return NextResponse.json(candidato)
 }

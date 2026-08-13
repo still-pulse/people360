@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
     include: {
       unit:     true,
       analistas: { select: { id: true, name: true } },
+      controleCandidato: { select: { id: true, nome: true, telefone: true, funcao: true } },
       candidatos: {
         where: { status: { in: ['APROVADO', 'AGUARDANDO_ADMISSAO', 'ADMITIDO'] } },
         orderBy: { createdAt: 'desc' },
