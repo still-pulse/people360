@@ -404,13 +404,13 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
         <div id="pcd-rel-center-wrapper" className="min-h-full flex justify-center py-[68px] px-4">
           <div
             id="pcd-rel-root"
-            className="w-full max-w-5xl bg-white shadow-2xl rounded-2xl p-8 self-start"
+            className="w-full max-w-5xl bg-white shadow-2xl rounded-2xl p-8 print:p-3 self-start"
           >
             {/* ── Header ── */}
-            <div className="flex items-start justify-between mb-5">
+            <div className="flex items-start justify-between mb-5 print:mb-2">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Registros de PCD — {filterYear}</h1>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <h1 className="text-2xl font-bold text-gray-900 print:text-lg">Registros de PCD — {filterYear}</h1>
+                <p className="text-sm text-gray-500 mt-0.5 print:text-[10px]">
                   Acompanhamento mensal por unidade · meta legal de {stats.metaPercentage}% sobre o quadro de colaboradores
                 </p>
               </div>
@@ -430,36 +430,36 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
             </div>
 
             {/* ── KPI cards ── */}
-            <div className="grid grid-cols-5 gap-3 mb-5">
-              <div className="border border-gray-200 rounded-xl p-4">
+            <div className="grid grid-cols-5 gap-3 mb-5 print:gap-2 print:mb-2">
+              <div className="border border-gray-200 rounded-xl p-4 print:p-2">
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide leading-tight">Total de Colaboradores</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalColabs.toLocaleString('pt-BR')}</p>
-                <p className="text-[9px] text-gray-400 mt-1">base de cálculo da cota ({monthData.length} unidades)</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 print:text-xl print:mt-0.5">{stats.totalColabs.toLocaleString('pt-BR')}</p>
+                <p className="text-[9px] text-gray-400 mt-1 print:mt-0.5">base de cálculo da cota ({monthData.length} unidades)</p>
               </div>
-              <div className="border border-gray-200 rounded-xl p-4">
+              <div className="border border-gray-200 rounded-xl p-4 print:p-2">
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide leading-tight">Mínimo Legal ({stats.metaPercentage}%)</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalMinimo}</p>
-                <p className="text-[9px] text-gray-400 mt-1">colaboradores PCD exigidos por lei</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 print:text-xl print:mt-0.5">{stats.totalMinimo}</p>
+                <p className="text-[9px] text-gray-400 mt-1 print:mt-0.5">colaboradores PCD exigidos por lei</p>
               </div>
-              <div className="border border-gray-200 rounded-xl p-4">
+              <div className="border border-gray-200 rounded-xl p-4 print:p-2">
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide leading-tight">Atual</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalAtual}</p>
-                <p className="text-[9px] text-gray-400 mt-1">colaboradores PCD ativos hoje</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 print:text-xl print:mt-0.5">{stats.totalAtual}</p>
+                <p className="text-[9px] text-gray-400 mt-1 print:mt-0.5">colaboradores PCD ativos hoje</p>
               </div>
-              <div className="border border-gray-200 rounded-xl p-4">
+              <div className="border border-gray-200 rounded-xl p-4 print:p-2">
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide leading-tight">Em Andamento</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">+{emAndamento}</p>
-                <p className="text-[9px] text-gray-400 mt-1">enquadramentos e novas admissões em curso</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 print:text-xl print:mt-0.5">+{emAndamento}</p>
+                <p className="text-[9px] text-gray-400 mt-1 print:mt-0.5">enquadramentos e novas admissões em curso</p>
               </div>
-              <div className="rounded-xl p-4" style={{ background: '#15AFA4' }}>
+              <div className="rounded-xl p-4 print:p-2" style={{ background: '#15AFA4' }}>
                 <p className="text-[9px] font-bold text-white/80 uppercase tracking-wide leading-tight">
                   % da Meta Projetada ({stats.totalProjetado} colab.)
                 </p>
-                <p className="text-3xl font-bold text-white mt-1">{stats.pctMeta.toFixed(1)}%</p>
-                <div className="h-1.5 bg-white/30 rounded-full mt-2 overflow-hidden">
+                <p className="text-3xl font-bold text-white mt-1 print:text-xl print:mt-0.5">{stats.pctMeta.toFixed(1)}%</p>
+                <div className="h-1.5 bg-white/30 rounded-full mt-2 print:mt-1 overflow-hidden">
                   <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(stats.pctMeta, 100)}%` }} />
                 </div>
-                <p className="text-[9px] text-white/80 mt-1">
+                <p className="text-[9px] text-white/80 mt-1 print:mt-0.5">
                   faltam {stats.faltam} colaboradores mesmo com o pipeline
                 </p>
               </div>
@@ -467,11 +467,11 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
 
             {/* ── Table ── */}
             {monthData.length > 0 && (
-              <table className="w-full text-sm border-collapse mb-2">
+              <table className="w-full text-sm border-collapse mb-2 print:text-xs">
                 <thead>
                   <tr className="border-y border-gray-200 bg-gray-50">
                     {TABLE_COLUMNS.map(col => (
-                      <th key={col.label} className="px-3 py-2 text-left text-[9px] font-bold text-gray-500 uppercase tracking-wide">
+                      <th key={col.label} className="px-3 py-2 print:py-1 text-left text-[9px] font-bold text-gray-500 uppercase tracking-wide">
                         {col.key ? (
                           <button
                             onClick={() => handleSort(col.key!)}
@@ -494,18 +494,18 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
                 <tbody>
                   {sortedTableRows.map(r => (
                     <tr key={r.unit.id} className="border-b border-gray-100">
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 print:py-1">
                         <div className="flex items-center gap-1.5">
                           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: r.unit.color }} />
                           <span className="font-medium text-gray-800 text-xs">{r.unit.name}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-600">{r.item!.totalEmployees}</td>
-                      <td className="px-3 py-2.5 text-xs font-semibold text-gray-800">{r.minimo}</td>
-                      <td className="px-3 py-2.5 text-xs font-bold text-gray-900">{r.atual}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-400">—</td>
-                      <td className="px-3 py-2.5 text-xs font-bold text-gray-900">{r.atual}</td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 print:py-1 text-xs text-gray-600">{r.item!.totalEmployees}</td>
+                      <td className="px-3 py-2.5 print:py-1 text-xs font-semibold text-gray-800">{r.minimo}</td>
+                      <td className="px-3 py-2.5 print:py-1 text-xs font-bold text-gray-900">{r.atual}</td>
+                      <td className="px-3 py-2.5 print:py-1 text-xs text-gray-400">—</td>
+                      <td className="px-3 py-2.5 print:py-1 text-xs font-bold text-gray-900">{r.atual}</td>
+                      <td className="px-3 py-2.5 print:py-1">
                         <div className="flex items-center gap-1.5">
                           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden w-20">
                             <div
@@ -519,7 +519,7 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
                           <span className="text-xs text-gray-600">{r.progresso.toFixed(1)}%</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 print:py-1">
                         <span
                           className="text-xs font-bold"
                           style={{ color: r.faltamUnit > 0 ? '#EF4444' : '#10B981' }}
@@ -527,7 +527,7 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
                           {r.faltamUnit}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 print:py-1">
                         <span className="text-xs font-semibold" style={{ color: r.statusColor }}>
                           {r.statusLabel}
                         </span>
@@ -539,31 +539,31 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
             )}
 
             {/* Legend */}
-            <div className="flex gap-6 text-[9px] text-gray-400 mb-5">
+            <div className="flex gap-6 text-[9px] text-gray-400 mb-5 print:mb-2">
               <span>Em andamento (—) = total de {emAndamento} enquadramentos/admissões ainda não detalhado por unidade</span>
               <span>● Projetado = atual por unidade (sem o pipeline, até detalhamento)</span>
             </div>
 
             {/* ── Metas do acordo MPT ── */}
-            <div className="mb-5">
-              <div className="flex items-center gap-1.5 mb-3">
+            <div className="mb-5 print:mb-2">
+              <div className="flex items-center gap-1.5 mb-3 print:mb-1">
                 <Target className="w-3.5 h-3.5 text-gray-400" />
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Metas do Núcleo de Alphaville conforme acordo MPT — onde estamos em cada prazo
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 print:gap-2">
                 {metaCards.map(m => (
                   <div
                     key={m.label}
-                    className="rounded-xl border border-gray-200 p-4"
+                    className="rounded-xl border border-gray-200 p-4 print:p-2"
                     style={{ borderLeft: `4px solid ${m.color}` }}
                   >
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{m.label}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{m.pct}% da cota · prazo {m.prazo}</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-1.5">{m.alvo}</p>
-                    <p className="text-[9px] text-gray-400 mb-2">colaboradores PCD exigidos</p>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
+                    <p className="text-3xl font-bold text-gray-900 mt-1.5 print:text-lg print:mt-0.5">{m.alvo}</p>
+                    <p className="text-[9px] text-gray-400 mb-2 print:mb-1">colaboradores PCD exigidos</p>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2 print:mb-1">
                       <div
                         className="h-full rounded-full"
                         style={{ width: `${Math.min(m.projetadoPct, 100)}%`, background: m.color }}
@@ -590,15 +590,16 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
 
             {/* ── Bottom section: chart + narrative ── */}
             {(showChart || monthData.length > 0) && (
-              <div className={`grid gap-5 ${showChart ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className={`grid gap-5 print:gap-3 ${showChart ? 'grid-cols-2' : 'grid-cols-1'}`}>
 
                 {/* Line chart — only when weekly data exists */}
                 {showChart && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-700 mb-3">
+                    <p className="text-xs font-semibold text-gray-700 mb-3 print:mb-1">
                       Evolução do total de colaboradores PCD (todas as unidades)
                     </p>
-                    <ResponsiveContainer width="100%" height={200}>
+                    <div className="h-[200px] print:h-[120px]">
+                    <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={weekTotals} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
                         <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94A3B8' }} />
@@ -619,6 +620,7 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
                         />
                       </LineChart>
                     </ResponsiveContainer>
+                    </div>
                   </div>
                 )}
 
@@ -662,7 +664,7 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
                     />
                   ) : (
                     <div
-                      className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 text-sm text-gray-700 leading-relaxed"
+                      className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 print:p-2 text-sm text-gray-700 leading-relaxed print:text-[10px] print:leading-snug"
                       style={{ whiteSpace: 'pre-line' }}
                       dangerouslySetInnerHTML={{ __html: narrativaHtml }}
                     />
@@ -672,7 +674,7 @@ export function PCDRelatorioExecutivo({ data, weeklyData, units, filterYear, fil
             )}
 
             {/* ── Footer ── */}
-            <div className="mt-5 pt-3 border-t border-gray-100 text-[10px] text-gray-400 text-right">
+            <div className="mt-5 pt-3 border-t border-gray-100 text-[10px] text-gray-400 text-right print:mt-2 print:pt-1">
               Dados de {today} · Núcleo de Gestão de Pessoas BHCL
             </div>
           </div>
