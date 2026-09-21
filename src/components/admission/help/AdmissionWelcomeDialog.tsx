@@ -23,7 +23,7 @@ export function AdmissionWelcomeDialog({ open, onStart, onSkip }: { open: boolea
         <p>Quer conhecer o fluxo, os indicadores e os pontos que exigem atenção? O passeio leva cerca de um minuto.</p>
         <div className={styles.actions}>
           <button className={styles.button} onClick={onSkip}>Agora não</button>
-          <button ref={startRef} className={styles.buttonPrimary} onClick={onStart}>Fazer tour</button>
+          <button ref={startRef} className={styles.helpWelcomePrimary} onClick={onStart}>Fazer tour</button>
         </div>
       </div>
     </div>
