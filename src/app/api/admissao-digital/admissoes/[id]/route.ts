@@ -4,7 +4,8 @@ import { analystCanAccessUnit, forbidIfReadOnly, getSessionOrUnauthorized } from
 import { createAdmissionToken } from '@/lib/admission/service'
 import { assertTransition } from '@/lib/admission/stateMachine'
 import { logAdmissionEvent } from '@/lib/admission/audit'
-import { extractIp } from '@/lib/audit'
+import { extractIp, log } from '@/lib/audit'
+import { deleteAdmissionStorage } from '@/lib/admission/storage'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 
 const include = {
@@ -80,4 +81,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   } else return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 })
   await logAdmissionEvent({ admissionId: current.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: action.toUpperCase().replace(/-/g, '_'), ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { reason: body.reason } })
   return NextResponse.json({ success: true, ...response })
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const { session, error } = await getSessionOrUnauthorized(); if (error) return error
+  if (session!.user.role !== 'ADMIN') return NextResponse.json({ error: 'Somente administradores podem excluir admissões.' }, { status: 403 })
+  const current = await prisma.admission.findUnique({ where: { id: params.id }, select: { id: true, protocol: true, status: true, unitId: true, erpnextSyncs: { select: { status: true } } } })
+  if (!current) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
+  if (['SYNCED', 'COMPLETED'].includes(current.status) || current.erpnextSyncs.some((sync) => sync.status === 'SUCCESS')) {
+    return NextResponse.json({ error: 'Admissões já integradas ao ERPNext não podem ser excluídas. Cancele o processo.' }, { status: 409 })
+  }
+  // Os registros relacionados (dados, documentos, biometria, assinaturas, auditoria da admissão) saem por cascade.
+  await prisma.admission.delete({ where: { id: current.id } })
+  const filesRemoved = await deleteAdmissionStorage(current.id)
+  // A auditoria da admissão é apagada junto; o rastro da exclusão fica no log global.
+  await log({ userId: session!.user.id, userName: session!.user.name, userRole: session!.user.role, action: 'DELETE', entity: 'Admission', entityId: current.id, entityName: current.protocol, details: { status: current.status, unitId: current.unitId, filesRemoved }, ip: extractIp(req.headers) })
+  return NextResponse.json({ success: true })
 }

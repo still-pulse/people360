@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
+import { mkdir, readFile, rm, unlink, writeFile } from 'fs/promises'
 import { randomBytes } from 'crypto'
 import path from 'path'
 
@@ -40,4 +40,13 @@ export async function deletePrivateAdmissionFile(storagePath: string) {
   const resolved = path.resolve(ROOT, storagePath)
   if (!resolved.startsWith(ROOT + path.sep)) return false
   try { await unlink(resolved); return true } catch { return false }
+}
+
+// Remove todos os arquivos privados de uma admissão (documentos, fotos, assinaturas e PDFs).
+export async function deleteAdmissionStorage(admissionId: string) {
+  const safeAdmission = admissionId.replace(/[^a-zA-Z0-9_-]/g, '')
+  if (!safeAdmission) return false
+  const dir = path.resolve(ROOT, safeAdmission)
+  if (!dir.startsWith(ROOT + path.sep)) return false
+  try { await rm(dir, { recursive: true, force: true }); return true } catch { return false }
 }
