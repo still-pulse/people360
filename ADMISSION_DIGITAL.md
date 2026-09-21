@@ -13,6 +13,7 @@ O módulo pertence ao People360 e reutiliza NextAuth, Prisma/PostgreSQL, unidade
 | Pendências | `/admissao-digital/pendencias` |
 | Revisão | `/admissao-digital/revisao` |
 | Modelos | `/admissao-digital/modelos` |
+| Central de Ajuda | `/admissao-digital/ajuda` |
 | Configurações | `/admissao-digital/configuracoes` |
 | Auditoria | `/admissao-digital/auditoria` |
 | Portal do candidato | `/admissao/:token` e subetapas |
@@ -76,6 +77,20 @@ O provider `compreface` faz comparação facial 1:1 entre a foto de crachá e o 
 2. Mantenha o serviço acessível somente pela rede privada dos containers.
 3. Configure `COMPREFACE_URL` e a API key do serviço no `.env` do People360.
 4. Defina `FACE_VERIFICATION_PROVIDER=compreface`.
-5. Durante a homologação, mantenha `COMPREFACE_AUTO_APPROVE=false`; os resultados irão para revisão humana na aba “Foto e validação facial”.
+5. Durante a homologação, mantenha `COMPREFACE_AUTO_APPROVE=false` e `COMPREFACE_AUTO_REJECT=false`; os resultados irão para revisão humana na aba “Foto e validação facial”.
+
+A política de decisão usa três faixas configuradas somente no servidor:
+
+- score maior ou igual a `COMPREFACE_APPROVE_THRESHOLD`: aprovação automática quando `COMPREFACE_AUTO_APPROVE=true`; caso contrário, revisão humana;
+- score entre `COMPREFACE_REVIEW_THRESHOLD` e o limite de aprovação: revisão humana;
+- score abaixo de `COMPREFACE_REVIEW_THRESHOLD`: nova captura quando `COMPREFACE_AUTO_REJECT=true`; caso contrário, revisão humana.
+
+“Rejeitado” nesse fluxo significa apenas que uma nova foto deve ser capturada. Não reprova o candidato nem cancela a admissão. Erros do provider, rosto não detectado, MIME inadequado e arquivos acima do limite nunca recebem aprovação automática.
 
 O documento de referência precisa ser JPG ou PNG e ter até 5 MB, limitação da API do CompreFace. PDF e resultados sem rosto detectado são encaminhados para revisão manual. Antes de ativar em produção, valide a licença comercial dos pesos do modelo escolhido, calibre os thresholds com amostras autorizadas e obtenha a aprovação do Jurídico/DPO.
+
+## Central de Ajuda e tours
+
+A rota `/admissao-digital/ajuda` apresenta tutoriais pesquisáveis e interativos. O primeiro acesso ao módulo oferece um tour de introdução. O progresso é versionado por usuário nas tabelas `admission_tour_progress` e `admission_tour_events`, permitindo continuar, repetir e medir abandono sem registrar dados do candidato.
+
+Os tours usam seletores estáveis `data-admission-tour`; elementos indisponíveis para um perfil ou estado da tela são ignorados sem interromper o guia. Ao alterar substancialmente um tutorial, incremente sua `version` em `src/lib/admission/tours/catalog.ts`.

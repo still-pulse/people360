@@ -246,6 +246,12 @@ enum ERPNextSyncStatus {
   RETRYING
 }
 
+enum AdmissionTourProgressStatus {
+  STARTED
+  SKIPPED
+  COMPLETED
+}
+
 model User {
   id                 String   @id @default(cuid())
   name               String
@@ -292,6 +298,8 @@ model User {
   admissionsCreated          Admission[]                @relation("AdmissionCreatedBy")
   admissionDocumentsReviewed AdmissionDocument[]        @relation("AdmissionDocumentReviewer")
   admissionAuditLogs         AdmissionAuditLog[]
+  admissionTourProgress      AdmissionTourProgress[]
+  admissionTourEvents        AdmissionTourEvent[]
 
   @@map("users")
 }
@@ -1542,6 +1550,44 @@ model AdmissionAuditLog {
   @@index([admissionId, createdAt])
   @@index([action, createdAt])
   @@map("admission_audit_logs")
+}
+
+model AdmissionTourProgress {
+  id           String                      @id @default(cuid())
+  userId       String
+  tourId       String
+  version      Int
+  status       AdmissionTourProgressStatus @default(STARTED)
+  currentStep  Int                         @default(0)
+  totalSteps   Int
+  startedAt    DateTime                    @default(now())
+  lastViewedAt DateTime                    @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tourId, version])
+  @@index([userId, status])
+  @@map("admission_tour_progress")
+}
+
+model AdmissionTourEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  tourId    String
+  version   Int
+  event     String
+  stepIndex Int?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tourId, version])
+  @@index([event, createdAt])
+  @@map("admission_tour_events")
 }
 
 // ─── Pareceres de Recrutamento e Seleção (FP.RH.09.001) ──────────────────────

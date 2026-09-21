@@ -86,6 +86,41 @@
   border-radius: 12px;
   overflow: hidden;
 }
+
+.people360-admission-tour.driver-popover {
+  max-width: 340px;
+  border: 1px solid #d7e2e0;
+  border-radius: 14px;
+  padding: 18px;
+  font-family: 'Public Sans', 'Inter', sans-serif;
+  box-shadow: 0 16px 44px rgba(18, 41, 44, 0.2);
+}
+.people360-admission-tour .driver-popover-title {
+  color: #12292c;
+  font-family: 'Archivo', sans-serif;
+  font-size: 17px;
+  line-height: 1.35;
+}
+.people360-admission-tour .driver-popover-description {
+  color: #53686b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.people360-admission-tour .driver-popover-progress-text { color: #7c8e91; }
+.people360-admission-tour .driver-popover-next-btn,
+.people360-admission-tour .driver-popover-prev-btn {
+  border: 1px solid #0f9b8e;
+  border-radius: 8px;
+  padding: 7px 11px;
+  background: #0f9b8e;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-shadow: none;
+}
+.people360-admission-tour .driver-popover-prev-btn { background: #fff; color: #0a6f66; }
+.people360-admission-tour .driver-popover-close-btn { color: #53686b; }
+.driver-overlay path { fill: rgba(11, 35, 34, 0.66); }
 .rbc-day-bg + .rbc-day-bg,
 .rbc-month-row + .rbc-month-row {
   border-color: #f1f5f9;

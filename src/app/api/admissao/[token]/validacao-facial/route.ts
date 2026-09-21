@@ -120,7 +120,12 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE',
       action: `FACE_${status}`, resource: 'FaceVerification', resourceId: verification.id,
       ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
-      metadata: { provider: provider.name, reason: result.reason, attempt },
+      metadata: {
+        provider: provider.name, reason: result.reason, attempt,
+        decision: status, similarity: result.similarity ?? null,
+        approveThreshold: result.metadata.approveThreshold ?? null,
+        reviewThreshold: result.metadata.reviewThreshold ?? null,
+      },
     })
     return NextResponse.json({ status, canRetry: status === 'REJECTED', requiresHumanReview: status === 'MANUAL_REVIEW' })
   } catch (error) {

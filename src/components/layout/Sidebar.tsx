@@ -88,6 +88,7 @@ const navItems: NavItem[] = [
       { href: '/admissao-digital/pendencias', label: 'Pendências' },
       { href: '/admissao-digital/revisao', label: 'Revisão de Documentos' },
       { href: '/admissao-digital/modelos', label: 'Modelos de Documentos' },
+      { href: '/admissao-digital/ajuda', label: 'Central de Ajuda' },
       { href: '/admissao-digital/configuracoes', label: 'Configurações', allowedRoles: ['ADMIN'] },
       { href: '/admissao-digital/auditoria', label: 'Logs e Auditoria', allowedRoles: ['ADMIN', 'GERENTE'] },
     ],

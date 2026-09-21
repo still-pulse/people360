@@ -53,6 +53,7 @@ export function createCompreFaceProvider(options?: {
   detectionThreshold?: number
   timeoutMs?: number
   autoApprove?: boolean
+  autoReject?: boolean
   fetchImpl?: typeof fetch
 }): FaceProvider {
   const baseUrl = options?.baseUrl || process.env.COMPREFACE_URL || ''
@@ -64,6 +65,7 @@ export function createCompreFaceProvider(options?: {
   const detectionThreshold = options?.detectionThreshold ?? envNumber('COMPREFACE_DETECTION_THRESHOLD', 0.8, 0, 1)
   const timeoutMs = options?.timeoutMs ?? envNumber('COMPREFACE_TIMEOUT_MS', 30000, 1000, 120000)
   const autoApprove = options?.autoApprove ?? booleanEnv('COMPREFACE_AUTO_APPROVE', false)
+  const autoReject = options?.autoReject ?? booleanEnv('COMPREFACE_AUTO_REJECT', false)
   const fetchImpl = options?.fetchImpl ?? fetch
 
   if (reviewThreshold > approveThreshold) {
@@ -129,6 +131,9 @@ export function createCompreFaceProvider(options?: {
         if (similarity >= approveThreshold && autoApprove) {
           decision = 'APPROVED'
           reason = 'THRESHOLD_APPROVED'
+        } else if (similarity < reviewThreshold && autoReject) {
+          decision = 'REJECTED'
+          reason = 'THRESHOLD_REJECTED'
         } else if (similarity < approveThreshold && similarity >= reviewThreshold) {
           reason = 'INCONCLUSIVE_SIMILARITY'
         }
@@ -145,6 +150,7 @@ export function createCompreFaceProvider(options?: {
             reviewThreshold,
             detectionThreshold,
             autoApprove,
+            autoReject,
           },
         }
       } catch (error) {

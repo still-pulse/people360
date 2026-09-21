@@ -36,6 +36,34 @@ describe('CompreFace provider', () => {
     await expect(provider.verify(input)).resolves.toMatchObject({ decision: 'APPROVED', similarity: 0.82 })
   })
 
+  it('solicita uma nova captura quando a reprovação automática está habilitada e abaixo do limite', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      result: [{ face_matches: [{ similarity: 0.31 }] }],
+    }), { status: 200 })) as unknown as typeof fetch
+    const provider = createCompreFaceProvider({
+      baseUrl: 'http://compreface', apiKey: 'test-key', fetchImpl,
+      approveThreshold: 0.8, reviewThreshold: 0.5, autoReject: true,
+    })
+
+    await expect(provider.verify(input)).resolves.toMatchObject({
+      decision: 'REJECTED', similarity: 0.31, reason: 'THRESHOLD_REJECTED',
+    })
+  })
+
+  it('mantém pontuação baixa em revisão manual quando a reprovação automática está desligada', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      result: [{ face_matches: [{ similarity: 0.31 }] }],
+    }), { status: 200 })) as unknown as typeof fetch
+    const provider = createCompreFaceProvider({
+      baseUrl: 'http://compreface', apiKey: 'test-key', fetchImpl,
+      approveThreshold: 0.8, reviewThreshold: 0.5, autoReject: false,
+    })
+
+    await expect(provider.verify(input)).resolves.toMatchObject({
+      decision: 'MANUAL_REVIEW', similarity: 0.31, reason: 'LOW_SIMILARITY',
+    })
+  })
+
   it('encaminha ausência de rosto para revisão manual', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ result: [] }), { status: 200 })) as unknown as typeof fetch
     const provider = createCompreFaceProvider({ baseUrl: 'http://compreface', apiKey: 'test-key', fetchImpl })

@@ -16,6 +16,7 @@ export async function GET() {
     faceVerification: {
       configured: faceProvider === 'mock' || Boolean(process.env.COMPREFACE_URL && process.env.COMPREFACE_API_KEY),
       autoApprove: process.env.COMPREFACE_AUTO_APPROVE === 'true',
+      autoReject: process.env.COMPREFACE_AUTO_REJECT === 'true',
       approveThreshold: Number(process.env.COMPREFACE_APPROVE_THRESHOLD || 0.75),
       reviewThreshold: Number(process.env.COMPREFACE_REVIEW_THRESHOLD || 0.45),
       detectionThreshold: Number(process.env.COMPREFACE_DETECTION_THRESHOLD || 0.8),

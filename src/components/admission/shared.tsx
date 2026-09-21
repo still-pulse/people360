@@ -24,8 +24,8 @@ export function StatusBadge({ status, label }: { status: string; label?: string 
   return <span className={styles.badge} data-tone={statusTone(status)}><span className={styles.dot} />{label || statusLabel[status] || status}</span>
 }
 
-export function AdmissionTitle({ title, subtitle, children }: { title: string; subtitle: string; children?: React.ReactNode }) {
-  return <div className={styles.titleRow}><div className={styles.titleBlock}><h1 className={styles.title}>{title}</h1><p className={styles.subtitle}>{subtitle}</p></div>{children && <div className={styles.actions}>{children}</div>}</div>
+export function AdmissionTitle({ title, subtitle, children, tourId, actionsTourId }: { title: string; subtitle: string; children?: React.ReactNode; tourId?: string; actionsTourId?: string }) {
+  return <div className={styles.titleRow} data-admission-tour={tourId}><div className={styles.titleBlock}><h1 className={styles.title}>{title}</h1><p className={styles.subtitle}>{subtitle}</p></div>{children && <div className={styles.actions} data-admission-tour={actionsTourId}>{children}</div>}</div>
 }
 
 export function NewAdmissionButton() { return <Link href="/admissao-digital/admissoes/nova" className={styles.buttonPrimary}><Plus size={15}/>Nova admissão</Link> }
