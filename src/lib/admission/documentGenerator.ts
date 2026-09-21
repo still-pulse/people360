@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { decryptAdmissionValue, hashToken } from './security'
 import { savePrivateAdmissionFile } from './storage'
 
-function interpolate(content: string, values: Record<string, string>) {
+export function interpolate(content: string, values: Record<string, string>) {
   return content.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key) => values[key] ?? '—')
 }
 
@@ -26,7 +26,7 @@ function valueText(value: unknown) {
   return typeof value === 'string' ? value : String(value)
 }
 
-function createPdf(name: string, content: string, protocol: string, version: number, validationCode: string, qrDataUrl: string) {
+export function createPdf(name: string, content: string, protocol: string, version: number, validationCode: string, qrDataUrl: string) {
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
   const margin = 20, width = 170, bottom = 267
   let page = 1, y = 22
@@ -74,7 +74,13 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
 
   const fields = Object.fromEntries(admission.fields.map((field) => [field.key, field.sensitive ? decryptAdmissionValue(field.value) : field.value]))
   const address = [fields.street, fields.number, fields.complement, fields.district, fields.city, fields.state, fields.zipCode].filter(Boolean).join(', ')
-  const transportRoutes = admission.transport?.routes.map((route) => `${route.type} ${route.line}: ida ${money(route.outbound)}, volta ${money(route.returnValue)}`).join('; ') || 'Sem itinerário informado'
+  const transport = admission.transport
+  const transportRequested = transport?.requested === true
+  const routes = transportRequested ? transport.routes : []
+  const transportRoutesTable = routes.length
+    ? routes.map((route, index) => `${index + 1}. Tipo: ${route.type} | Linha: ${route.line} | Ida: ${money(route.outbound)} | Volta: ${money(route.returnValue)} | Total/dia: ${money(route.outbound + route.returnValue)}`).join('\n')
+    : 'Não se aplica.'
+  const transportDailyTotal = routes.length ? money(routes.reduce((sum, route) => sum + route.outbound + route.returnValue, 0)) : '—'
   const values: Record<string, string> = {
     employerName: process.env.ADMISSION_EMPLOYER_NAME || 'BENEFICÊNCIA HOSPITALAR DE CESÁRIO LANGE',
     employerCnpj: process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0015-16',
@@ -91,7 +97,9 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
     motherName: valueText(fields.motherName), phone: valueText(fields.phone), email: valueText(fields.email), addressFull: address || '—', city: valueText(fields.city),
     signatureDateLong: longDate(new Date()),
     dependents: admission.dependents.map((dependent) => `${dependent.name} (${dependent.relationship}), nascimento ${date(dependent.birthDate)}`).join('; ') || 'Nenhum dependente informado',
-    transportChoice: admission.transport?.requested ? 'Solicitado' : 'Não solicitado', transportRoutes,
+    street: valueText(fields.street), number: valueText(fields.number), district: valueText(fields.district), state: valueText(fields.state), zipCode: valueText(fields.zipCode),
+    transportYes: transportRequested ? '(X)' : '( )', transportNo: transport && !transportRequested ? '(X)' : '( )',
+    transportRefusalReason: transportRequested ? '—' : valueText(transport?.refusalReason), transportRoutesTable, transportDailyTotal,
   }
 
   const results = []

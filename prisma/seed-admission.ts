@@ -13,14 +13,15 @@ const documentTypes = [
 
 const templates = [
   {key:'ficha_registro',name:'Ficha de Registro',version:1,content:'Ficha de registro de {{candidateName}}. Cargo: {{jobTitle}}. Unidade: {{unit}}. Tipo de contrato: {{contractType}}. Protocolo: {{protocol}}.'},
-  {key:'termo_vale_transporte',name:'Termo de Vale-Transporte',version:1,content:'Declaração de Vale-Transporte vinculada ao processo de {{candidateName}}, protocolo {{protocol}}. Opção: {{transportChoice}}. Itinerário: {{transportRoutes}}. Aplicam-se o texto e a versão validados pelo Jurídico/DPO.'},
 ] as const
 
 async function main(){
  for(const [key,name,position] of documentTypes)await prisma.admissionDocumentType.upsert({where:{key},update:{name,position,active:true},create:{key,name,position}})
  const contractContent=await readFile(path.join(process.cwd(),'prisma','templates','contrato-experiencia-v2.txt'),'utf8')
  await prisma.documentTemplate.updateMany({where:{key:'contrato_trabalho'},data:{active:false}})
- const configuredTemplates=[{key:'contrato_trabalho',name:'Contrato de Experiência',version:2,content:contractContent},...templates]
+ const transportContent=await readFile(path.join(process.cwd(),'prisma','templates','vale-transporte-v2.txt'),'utf8')
+ await prisma.documentTemplate.updateMany({where:{key:'termo_vale_transporte'},data:{active:false}})
+ const configuredTemplates=[{key:'contrato_trabalho',name:'Contrato de Experiência',version:2,content:contractContent},{key:'termo_vale_transporte',name:'Vale-Transporte — Declaração e Termo de Compromisso',version:2,content:transportContent},...templates]
  for(const t of configuredTemplates)await prisma.documentTemplate.upsert({where:{key_version:{key:t.key,version:t.version}},update:{name:t.name,content:t.content,active:true},create:{...t,variables:{candidateName:'string',jobTitle:'string',unit:'string',hireDate:'date',protocol:'string'}}})
  console.log(`Admissão Digital: ${documentTypes.length} tipos e ${configuredTemplates.length} templates configurados.`)
  if(process.env.ADMISSION_SEED_DEMO!=='true')return
