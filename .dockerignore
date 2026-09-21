@@ -1,0 +1,12 @@
+.git
+.next
+node_modules
+.env
+.env.*
+!.env.example
+storage
+admissão
+admissão.zip
+*.log
+*.tsbuildinfo
+.claude

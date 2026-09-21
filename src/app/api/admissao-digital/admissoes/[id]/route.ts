@@ -20,7 +20,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   const item = await prisma.admission.findUnique({ where: { id: params.id }, include })
   if (!item) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!analystCanAccessUnit(session!, item.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
-  return NextResponse.json(item)
+  const canReviewBiometrics = ['ADMIN', 'ANALYST'].includes(session!.user.role)
+  return NextResponse.json(canReviewBiometrics ? item : { ...item, badgePhotos: [], faceVerifications: [] })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -46,6 +47,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       prisma.admission.update({ where: { id: current.id }, data: { status: 'SYNCING', lastActivityAt: new Date() } }),
       prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${current.id}` }, create: { admissionId: current.id, idempotencyKey: `admission:${current.id}`, status: 'RETRYING', attempts: 1, nextAttemptAt: new Date() }, update: { status: 'RETRYING', attempts: { increment: 1 }, nextAttemptAt: new Date(), lastError: null } }),
     ])
+  } else if (action === 'approve-face' || action === 'request-face-retry') {
+    if (!['ADMIN', 'ANALYST'].includes(session!.user.role)) {
+      return NextResponse.json({ error: 'Sem permissão para revisar biometria.' }, { status: 403 })
+    }
+    const verification = await prisma.faceVerification.findFirst({ where: { admissionId: current.id }, orderBy: { createdAt: 'desc' } })
+    if (!verification) return NextResponse.json({ error: 'Validação facial não encontrada.' }, { status: 404 })
+    if (action === 'approve-face') {
+      if (!['FACE_VALIDATION_PENDING', 'DOCUMENTS_APPROVED'].includes(current.status)) {
+        return NextResponse.json({ error: 'A validação facial não pode ser aprovada neste status.' }, { status: 409 })
+      }
+      await prisma.$transaction([
+        prisma.faceVerification.update({ where: { id: verification.id }, data: { status: 'APPROVED', completedAt: new Date() } }),
+        prisma.admission.update({ where: { id: current.id }, data: { status: 'CONTRACT_PENDING', currentStep: 'revisao', progress: { set: Math.max(74, current.progress) }, lastActivityAt: new Date() } }),
+      ])
+    } else {
+      if (current.status !== 'FACE_VALIDATION_PENDING') {
+        return NextResponse.json({ error: 'Não é possível solicitar nova captura neste status.' }, { status: 409 })
+      }
+      await prisma.$transaction([
+        prisma.faceVerification.update({ where: { id: verification.id }, data: { status: 'REJECTED', completedAt: null } }),
+        prisma.admission.update({ where: { id: current.id }, data: { currentStep: 'foto', lastActivityAt: new Date() } }),
+      ])
+    }
   } else return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 })
   await logAdmissionEvent({ admissionId: current.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: action.toUpperCase().replace(/-/g, '_'), ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { reason: body.reason } })
   return NextResponse.json({ success: true, ...response })

@@ -67,3 +67,15 @@ O arquivo `prisma/migrations/20260920230000_admissao_digital/rollback.sql` docum
 5. Use a ação de ERPNext nos detalhes; acompanhe eventos em `/admissao-digital/auditoria` e valide o QR em `/validar-documento/:token`.
 
 O teste automatizado `flow.e2e.test.ts` cobre o contrato completo dos providers e da máquina de estados. O E2E HTTP/Prisma requer PostgreSQL iniciado e a migração aplicada.
+
+## CompreFace
+
+O provider `compreface` faz comparação facial 1:1 entre a foto de crachá e o documento `rg_frente` aprovado. Ele não cadastra a pessoa em uma coleção do CompreFace e não trata o score isolado como prova de vida.
+
+1. Crie no CompreFace uma aplicação e um serviço do tipo `VERIFICATION`.
+2. Mantenha o serviço acessível somente pela rede privada dos containers.
+3. Configure `COMPREFACE_URL` e a API key do serviço no `.env` do People360.
+4. Defina `FACE_VERIFICATION_PROVIDER=compreface`.
+5. Durante a homologação, mantenha `COMPREFACE_AUTO_APPROVE=false`; os resultados irão para revisão humana na aba “Foto e validação facial”.
+
+O documento de referência precisa ser JPG ou PNG e ter até 5 MB, limitação da API do CompreFace. PDF e resultados sem rosto detectado são encaminhados para revisão manual. Antes de ativar em produção, valide a licença comercial dos pesos do modelo escolhido, calibre os thresholds com amostras autorizadas e obtenha a aprovação do Jurídico/DPO.

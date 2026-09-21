@@ -3,9 +3,13 @@ import { mockERPNextAdmissionProvider, mockFaceProvider, mockSignatureProvider }
 
 describe('providers locais da admissão', () => {
   it('aprova validação facial no modo local', async () => {
-    const result = await mockFaceProvider.verify('admission-id')
+    const result = await mockFaceProvider.verify({
+      admissionId: 'admission-id',
+      selfie: { buffer: Buffer.from('selfie'), mimeType: 'image/jpeg', filename: 'selfie.jpg' },
+      reference: { buffer: Buffer.from('reference'), mimeType: 'image/jpeg', filename: 'reference.jpg' },
+    })
     expect(result.reference).toMatch(/^face_mock_/)
-    expect(typeof result.approved).toBe('boolean')
+    expect(result.decision).toBe('APPROVED')
   })
 
   it('assina com identificador de transação idempotente por envelope no serviço', async () => {

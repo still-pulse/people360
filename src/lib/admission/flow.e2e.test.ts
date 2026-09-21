@@ -31,8 +31,12 @@ describe('fluxo completo da admissão digital', () => {
     expect(detectMime(pdf)?.mime).toBe('application/pdf')
     expect(detectMime(jpeg)?.mime).toBe('image/jpeg')
 
-    const face = await mockFaceProvider.verify('admission-e2e')
-    expect(face.approved).toBe(true)
+    const face = await mockFaceProvider.verify({
+      admissionId: 'admission-e2e',
+      selfie: { buffer: Buffer.from('selfie'), mimeType: 'image/jpeg', filename: 'selfie.jpg' },
+      reference: { buffer: Buffer.from('reference'), mimeType: 'image/jpeg', filename: 'reference.jpg' },
+    })
+    expect(face.decision).toBe('APPROVED')
     expect(face.reference).toMatch(/^face_mock_/)
 
     const signature = await mockSignatureProvider.sign('envelope-e2e')
