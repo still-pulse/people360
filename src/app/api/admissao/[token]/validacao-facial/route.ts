@@ -64,9 +64,6 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   const current = token.admission.faceVerifications[0]
   if (!current) return NextResponse.json({ error: 'Registro de validação facial não encontrado.' }, { status: 409 })
   if (current.status === 'APPROVED') return NextResponse.json({ status: 'APPROVED', canRetry: false })
-  if (current.status === 'MANUAL_REVIEW') {
-    return NextResponse.json({ error: 'A comparação está aguardando revisão do RH.', status: 'MANUAL_REVIEW' }, { status: 409 })
-  }
   const providerTimeout = Number(process.env.COMPREFACE_TIMEOUT_MS || 55000)
   const staleAfterMs = Math.min(135000, Math.max(45000, providerTimeout + 15000))
   const staleAt = new Date(Date.now() - staleAfterMs)
