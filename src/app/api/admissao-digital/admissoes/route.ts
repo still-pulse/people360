@@ -7,6 +7,13 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { mockAdmissionNotificationProvider } from '@/lib/admission/providers'
 import { decryptAdmissionValue, hashSensitive, maskCpf } from '@/lib/admission/security'
+import { ADMISSION_DEPARTMENTS, ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition } from '@/lib/admission/positions'
+
+const FIELD_LABELS: Record<string, string> = {
+  candidateName: 'Nome completo', candidateEmail: 'E-mail', candidatePhone: 'Telefone', unitId: 'Unidade', jobTitle: 'Cargo', department: 'Departamento',
+  hireDate: 'Data prevista de admissão', workSchedule: 'Horário', contractType: 'Tipo de contrato', hazardPayPercentage: 'Insalubridade',
+  experienceDays: 'Experiência (dias)', validityDays: 'Validade do link', documentTypeIds: 'Documentos necessários',
+}
 
 const createSchema = z.object({
   candidateId: z.string().cuid().optional(), vacancyId: z.string().cuid().optional(), unitId: z.string().min(1),
@@ -16,6 +23,7 @@ const createSchema = z.object({
   workSchedule: z.string().max(120).optional(), breakSchedule: z.string().max(120).optional(), weeklyHours: z.coerce.number().int().min(1).max(80).optional(),
   contractType: z.string().min(2).max(80), experienceDays: z.coerce.number().int().min(0).max(365).optional(),
   contractEndDate: z.coerce.date().optional(), validityDays: z.coerce.number().int().min(1).max(30).default(7),
+  documentTypeIds: z.array(z.string().min(1)).max(60).optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -52,13 +60,29 @@ export async function POST(req: NextRequest) {
   const { session, error } = await getSessionOrUnauthorized(); if (error) return error
   const forbidden = forbidIfReadOnly(session!.user.role); if (forbidden) return forbidden
   const parsed = createSchema.safeParse(await req.json().catch(() => null))
-  if (!parsed.success) return NextResponse.json({ error: 'Dados inválidos.', fields: parsed.error.flatten().fieldErrors }, { status: 400 })
+  if (!parsed.success) {
+    const fields = parsed.error.flatten().fieldErrors
+    const names = Object.keys(fields).map((key) => FIELD_LABELS[key] ?? key)
+    return NextResponse.json({ error: `Dados inválidos: revise ${names.join(', ')}.`, fields }, { status: 400 })
+  }
+  // Cargo, departamento, horário, salário e carga horária são definidos pelo RH (não digitados): validados e fixados aqui.
+  const position = findPosition(parsed.data.jobTitle)
+  if (!position) return NextResponse.json({ error: 'Selecione um cargo válido.' }, { status: 400 })
+  if (!ADMISSION_DEPARTMENTS.includes(parsed.data.department ?? '')) return NextResponse.json({ error: 'Selecione um departamento válido.' }, { status: 400 })
+  if (!(ADMISSION_SCHEDULES as readonly string[]).includes(parsed.data.workSchedule ?? '')) return NextResponse.json({ error: 'Selecione o horário de trabalho.' }, { status: 400 })
+  parsed.data.jobTitle = position.cargo
+  parsed.data.department = position.departamento
+  parsed.data.salary = position.salario
+  parsed.data.weeklyHours = undefined
+  const monthlyHours = ADMISSION_MONTHLY_HOURS
   if (!analystCanAccessUnit(session!, parsed.data.unitId)) return NextResponse.json({ error: 'Sem acesso a esta unidade.' }, { status: 403 })
   if (parsed.data.candidateId) {
     const candidate = await prisma.candidato.findUnique({ where: { id: parsed.data.candidateId }, select: { status: true } })
     if (!candidate || !['APROVADO', 'AGUARDANDO_ADMISSAO'].includes(candidate.status)) return NextResponse.json({ error: 'Selecione um candidato aprovado.' }, { status: 400 })
   }
-  const created = await createAdmissionRecord({ ...parsed.data, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id })
+  let created: Awaited<ReturnType<typeof createAdmissionRecord>>
+  try { created = await createAdmissionRecord({ ...parsed.data, monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Não foi possível criar a admissão.' }, { status: 400 }) }
   const destination = parsed.data.candidatePhone || parsed.data.candidateEmail
   if (destination) await mockAdmissionNotificationProvider.send({ channel: parsed.data.candidatePhone ? 'whatsapp' : 'email', destination, template: 'admission_invitation' })
   await logAdmissionEvent({ admissionId: created.admission.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: 'ADMISSION_CREATED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { protocol: created.admission.protocol } })

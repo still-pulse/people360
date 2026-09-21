@@ -44,16 +44,6 @@ export const PUBLIC_FIELD_SECTIONS = {
   bank: ['bank', 'agency', 'account', 'accountDigit', 'accountType'],
 } as const
 
-export const DEFAULT_DOCUMENT_TYPES = [
-  { key: 'rg_frente', name: 'RG ou CNH (frente)', position: 1 },
-  { key: 'rg_verso', name: 'RG ou CNH (verso)', position: 2 },
-  { key: 'cpf', name: 'CPF', position: 3 },
-  { key: 'comprovante_residencia', name: 'Comprovante de residência', position: 4 },
-  { key: 'carteira_trabalho', name: 'Carteira de Trabalho Digital', position: 5 },
-  { key: 'pis', name: 'Comprovante de PIS/PASEP', position: 6 },
-  { key: 'titulo_eleitor', name: 'Título de eleitor', position: 7 },
-  { key: 'certidao', name: 'Certidão civil', position: 8 },
-] as const
 
 export const ADMISSION_THEME = {
   ink: '#1D2B2E', muted: '#5D6E71', subtle: '#7C8E91', faint: '#9DAEB0',

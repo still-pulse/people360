@@ -383,6 +383,13 @@ model Colaborador {
 
   unit Unit? @relation(fields: [unitId], references: [id])
 
+  perfil      ColaboradorPerfil?
+  documentos  ColaboradorDocumento[]
+  aditivos    ColaboradorAditivo[]
+  dependentes ColaboradorDependente[]
+  avaliacoes  ColaboradorAvaliacao[]
+  historico   ColaboradorHistorico[]
+
   @@index([status])
   @@index([company])
   @@index([designation])
@@ -1193,6 +1200,7 @@ model Admission {
   workSchedule        String?
   breakSchedule       String?
   weeklyHours         Int?
+  monthlyHours        Int?
   contractType        String
   experienceDays      Int?
   contractEndDate     DateTime?
@@ -1332,6 +1340,7 @@ model AdmissionDocumentType {
   maxSizeBytes      Int      @default(15728640)
   maxFiles          Int      @default(1)
   requiresFrontBack Boolean  @default(false)
+  defaultSelected   Boolean  @default(true)
   company           String?
   unitId            String?
   jobTitle          String?
@@ -1719,4 +1728,197 @@ model TesteResultado {
 
   @@index([completedAt])
   @@map("teste_resultados")
+}
+
+// ─── Dossiê do Colaborador ───────────────────────────────────────────────────
+
+enum ColaboradorDocumentoStatus {
+  RASCUNHO
+  AGUARDANDO_ASSINATURA
+  ASSINADO
+  VIGENTE
+  FINALIZADO
+  CANCELADO
+}
+
+enum ColaboradorDocumentoOrigem {
+  GERADO
+  ANEXADO
+}
+
+/// Complemento cadastral 1:1 do colaborador (o espelho do ERPNext não traz estes dados).
+/// `sensivel` guarda, criptografado (AES-256-GCM): salário, PIS, CTPS, dados bancários e endereço.
+model ColaboradorPerfil {
+  id            String   @id @default(cuid())
+  colaboradorId String   @unique
+  admissionId   String?
+  nomeSocial    String?
+  funcao        String?
+  cbo           String?
+  centroCusto   String?
+  sindicato     String?
+  jornada       String?
+  escala        String?
+  horario       String?
+  localTrabalho String?
+  estadoCivil   String?
+  nacionalidade String?
+  escolaridade  String?
+  nomeMae       String?
+  nomePai       String?
+  rgOrgao       String?
+  rgUf          String?
+  rgEmissao     String?
+  sensivel      Json?
+  atualizadoPor String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@map("colaborador_perfis")
+}
+
+/// Documentos funcionais (gerados a partir de template ou anexados). Nunca são apagados: apenas cancelados.
+/// `snapshot` congela os dados do colaborador no momento da geração e nunca é reescrito.
+model ColaboradorDocumento {
+  id                 String                     @id @default(cuid())
+  colaboradorId      String
+  tipo               String
+  categoria          String
+  titulo             String
+  origem             ColaboradorDocumentoOrigem @default(GERADO)
+  status             ColaboradorDocumentoStatus @default(RASCUNHO)
+  versao             Int                        @default(1)
+  templateKey        String?
+  templateVersion    Int?
+  dados              Json?
+  snapshot           Json?
+  assinaturas        Json?
+  vigenciaInicio     DateTime?
+  vigenciaFim        DateTime?
+  observacao         String?
+  arquivoPath        String?
+  arquivoNome        String?
+  arquivoMime        String?
+  arquivoTamanho     Int?
+  hash               String?
+  /// Origem quando importado da admissão digital ("doc:<id>" ou "gen:<id>"); evita importar duas vezes.
+  admissaoOrigemId   String?
+  origemDocumentoId  String?
+  criadoPorId        String?
+  criadoPorNome      String?
+  geradoEm           DateTime?
+  canceladoEm        DateTime?
+  canceladoPorNome   String?
+  motivoCancelamento String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  colaborador Colaborador         @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  aditivo     ColaboradorAditivo?
+
+  @@unique([colaboradorId, admissaoOrigemId])
+  @@index([colaboradorId, tipo])
+  @@index([colaboradorId, createdAt])
+  @@map("colaborador_documentos")
+}
+
+/// Aditivos contratuais. Cada aditivo é um registro novo; nenhum sobrescreve o anterior.
+model ColaboradorAditivo {
+  id            String   @id @default(cuid())
+  colaboradorId String
+  documentoId   String?  @unique
+  numero        Int
+  tipoAlteracao String
+  campoAlterado String
+  valorAnterior String?
+  valorNovo     String
+  vigencia      DateTime
+  motivo        String
+  clausulas     String?
+  criadoPorId   String?
+  criadoPorNome String?
+  createdAt     DateTime @default(now())
+
+  colaborador Colaborador           @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  documento   ColaboradorDocumento? @relation(fields: [documentoId], references: [id])
+
+  @@index([colaboradorId, vigencia])
+  @@map("colaborador_aditivos")
+}
+
+model ColaboradorDependente {
+  id             String    @id @default(cuid())
+  colaboradorId  String
+  nome           String
+  cpfMascarado   String?
+  cpfCifrado     Json?
+  nascimento     DateTime
+  parentesco     String
+  sexo           String?
+  dependenteIr   Boolean   @default(false)
+  salarioFamilia Boolean   @default(false)
+  planoSaude     Boolean   @default(false)
+  inclusaoEm     DateTime  @default(now())
+  exclusaoEm     DateTime?
+  criadoPorNome  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@index([colaboradorId, exclusaoEm])
+  @@map("colaborador_dependentes")
+}
+
+/// Avaliações do período de experiência (gerencial e autoavaliação). `modelo` congela os critérios usados.
+model ColaboradorAvaliacao {
+  id            String    @id @default(cuid())
+  colaboradorId String
+  tipo          String
+  periodoDias   Int?
+  periodoInicio DateTime?
+  periodoFim    DateTime?
+  avaliadorNome String?
+  respostas     Json
+  modelo        Json
+  snapshot      Json
+  parecer       String?
+  decisao       String?
+  observacoes   String?
+  dataAvaliacao DateTime
+  status        String    @default("RASCUNHO")
+  criadoPorId   String?
+  criadoPorNome String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@index([colaboradorId, tipo])
+  @@map("colaborador_avaliacoes")
+}
+
+/// Linha do tempo funcional (append-only): salário, cargo, jornada, unidade, contratos, avaliações…
+model ColaboradorHistorico {
+  id              String   @id @default(cuid())
+  colaboradorId   String
+  tipo            String
+  dataEvento      DateTime
+  titulo          String
+  anterior        String?
+  novo            String?
+  motivo          String?
+  documentoId     String?
+  aditivoId       String?
+  responsavelId   String?
+  responsavelNome String?
+  createdAt       DateTime @default(now())
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@index([colaboradorId, dataEvento])
+  @@index([colaboradorId, tipo])
+  @@map("colaborador_historico")
 }

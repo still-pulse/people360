@@ -1,11 +1,9 @@
 import { prisma } from '@/lib/prisma'
-import { DEFAULT_DOCUMENT_TYPES } from './constants'
+import { syncDocumentCatalog } from './documentCatalog'
 import { generateAdmissionToken, hashToken, makeProtocol } from './security'
 
 export async function ensureAdmissionDocumentTypes() {
-  await Promise.all(DEFAULT_DOCUMENT_TYPES.map((type) => prisma.admissionDocumentType.upsert({
-    where: { key: type.key }, update: {}, create: type,
-  })))
+  await syncDocumentCatalog()
   return prisma.admissionDocumentType.findMany({ where: { active: true }, orderBy: { position: 'asc' } })
 }
 
@@ -41,9 +39,13 @@ export async function createAdmissionRecord(input: {
   candidateId?: string; vacancyId?: string; unitId: string; ownerId?: string; createdById: string
   candidateName: string; candidateEmail?: string; candidatePhone?: string; jobTitle: string; department?: string
   hireDate: Date; salary?: number; hazardPayPercentage?: number; workSchedule?: string; breakSchedule?: string
-  weeklyHours?: number; contractType: string; experienceDays?: number; contractEndDate?: Date; validityDays?: number
+  weeklyHours?: number; monthlyHours?: number; contractType: string; experienceDays?: number; contractEndDate?: Date; validityDays?: number
+  /** Tipos de documento a solicitar; sem informar, usa os marcados por padrão no catálogo. */
+  documentTypeIds?: string[]
 }) {
   const types = await ensureAdmissionDocumentTypes()
+  const requested = input.documentTypeIds?.length ? types.filter((type) => input.documentTypeIds!.includes(type.id)) : types.filter((type) => type.defaultSelected)
+  if (!requested.length) throw new Error('Selecione ao menos um documento a solicitar.')
   const generated = generateAdmissionToken()
   const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, input.validityDays ?? 7)) * 86400000)
   const admission = await prisma.admission.create({ data: {
@@ -52,10 +54,10 @@ export async function createAdmissionRecord(input: {
     candidateEmail: input.candidateEmail, candidatePhone: input.candidatePhone, jobTitle: input.jobTitle,
     department: input.department, hireDate: input.hireDate, salary: input.salary,
     hazardPayPercentage: input.hazardPayPercentage, workSchedule: input.workSchedule,
-    breakSchedule: input.breakSchedule, weeklyHours: input.weeklyHours, contractType: input.contractType,
+    breakSchedule: input.breakSchedule, weeklyHours: input.weeklyHours, monthlyHours: input.monthlyHours, contractType: input.contractType,
     experienceDays: input.experienceDays, contractEndDate: input.contractEndDate, status: 'LINK_SENT',
     tokens: { create: { tokenHash: generated.hash, tokenHint: generated.hint, expiresAt } },
-    documents: { create: types.map((type) => ({ typeId: type.id })) },
+    documents: { create: requested.map((type) => ({ typeId: type.id })) },
     faceVerifications: { create: { provider: process.env.FACE_VERIFICATION_PROVIDER || 'mock' } },
   }, include: { unit: true, owner: { select: { id: true, name: true } } } })
   return { admission, token: generated.token, expiresAt }

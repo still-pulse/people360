@@ -3,6 +3,8 @@ import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import { prisma } from '@/lib/prisma'
 import { decryptAdmissionValue, hashToken } from './security'
+import { ensureAdmissionTemplates } from './ensureTemplates'
+import { formatCpf } from './fieldFormatters'
 import { savePrivateAdmissionFile } from './storage'
 
 export function interpolate(content: string, values: Record<string, string>) {
@@ -69,7 +71,9 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
     include: { unit: true, vacancy: true, fields: true, dependents: true, transport: { include: { routes: { orderBy: { position: 'asc' } } } } },
   })
   if (!admission) throw new Error('Admissão não encontrada.')
-  const templates = await prisma.documentTemplate.findMany({ where: { active: true }, orderBy: [{ key: 'asc' }, { version: 'desc' }], distinct: ['key'] })
+  await ensureAdmissionTemplates()
+  // Os templates do dossiê do colaborador (`colab_*`) vivem na mesma tabela e não fazem parte da admissão.
+  const templates = await prisma.documentTemplate.findMany({ where: { active: true, NOT: { key: { startsWith: 'colab_' } } }, orderBy: [{ key: 'asc' }, { version: 'desc' }], distinct: ['key'] })
   if (!templates.length) throw new Error('Nenhum template ativo foi configurado.')
 
   const fields = Object.fromEntries(admission.fields.map((field) => [field.key, field.sensitive ? decryptAdmissionValue(field.value) : field.value]))
@@ -87,12 +91,16 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
     employerAddress: process.env.ADMISSION_EMPLOYER_ADDRESS || 'R. dos Jesuítas, 533, Cidade Industrial Satélite de São Paulo, Guarulhos/SP',
     candidateName: admission.candidateName, protocol: admission.protocol, jobTitle: admission.jobTitle,
     vacancyTitle: admission.vacancy?.titulo || admission.jobTitle, department: admission.department || admission.vacancy?.setor || '—', unit: admission.unit.name,
-    hireDate: date(admission.hireDate), contractEndDate: date(admission.contractEndDate), contractType: admission.contractType,
+    hireDate: date(admission.hireDate), contractEndDate: date(admission.contractEndDate ?? (admission.experienceDays ? new Date(admission.hireDate.getTime() + (admission.experienceDays - 1) * 86_400_000) : null)), contractType: admission.contractType,
     experienceDays: admission.experienceDays ? `${admission.experienceDays} dias` : 'conforme contratação', salary: money(admission.salary),
     hazardPayPercentage: admission.hazardPayPercentage == null ? 'não informado' : `${admission.hazardPayPercentage}%`,
     workSchedule: admission.workSchedule || admission.vacancy?.horarioTrabalho || admission.vacancy?.escala || '—', breakSchedule: admission.breakSchedule || '—',
     weeklyHours: admission.weeklyHours ? `${admission.weeklyHours} horas` : admission.vacancy?.cargaHoraria || '—',
-    cpf: valueText(fields.cpf), rg: valueText(fields.rg), rgIssuer: valueText(fields.rgIssuer), rgIssuedAt: valueText(fields.rgIssuedAt), pis: valueText(fields.pis),
+    monthlyHours: admission.monthlyHours ? `${admission.monthlyHours} horas` : admission.weeklyHours ? `${admission.weeklyHours} horas semanais` : '—',
+    bankName: valueText(fields.bank), bankAgency: valueText(fields.agency), bankAccountType: valueText(fields.accountType),
+    bankAccount: [valueText(fields.account), fields.accountDigit ? valueText(fields.accountDigit) : ''].filter((part) => part && part !== '—').join('-') || '—',
+    transportChoice: transportRequested ? 'Solicitado' : 'Não solicitado',
+    cpf: fields.cpf ? formatCpf(valueText(fields.cpf)) : '—', rg: valueText(fields.rg), rgIssuer: valueText(fields.rgIssuer), rgIssuedAt: valueText(fields.rgIssuedAt), pis: valueText(fields.pis),
     birthDate: valueText(fields.birthDate), maritalStatus: valueText(fields.maritalStatus), education: valueText(fields.education), fatherName: valueText(fields.fatherName),
     motherName: valueText(fields.motherName), phone: valueText(fields.phone), email: valueText(fields.email), addressFull: address || '—', city: valueText(fields.city),
     signatureDateLong: longDate(new Date()),

@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -10,6 +11,7 @@ import {
   Calendar, User, Accessibility, Clock,
 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { DossieTab } from '@/components/colaboradores/dossie/DossieTab'
 
 interface ColaboradorDetail {
   id: string
@@ -65,6 +67,15 @@ export default function ColaboradorDetailPage() {
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
+  const search = useSearchParams()
+  const { data: session } = useSession()
+  // Dossiê contém dados sensíveis: aba exclusiva do RH (o backend também valida o papel).
+  const canDossie = ['ADMIN', 'ANALYST'].includes(session?.user?.role ?? '')
+  const [aba, setAba] = useState<'perfil' | 'dossie'>(search.get('aba') === 'dossie' ? 'dossie' : 'perfil')
+  const changeAba = (next: 'perfil' | 'dossie') => {
+    setAba(next)
+    window.history.replaceState(null, '', next === 'dossie' ? `?aba=dossie` : window.location.pathname)
+  }
 
   const [data, setData] = useState<ColaboradorDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -111,7 +122,7 @@ export default function ColaboradorDetailPage() {
         subtitle={`${STATUS_LABEL[data.status] || data.status} · ${data.designation || 'Sem cargo'}`}
       />
 
-      <div className="p-6 space-y-5 max-w-5xl">
+      <div className={cn('p-6 space-y-5', aba === 'dossie' && canDossie ? 'max-w-6xl' : 'max-w-5xl')}>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => router.push('/colaboradores')} icon={<ArrowLeft className="w-4 h-4" />}>
             Lista
@@ -139,6 +150,18 @@ export default function ColaboradorDetailPage() {
           )}
         </div>
 
+        {canDossie && (
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+            {([['perfil', 'Perfil'], ['dossie', 'Dossiê']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => changeAba(key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${aba === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {aba === 'dossie' && canDossie ? <DossieTab colaboradorId={data.id} /> : (
         <div className="grid md:grid-cols-[200px_1fr] gap-5">
           {/* Foto / status */}
           <Card className="p-4 flex flex-col items-center text-center gap-3">
@@ -225,6 +248,7 @@ export default function ColaboradorDetailPage() {
             )}
           </div>
         </div>
+        )}
       </div>
     </>
   )
