@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { decryptAdmissionText, decryptAdmissionValue, encryptAdmissionText, encryptAdmissionValue } from '@/lib/admission/security'
 import { addDays, fmtDate, parseDateInput } from './format'
 import { addHistorico, auditDossie } from './history'
 import { buildSnapshot, packSnapshot, unpackSnapshot } from './snapshot'
@@ -47,6 +48,25 @@ export async function saveAvaliacao(params: { colaboradorId: string; id?: string
   if (!snapshot) throw new DossieError('Colaborador não encontrado.', 404)
 
   const errors: string[] = []
+  const uniqueIds = new Set(input.respostas.map((r) => r.id))
+  if (uniqueIds.size !== input.respostas.length) errors.push('Há respostas duplicadas na avaliação.')
+  const validIds = new Set(isSelf
+    ? (modelo as Awaited<ReturnType<typeof getAutoavaliacaoModelo>>['modelo']).perguntas.map((item) => item.id)
+    : (modelo as Awaited<ReturnType<typeof getAvaliacaoModelo>>['modelo']).criterios.map((item) => item.id))
+  if (input.respostas.some((r) => !validIds.has(r.id))) errors.push('A avaliação contém uma pergunta ou critério inválido.')
+  if (isSelf) {
+    const selfModel = modelo as Awaited<ReturnType<typeof getAutoavaliacaoModelo>>['modelo']
+    const byId = new Map(selfModel.perguntas.map((q) => [q.id, q]))
+    const scale = new Set(selfModel.escala.map((x) => x.valor))
+    const yesNo = new Set(selfModel.escalaSimNao.map((x) => x.valor))
+    if (input.respostas.some((r) => { const q = byId.get(r.id); return q?.tipo === 'escala' ? !!r.valor && !scale.has(r.valor as never) : q?.tipo === 'sim_nao' ? !!r.valor && !yesNo.has(r.valor as never) : false })) errors.push('A avaliação contém uma resposta fora das opções permitidas.')
+  } else {
+    const managerModel = modelo as Awaited<ReturnType<typeof getAvaliacaoModelo>>['modelo']
+    const scale = new Set(managerModel.escala.map((x) => x.valor))
+    const decisions = new Set(managerModel.decisoes.map((x) => x.valor))
+    if (input.respostas.some((r) => !!r.valor && !scale.has(r.valor as never))) errors.push('A avaliação contém uma nota fora da escala permitida.')
+    if (input.decisao && !decisions.has(input.decisao as never)) errors.push('A decisão informada não pertence ao modelo da avaliação.')
+  }
   const periodoInicio = parseDateInput(input.periodoInicio), periodoFim = parseDateInput(input.periodoFim)
   const finalizar = !!input.finalizar
   if (finalizar) {
@@ -72,9 +92,9 @@ export async function saveAvaliacao(params: { colaboradorId: string; id?: string
   const data = {
     tipo: input.tipo, periodoDias: input.periodoDias ?? null, periodoInicio, periodoFim,
     avaliadorNome: input.avaliadorNome?.trim() || null,
-    respostas: input.respostas as unknown as Prisma.InputJsonValue, modelo: modelo as unknown as Prisma.InputJsonValue,
-    snapshot: packSnapshot(snapshot) as Prisma.InputJsonValue, parecer: input.parecer?.trim() || null, decisao: input.decisao || null,
-    observacoes: input.observacoes?.trim() || null, dataAvaliacao: parseDateInput(input.dataAvaliacao) ?? new Date(),
+    respostas: encryptAdmissionValue(input.respostas) as Prisma.InputJsonValue, modelo: modelo as unknown as Prisma.InputJsonValue,
+    snapshot: packSnapshot(snapshot) as Prisma.InputJsonValue, parecer: encryptAdmissionText(input.parecer?.trim() || null), decisao: encryptAdmissionText(input.decisao || null),
+    observacoes: encryptAdmissionText(input.observacoes?.trim() || null), dataAvaliacao: parseDateInput(input.dataAvaliacao) ?? new Date(),
     status: finalizar ? 'FINALIZADA' : 'RASCUNHO',
   }
 
@@ -100,18 +120,25 @@ export async function cancelAvaliacao(params: { colaboradorId: string; id: strin
   if (!current) throw new DossieError('Avaliação não encontrada.', 404)
   if (current.status === 'CANCELADA') throw new DossieError('Avaliação já cancelada.', 409)
   if (params.motivo.trim().length < 5) throw new DossieError('Informe o motivo do cancelamento (mínimo de 5 caracteres).', 422)
-  const updated = await prisma.colaboradorAvaliacao.update({ where: { id: current.id }, data: { status: 'CANCELADA', observacoes: `${current.observacoes ? current.observacoes + '\n' : ''}Cancelada: ${params.motivo.trim()}` } })
+  const currentNotes = decryptAdmissionText(current.observacoes)
+  const updated = await prisma.colaboradorAvaliacao.update({ where: { id: current.id }, data: { status: 'CANCELADA', observacoes: encryptAdmissionText(`${currentNotes ? currentNotes + '\n' : ''}Cancelada: ${params.motivo.trim()}`) } })
   await addHistorico({ colaboradorId: params.colaboradorId, tipo: 'AVALIACAO', dataEvento: new Date(), titulo: 'Avaliação cancelada', motivo: params.motivo.trim(), actor: params.actor })
   await auditDossie({ actor: params.actor, action: 'DELETE', entity: 'Avaliacao', entityId: current.id, colaboradorId: params.colaboradorId, ip: params.ip, details: { acao: 'cancelar' } })
   return updated
 }
 
 export function toRender(row: { tipo: string; periodoDias: number | null; periodoInicio: Date | null; periodoFim: Date | null; avaliadorNome: string | null; respostas: unknown; modelo: unknown; parecer: string | null; decisao: string | null; observacoes: string | null; dataAvaliacao: Date }): AvaliacaoRender {
+  const respostas = decryptAdmissionValue(row.respostas)
   return {
     tipo: row.tipo, periodoDias: row.periodoDias, periodoInicio: row.periodoInicio, periodoFim: row.periodoFim, avaliadorNome: row.avaliadorNome,
-    respostas: Array.isArray(row.respostas) ? (row.respostas as AvaliacaoRender['respostas']) : [], modelo: row.modelo as AvaliacaoRender['modelo'],
-    parecer: row.parecer, decisao: row.decisao, observacoes: row.observacoes, dataAvaliacao: row.dataAvaliacao,
+    respostas: Array.isArray(respostas) ? (respostas as AvaliacaoRender['respostas']) : [], modelo: row.modelo as AvaliacaoRender['modelo'],
+    parecer: decryptAdmissionText(row.parecer), decisao: decryptAdmissionText(row.decisao), observacoes: decryptAdmissionText(row.observacoes), dataAvaliacao: row.dataAvaliacao,
   }
+}
+
+export function avaliacaoView<T extends { respostas: unknown; parecer: string | null; decisao: string | null; observacoes: string | null }>(row: T) {
+  const respostas = decryptAdmissionValue(row.respostas)
+  return { ...row, respostas: Array.isArray(respostas) ? respostas : [], parecer: decryptAdmissionText(row.parecer), decisao: decryptAdmissionText(row.decisao), observacoes: decryptAdmissionText(row.observacoes) }
 }
 
 export async function renderAvaliacao(colaboradorId: string, id: string) {

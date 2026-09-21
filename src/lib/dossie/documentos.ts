@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { Prisma, type ColaboradorDocumento } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { decryptAdmissionValue, encryptAdmissionText, encryptAdmissionValue } from '@/lib/admission/security'
 import {
   amendmentLabel, amendmentValueLabel, DOC_TYPES, getDocType, normalizeDados, validateDados,
   type Dados, type DocType,
@@ -22,6 +23,15 @@ export class DossieError extends Error {
     this.status = status
     this.details = details
   }
+}
+
+export function packDocumentData(dados: Dados): Prisma.InputJsonValue {
+  return encryptAdmissionValue(dados) as Prisma.InputJsonValue
+}
+
+export function unpackDocumentData(stored: unknown): Dados {
+  const value = decryptAdmissionValue(stored)
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Dados : {}
 }
 
 export const CATEGORIAS_ANEXO = ['Documento Pessoal', 'Contrato', 'Aditivo', 'Avaliação', 'Dependente', 'Termo', 'Acordo', 'Comprovante', 'Outro'] as const
@@ -119,7 +129,7 @@ async function persistGenerated(params: {
     tipo: type.tipo, categoria: type.categoria, titulo, origem: 'GERADO' as const,
     status: (type.signatures.length ? 'AGUARDANDO_ASSINATURA' : 'VIGENTE') as 'AGUARDANDO_ASSINATURA' | 'VIGENTE',
     templateKey: template.key, templateVersion: template.version,
-    dados: dados as Prisma.InputJsonValue, snapshot: packSnapshot(snapshot) as Prisma.InputJsonValue,
+    dados: packDocumentData(dados), snapshot: packSnapshot(snapshot) as Prisma.InputJsonValue,
     assinaturas: initialSignatures(type, snapshot, dados) as Prisma.InputJsonValue,
     vigenciaInicio: vigencia.inicio, vigenciaFim: vigencia.fim,
     arquivoPath: saved.storagePath, arquivoNome: docFileName(titulo, snapshot.nome, { date: isoDay() }), arquivoMime: 'application/pdf', arquivoTamanho: saved.sizeBytes, hash,
@@ -141,7 +151,7 @@ export async function createDocumento(params: { colaboradorId: string; tipo: str
     const draft = await prisma.colaboradorDocumento.create({
       data: {
         colaboradorId: params.colaboradorId, tipo: prepared.type.tipo, categoria: prepared.type.categoria, titulo: docTitle(prepared.type, prepared.dados),
-        status: 'RASCUNHO', dados: prepared.dados as Prisma.InputJsonValue, templateKey: prepared.type.templateKey,
+        status: 'RASCUNHO', dados: packDocumentData(prepared.dados), templateKey: prepared.type.templateKey,
         criadoPorId: params.actor.id, criadoPorNome: params.actor.name,
       },
     })
@@ -159,7 +169,7 @@ export async function generateDraft(params: { colaboradorId: string; documentoId
   const draft = await prisma.colaboradorDocumento.findFirst({ where: { id: params.documentoId, colaboradorId: params.colaboradorId } })
   if (!draft) throw new DossieError('Documento não encontrado.', 404)
   if (draft.status !== 'RASCUNHO') throw new DossieError('Apenas rascunhos podem ser gerados.', 409)
-  const prepared = await prepareDocumento(params.colaboradorId, draft.tipo, params.dados ?? draft.dados)
+  const prepared = await prepareDocumento(params.colaboradorId, draft.tipo, params.dados ?? unpackDocumentData(draft.dados))
   if (prepared.errors.length) throw new DossieError('Não foi possível gerar o documento.', 422, prepared.errors)
   const document = await persistGenerated({ colaboradorId: params.colaboradorId, type: prepared.type, snapshot: prepared.snapshot, dados: prepared.dados, actor: params.actor, existingId: draft.id })
   await auditDossie({ actor: params.actor, action: 'UPDATE', entity: 'Documento', entityId: document.id, colaboradorId: params.colaboradorId, ip: params.ip, details: { acao: 'gerar', tipo: draft.tipo } })
@@ -173,7 +183,7 @@ export async function updateDraft(params: { colaboradorId: string; documentoId: 
   const type = await resolveDocType(draft.tipo)
   if (!type) throw new DossieError('Tipo de documento inválido.', 400)
   const dados = normalizeDados(type, params.dados)
-  const updated = await prisma.colaboradorDocumento.update({ where: { id: draft.id }, data: { dados: dados as Prisma.InputJsonValue, titulo: docTitle(type, dados) } })
+  const updated = await prisma.colaboradorDocumento.update({ where: { id: draft.id }, data: { dados: packDocumentData(dados), titulo: docTitle(type, dados) } })
   await auditDossie({ actor: params.actor, action: 'UPDATE', entity: 'Documento', entityId: draft.id, colaboradorId: params.colaboradorId, ip: params.ip, details: { acao: 'editar-rascunho' } })
   return updated
 }
@@ -220,7 +230,7 @@ export async function renderStored(document: ColaboradorDocumento, actorName = '
   const snapshot = unpackSnapshot(document.snapshot)
   if (!type || !snapshot) return null
   const template = await templateFor(type, document.templateVersion)
-  return renderDocumentPdf({ type, templateContent: template.content, snapshot, dados: (document.dados ?? {}) as Dados, actorName, geradoEm: document.geradoEm ?? undefined })
+  return renderDocumentPdf({ type, templateContent: template.content, snapshot, dados: unpackDocumentData(document.dados), actorName, geradoEm: document.geradoEm ?? undefined })
 }
 
 /** Desenha um documento gerado dentro de um PDF maior (dossiê), com o retrato e o template originais. */
@@ -229,7 +239,7 @@ export async function renderStoredInto(pdf: PdfBuilder, document: ColaboradorDoc
   const snapshot = unpackSnapshot(document.snapshot)
   if (!type || !snapshot) return false
   const template = await templateFor(type, document.templateVersion)
-  renderDocumentInto(pdf, { type, templateContent: template.content, snapshot, dados: (document.dados ?? {}) as Dados, actorName })
+  renderDocumentInto(pdf, { type, templateContent: template.content, snapshot, dados: unpackDocumentData(document.dados), actorName })
   return true
 }
 
@@ -303,18 +313,26 @@ export async function createAditivo(params: { colaboradorId: string; input: Adit
   if (prepared.errors.length || !prepared.snapshot || !prepared.dados || !prepared.type || !prepared.vigencia) throw new DossieError('Não foi possível gerar o aditivo.', 422, prepared.errors)
   const { snapshot, dados, type, vigencia, valorAnterior } = prepared
   const meta = AMENDMENT_FIELDS[params.input.tipoAlteracao]
-  const last = await prisma.colaboradorAditivo.aggregate({ where: { colaboradorId: params.colaboradorId }, _max: { numero: true } })
-  const numero = (last._max.numero ?? 0) + 1
+  // Reserva a numeração sob isolamento serializável; o índice único impede corrida entre réplicas.
+  const aditivo = await prisma.$transaction(async (tx) => {
+    const last = await tx.colaboradorAditivo.aggregate({ where: { colaboradorId: params.colaboradorId }, _max: { numero: true } })
+    return tx.colaboradorAditivo.create({ data: {
+      colaboradorId: params.colaboradorId, numero: (last._max.numero ?? 0) + 1, tipoAlteracao: params.input.tipoAlteracao,
+      campoAlterado: encryptAdmissionText(dados.campoAlterado)!, valorAnterior: encryptAdmissionText(valorAnterior || null), valorNovo: encryptAdmissionText(params.input.valorNovo.trim())!,
+      vigencia, motivo: encryptAdmissionText(dados.motivo)!, clausulas: encryptAdmissionText(dados.clausulas || null), criadoPorId: params.actor.id, criadoPorNome: params.actor.name,
+    } })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  const numero = aditivo.numero
 
-  // Aditivos são insert-only: gera o PDF (imutável) e grava documento + aditivo + histórico.
-  const document = await persistGenerated({ colaboradorId: params.colaboradorId, type, snapshot, dados, actor: params.actor })
-  const aditivo = await prisma.colaboradorAditivo.create({
-    data: {
-      colaboradorId: params.colaboradorId, documentoId: document.id, numero, tipoAlteracao: params.input.tipoAlteracao,
-      campoAlterado: dados.campoAlterado, valorAnterior: valorAnterior || null, valorNovo: params.input.valorNovo.trim(),
-      vigencia, motivo: dados.motivo, clausulas: dados.clausulas || null, criadoPorId: params.actor.id, criadoPorNome: params.actor.name,
-    },
-  })
+  // Aditivos são insert-only: gera o PDF imutável e só então vincula o documento reservado.
+  let document: ColaboradorDocumento
+  try {
+    document = await persistGenerated({ colaboradorId: params.colaboradorId, type, snapshot, dados, actor: params.actor })
+    await prisma.colaboradorAditivo.update({ where: { id: aditivo.id }, data: { documentoId: document.id } })
+  } catch (error) {
+    await prisma.colaboradorAditivo.delete({ where: { id: aditivo.id } }).catch(() => {})
+    throw error
+  }
   await addHistorico({
     colaboradorId: params.colaboradorId, tipo: meta.field ? params.input.tipoAlteracao : 'ADITIVO', dataEvento: vigencia,
     titulo: `Aditivo nº ${numero}: ${dados.campoAlterado}`, anterior: dados.anteriorFmt, novo: dados.novoFmt, motivo: dados.motivo,

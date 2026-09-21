@@ -27,7 +27,8 @@ const taskInclude = {
   },
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 
@@ -82,7 +83,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(updated)
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 

@@ -13,7 +13,8 @@ const LIST_SELECT = {
 } satisfies Prisma.ColaboradorDocumentoSelect
 
 /** Lista metadados (sem arquivos, snapshot ou dados sensíveis). Paginada. */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.view', params.id, async ({ colaborador }) => {
     const q = req.nextUrl.searchParams
     const where: Prisma.ColaboradorDocumentoWhereInput = { colaboradorId: colaborador.id }
@@ -35,7 +36,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 /** Cria rascunho, gera o documento definitivo ou devolve o preview em PDF. */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.create', params.id, async ({ colaborador, actor, ip }) => {
     const body = await readJson(req)
     const tipo = String(body.tipo || '')

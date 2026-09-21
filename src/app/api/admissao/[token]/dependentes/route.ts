@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getAdmissionByPublicToken } from '@/lib/admission/service'
+import { getMutableAdmissionByPublicToken } from '@/lib/admission/service'
 import { hashSensitive, isValidCpf, maskCpf } from '@/lib/admission/security'
 import { extractIp } from '@/lib/audit'
 import { logAdmissionEvent } from '@/lib/admission/audit'
@@ -9,9 +9,10 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 const dependent = z.object({ id: z.string().cuid().optional(), name: z.string().min(3).max(160), cpf: z.string().optional(), birthDate: z.coerce.date(), relationship: z.string().min(2).max(60), irrfDependent: z.boolean().default(false), childUnder14: z.boolean().default(false) })
 const schema = z.object({ dependents: z.array(dependent).max(30) })
 
-export async function PUT(req: NextRequest, { params }: { params: { token: string } }) {
-  const token = await getAdmissionByPublicToken(params.token); if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
-  const parsed = schema.safeParse(await req.json().catch(() => null)); if (!parsed.success) return NextResponse.json({ error: 'Revise os dados dos dependentes.' }, { status: 400 })
+export async function PUT(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
+  const token = await getMutableAdmissionByPublicToken(params.token);if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  const parsed = schema.safeParse(await req.json().catch(() => null));if (!parsed.success) return NextResponse.json({ error: 'Revise os dados dos dependentes.' }, { status: 400 })
   if (parsed.data.dependents.some((d) => d.cpf && !isValidCpf(d.cpf))) return NextResponse.json({ error: 'Há um CPF de dependente inválido.' }, { status: 400 })
   await prisma.$transaction(async (tx) => {
     await tx.admissionDependent.deleteMany({ where: { admissionId: token.admissionId } })

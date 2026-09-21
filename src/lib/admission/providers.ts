@@ -50,6 +50,20 @@ export const mockSignatureProvider: SignatureProvider = {
   async sign() { return { transactionId: `sign_mock_${randomUUID()}`, signedAt: new Date() } },
 }
 
+/** Assinatura eletrônica local: cria uma transação única para o PDF de evidências. */
+export const localSignatureProvider: SignatureProvider = {
+  async sign(envelopeId) {
+    return { transactionId: `p360_${envelopeId}_${randomUUID()}`, signedAt: new Date() }
+  },
+}
+
+export function getSignatureProvider(): { name: string; provider: SignatureProvider } {
+  const name = (process.env.SIGNATURE_PROVIDER || 'people360-local').trim().toLowerCase()
+  if (name === 'people360-local') return { name, provider: localSignatureProvider }
+  if (name === 'mock' && process.env.NODE_ENV !== 'production') return { name, provider: mockSignatureProvider }
+  throw new Error(`Provedor de assinatura não suportado: ${name || '(vazio)'}`)
+}
+
 export const mockERPNextAdmissionProvider: ERPNextAdmissionProvider = {
   async sync(admissionId, mode) {
     if (mode === 'timeout') throw new Error('ERPNext mock: timeout')
@@ -57,6 +71,14 @@ export const mockERPNextAdmissionProvider: ERPNextAdmissionProvider = {
     if (mode === 'duplicate') throw new Error('ERPNext mock: colaborador duplicado')
     return { employeeId: `MOCK-${admissionId.slice(-8).toUpperCase()}`, employeeCode: `BHCL-${Date.now().toString().slice(-6)}` }
   },
+}
+
+export function getERPNextAdmissionProvider(): ERPNextAdmissionProvider {
+  const name = (process.env.ADMISSION_ERPNEXT_PROVIDER || 'disabled').trim().toLowerCase()
+  if (name === 'mock' && process.env.NODE_ENV !== 'production') return mockERPNextAdmissionProvider
+  throw new Error(name === 'erpnext'
+    ? 'A integração de criação de Employee no ERPNext ainda não está configurada para este ambiente.'
+    : 'Integração ERPNext da admissão desativada.')
 }
 
 export const mockAdmissionNotificationProvider: AdmissionNotificationProvider = {

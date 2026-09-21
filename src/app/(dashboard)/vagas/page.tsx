@@ -56,7 +56,7 @@ export default function VagasDashboardPage() {
   async function exportExcel() {
     if (!data) return
     setExporting('excel')
-    const xlsxMod = await import('xlsx')
+      const xlsxMod = await import('@/lib/xlsxSafe')
     const XLSX = (xlsxMod as any).default ?? xlsxMod
     const wb   = XLSX.utils.book_new()
 

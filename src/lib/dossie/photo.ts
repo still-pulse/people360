@@ -17,13 +17,16 @@ function asImage(buffer: Buffer | null, source: ColaboradorPhoto['source']): Col
 async function fetchErpnextImage(imagePath: string): Promise<Buffer | null> {
   try {
     const base = erpnextBaseUrl()
-    const url = imagePath.startsWith('http') ? imagePath : base ? `${base}${imagePath.startsWith('/') ? '' : '/'}${imagePath}` : null
-    if (!url) return null
-    // Só envia credenciais do ERPNext para o próprio host do ERPNext.
-    const sameHost = !!base && new URL(url).origin === new URL(base).origin
+    if (!base) return null
+    const baseUrl = new URL(base)
+    if (!['http:', 'https:'].includes(baseUrl.protocol)) return null
+    const url = new URL(imagePath, baseUrl)
+    // Nunca busca imagem fora do host configurado (evita SSRF e vazamento de credenciais).
+    const sameHost = url.origin === baseUrl.origin
+    if (!sameHost) return null
     const headers: Record<string, string> = {}
     if (sameHost && erpnextConfigured()) headers.Authorization = `token ${process.env.ERPNEXT_API_KEY}:${process.env.ERPNEXT_API_SECRET}`
-    const response = await fetch(url, { headers, cache: 'no-store', signal: AbortSignal.timeout(8000) })
+    const response = await fetch(url, { headers, cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(8000) })
     if (!response.ok) return null
     return Buffer.from(await response.arrayBuffer())
   } catch {

@@ -1492,6 +1492,7 @@ model SignatureEnvelope {
   events    SignatureEvent[]
 
   @@index([admissionId, status])
+  @@unique([documentId])
   @@map("signature_envelopes")
 }
 
@@ -1845,6 +1846,7 @@ model ColaboradorAditivo {
   documento   ColaboradorDocumento? @relation(fields: [documentoId], references: [id])
 
   @@index([colaboradorId, vigencia])
+  @@unique([colaboradorId, numero])
   @@map("colaborador_aditivos")
 }
 

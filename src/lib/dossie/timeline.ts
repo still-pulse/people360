@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { HISTORY_TYPES } from './history'
+import { decryptAdmissionText } from '@/lib/admission/security'
 
 export type TimelineRow = {
   id: string
@@ -37,7 +38,7 @@ export async function loadTimeline(colaboradorId: string, opts: { grupo?: string
   ])
   const items: TimelineRow[] = rows.map((row) => ({
     id: row.id, tipo: row.tipo, tipoLabel: HISTORY_TYPES[row.tipo] ?? row.tipo, dataEvento: row.dataEvento.toISOString(), titulo: row.titulo,
-    anterior: row.anterior, novo: row.novo, motivo: row.motivo, documentoId: row.documentoId, aditivoId: row.aditivoId, responsavelNome: row.responsavelNome,
+    anterior: decryptAdmissionText(row.anterior), novo: decryptAdmissionText(row.novo), motivo: decryptAdmissionText(row.motivo), documentoId: row.documentoId, aditivoId: row.aditivoId, responsavelNome: row.responsavelNome,
   }))
   const explicitAdmission = items.some((row) => row.tipo === 'ADMISSAO')
   const lastPage = (opts.skip ?? 0) + rows.length >= total

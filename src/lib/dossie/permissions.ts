@@ -48,7 +48,8 @@ function loadColaborador(idOrErpnextId: string) {
 export async function authorizeDossie(permission: DossiePermission, idOrErpnextId: string): Promise<DossieAccess> {
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return { ok: false, response: error }
-  if (!roleCan(session!.user.role, permission)) {
+  const actualRole = session!.user.actualRole ?? session!.user.role
+  if (!roleCan(actualRole, permission)) {
     return { ok: false, response: NextResponse.json({ error: 'Sem permissão para esta ação.' }, { status: 403 }) }
   }
   const colaborador = await loadColaborador(idOrErpnextId)
@@ -58,6 +59,6 @@ export async function authorizeDossie(permission: DossiePermission, idOrErpnextI
   }
   return {
     ok: true, session: session!, colaborador,
-    actor: { id: session!.user.id, name: session!.user.name || session!.user.email || 'Usuário', role: session!.user.role },
+    actor: { id: session!.user.id, name: session!.user.name || session!.user.email || 'Usuário', role: actualRole },
   }
 }

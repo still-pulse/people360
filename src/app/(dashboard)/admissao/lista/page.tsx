@@ -139,7 +139,7 @@ function ListaContent() {
   }
 
   async function exportExcel() {
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const rows = sorted.map((a) => ({
       Colaborador: a.colaboradorNome,
       Cargo: a.cargo,

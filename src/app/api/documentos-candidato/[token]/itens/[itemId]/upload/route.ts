@@ -8,7 +8,11 @@ import { saveDocumentoArquivo, DOCUMENTO_MAX_SIZE, DOCUMENTO_ALLOWED_TYPES } fro
 export const dynamic = 'force-dynamic'
 
 // Rota pública (sem sessão) — o candidato envia um documento para um item do checklist.
-export async function POST(req: NextRequest, { params }: { params: { token: string; itemId: string } }) {
+export async function POST(
+  req: NextRequest,
+  props: { params: Promise<{ token: string; itemId: string }> }
+) {
+  const params = await props.params;
   const ip = extractIp(req.headers) ?? 'unknown'
   const rl = checkPublicDocLinkRateLimit(`${params.token}:${ip}`)
   if (!rl.allowed) {

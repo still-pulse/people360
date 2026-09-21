@@ -9,7 +9,8 @@ import { buildSnapshot } from '@/lib/dossie/snapshot'
 import { SELECAO } from '@/lib/dossie/dossier'
 
 /** Visão geral do dossiê: cabeçalho, contadores e cadastro complementar. Não carrega arquivos. */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.view', params.id, async ({ colaborador, actor }) => {
     const snapshot = await buildSnapshot(colaborador.id)
     if (!snapshot) return NextResponse.json({ error: 'Colaborador não encontrado.' }, { status: 404 })

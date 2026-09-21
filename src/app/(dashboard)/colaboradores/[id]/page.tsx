@@ -70,7 +70,7 @@ export default function ColaboradorDetailPage() {
   const search = useSearchParams()
   const { data: session } = useSession()
   // Dossiê contém dados sensíveis: aba exclusiva do RH (o backend também valida o papel).
-  const canDossie = ['ADMIN', 'ANALYST'].includes(session?.user?.role ?? '')
+  const canDossie = ['ADMIN', 'ANALYST'].includes(session?.user?.actualRole ?? session?.user?.role ?? '')
   const [aba, setAba] = useState<'perfil' | 'dossie'>(search.get('aba') === 'dossie' ? 'dossie' : 'perfil')
   const changeAba = (next: 'perfil' | 'dossie') => {
     setAba(next)

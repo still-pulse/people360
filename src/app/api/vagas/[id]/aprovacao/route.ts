@@ -8,7 +8,8 @@ import { openVagaInRecruitmentList, writeBackApproval } from '@/lib/erpnextJobRe
 import { notifyAdmins } from '@/lib/notify'
 
 // GET — retorna thread de comentários da aprovação
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 
@@ -22,7 +23,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 // POST — ação do admin (APROVAR | REJEITAR | SOLICITAR_INFO) ou resposta da analista (RESPOSTA)
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)

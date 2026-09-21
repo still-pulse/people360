@@ -19,12 +19,13 @@ const include = {
   erpnextSyncs: { orderBy: { createdAt: 'desc' as const } }, auditLogs: { orderBy: { createdAt: 'desc' as const }, take: 100 },
 }
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
-  const { session, error } = await getSessionOrUnauthorized(); if (error) return error
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const { session, error } = await getSessionOrUnauthorized();if (error) return error
   const item = await prisma.admission.findUnique({ where: { id: params.id }, include })
   if (!item) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!analystCanAccessUnit(session!, item.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
-  const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.role)
+  const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.actualRole ?? session!.user.role)
   const response = canViewSensitiveData ? {
     ...item,
     fields: item.fields.map((field) => ({ ...field, value: field.sensitive ? decryptAdmissionValue(field.value) : field.value })),
@@ -32,13 +33,15 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   return NextResponse.json(response)
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { session, error } = await getSessionOrUnauthorized(); if (error) return error
-  const forbidden = forbidIfReadOnly(session!.user.role); if (forbidden) return forbidden
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const { session, error } = await getSessionOrUnauthorized();if (error) return error
+  const actualRole = session!.user.actualRole ?? session!.user.role
+  const forbidden = forbidIfReadOnly(actualRole);if (forbidden) return forbidden
   const current = await prisma.admission.findUnique({ where: { id: params.id } })
   if (!current) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!analystCanAccessUnit(session!, current.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
-  const body = await req.json().catch(() => ({})); const action = String(body.action || '')
+  const body = await req.json().catch(() => ({}));const action = String(body.action || '')
   let response: Record<string, unknown> = {}
   if (action === 'renew-link' || action === 'resend-link') {
     const link = await createAdmissionToken(current.id, Number(body.validityDays || 7))
@@ -56,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${current.id}` }, create: { admissionId: current.id, idempotencyKey: `admission:${current.id}`, status: 'RETRYING', attempts: 1, nextAttemptAt: new Date() }, update: { status: 'RETRYING', attempts: { increment: 1 }, nextAttemptAt: new Date(), lastError: null } }),
     ])
   } else if (action === 'approve-face' || action === 'request-face-retry') {
-    if (!['ADMIN', 'ANALYST'].includes(session!.user.role)) {
+    if (!['ADMIN', 'ANALYST'].includes(actualRole)) {
       return NextResponse.json({ error: 'Sem permissão para revisar biometria.' }, { status: 403 })
     }
     const verification = await prisma.faceVerification.findFirst({ where: { admissionId: current.id }, orderBy: { createdAt: 'desc' } })
@@ -83,9 +86,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ success: true, ...response })
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const { session, error } = await getSessionOrUnauthorized(); if (error) return error
-  if (session!.user.role !== 'ADMIN') return NextResponse.json({ error: 'Somente administradores podem excluir admissões.' }, { status: 403 })
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const { session, error } = await getSessionOrUnauthorized();if (error) return error
+  if ((session!.user.actualRole ?? session!.user.role) !== 'ADMIN') return NextResponse.json({ error: 'Somente administradores podem excluir admissões.' }, { status: 403 })
   const current = await prisma.admission.findUnique({ where: { id: params.id }, select: { id: true, protocol: true, status: true, unitId: true, erpnextSyncs: { select: { status: true } } } })
   if (!current) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (['SYNCED', 'COMPLETED'].includes(current.status) || current.erpnextSyncs.some((sync) => sync.status === 'SUCCESS')) {

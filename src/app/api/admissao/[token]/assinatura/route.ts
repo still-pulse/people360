@@ -1,8 +1,8 @@
 import { createHash } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAdmissionByPublicToken } from '@/lib/admission/service'
-import { mockSignatureProvider } from '@/lib/admission/providers'
+import { getMutableAdmissionByPublicToken } from '@/lib/admission/service'
+import { getSignatureProvider } from '@/lib/admission/providers'
 import { generateAdmissionDocuments } from '@/lib/admission/documentGenerator'
 import { createSignedDocument } from '@/lib/admission/signedDocument'
 import { detectMime, savePrivateAdmissionFile } from '@/lib/admission/storage'
@@ -14,9 +14,13 @@ function numberField(form: FormData, key: string) {
   return Number.isFinite(value) ? value : null
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
-  const token = await getAdmissionByPublicToken(params.token)
+export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
+  const token = await getMutableAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  if (!['CONTRACT_PENDING', 'SIGNATURE_PENDING'].includes(token.admission.status)) {
+    return NextResponse.json({ error: 'A admissão ainda não está pronta para assinatura.' }, { status: 409 })
+  }
   const form = await req.formData().catch(() => null)
   if (!form || form.get('accepted') !== 'true') return NextResponse.json({ error: 'Confirme a leitura e concordância.' }, { status: 400 })
   if (form.get('locationConsent') !== 'true') return NextResponse.json({ error: 'Autorize o registro da localização para assinar.' }, { status: 400 })
@@ -44,14 +48,20 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   const signatureSaved = await savePrivateAdmissionFile(token.admissionId, 'signatures', new File([signatureBuffer], 'assinatura.png', { type: detected.mime }))
   const signatureHash = createHash('sha256').update(signatureBuffer).digest('hex')
   const ip = extractIp(req.headers), userAgent = req.headers.get('user-agent')
-  const providerName = process.env.SIGNATURE_PROVIDER || 'people360-local'
+  let signatureProvider: ReturnType<typeof getSignatureProvider>
+  try { signatureProvider = getSignatureProvider() }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Provedor de assinatura indisponível.' }, { status: 503 }) }
+  const providerName = signatureProvider.name
 
   for (const doc of docs) {
     if (!doc.storagePath) throw new Error('Documento original indisponível para assinatura.')
-    let envelope = await prisma.signatureEnvelope.findFirst({ where: { documentId: doc.id } })
-    if (!envelope) envelope = await prisma.signatureEnvelope.create({ data: { admissionId: token.admissionId, documentId: doc.id, provider: providerName, signerName: token.admission.candidateName, signerEmail: token.admission.candidateEmail, status: 'AUTHENTICATED' } })
+    const envelope = await prisma.signatureEnvelope.upsert({
+      where: { documentId: doc.id },
+      update: {},
+      create: { admissionId: token.admissionId, documentId: doc.id, provider: providerName, signerName: token.admission.candidateName, signerEmail: token.admission.candidateEmail, status: 'AUTHENTICATED' },
+    })
     if (envelope.status === 'SIGNED') continue
-    const signed = await mockSignatureProvider.sign(envelope.id)
+    const signed = await signatureProvider.provider.sign(envelope.id)
     const finalDocument = await createSignedDocument({
       admissionId: token.admissionId, documentId: doc.id, storagePath: doc.storagePath,
       validationCode: doc.validationCode, originalHash: doc.originalHash,
@@ -65,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
         signaturePath: signatureSaved.storagePath, signatureMimeType: detected.mime, signatureHash,
         signedIp: ip, signedUserAgent: userAgent, latitude, longitude, locationAccuracy: accuracy,
       } }),
-      prisma.signatureEvent.create({ data: { envelopeId: envelope.id, type: 'SIGNED', ip, userAgent, hash: finalDocument.finalHash, metadata: { provider: providerName, latitude, longitude, accuracy, locationConsent: true, consentVersion: process.env.SIGNATURE_CONSENT_VERSION || 'v1' } } }),
+      prisma.signatureEvent.create({ data: { envelopeId: envelope.id, type: 'SIGNED', ip, userAgent, hash: finalDocument.finalHash, metadata: { provider: providerName, latitude, longitude, accuracy, locationSource: 'browser-geolocation-unverified', locationConsent: true, consentVersion: process.env.SIGNATURE_CONSENT_VERSION || 'v1' } } }),
       prisma.generatedDocument.update({ where: { id: doc.id }, data: { status: 'SIGNED', signedAt: signed.signedAt, signedStoragePath: finalDocument.storagePath, finalHash: finalDocument.finalHash } }),
     ])
   }
@@ -75,6 +85,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${token.admissionId}` }, create: { admissionId: token.admissionId, idempotencyKey: `admission:${token.admissionId}`, status: 'WAITING', nextAttemptAt: new Date() }, update: { status: 'WAITING', nextAttemptAt: new Date(), lastError: null } }),
     prisma.consentRecord.create({ data: { admissionId: token.admissionId, type: 'ELECTRONIC_SIGNATURE', version: process.env.SIGNATURE_CONSENT_VERSION || 'v1', accepted: true, ip, userAgent } }),
     prisma.consentRecord.create({ data: { admissionId: token.admissionId, type: 'SIGNATURE_GEOLOCATION', version: process.env.SIGNATURE_CONSENT_VERSION || 'v1', accepted: true, ip, userAgent } }),
+    prisma.admissionToken.updateMany({ where: { admissionId: token.admissionId, revokedAt: null }, data: { revokedAt: new Date() } }),
   ])
   await logAdmissionEvent({ admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE', action: 'DOCUMENTS_SIGNED', ip, userAgent, metadata: { documentCount: docs.length, provider: providerName } })
   return NextResponse.json({ success: true, protocol: token.admission.protocol })

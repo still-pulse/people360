@@ -4,7 +4,8 @@ import { getSessionOrUnauthorized, forbidIfReadOnly } from '@/lib/apiHelpers'
 import { log } from '@/lib/audit'
 
 // RH aprova/rejeita um documento enviado pelo candidato
-export async function PATCH(req: NextRequest, { params }: { params: { itemId: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ itemId: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)

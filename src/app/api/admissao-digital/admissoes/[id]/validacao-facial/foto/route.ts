@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { analystCanAccessUnit, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { readPrivateAdmissionFile } from '@/lib/admission/storage'
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   if (!['ADMIN', 'ANALYST'].includes(session!.user.role)) {

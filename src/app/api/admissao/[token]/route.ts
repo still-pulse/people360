@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getAdmissionByPublicToken } from '@/lib/admission/service'
+import { getAdmissionByPublicToken, getMutableAdmissionByPublicToken } from '@/lib/admission/service'
 import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
 import { extractIp } from '@/lib/audit'
 import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, isValidCpf } from '@/lib/admission/security'
@@ -13,7 +13,8 @@ const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), 
 
 function limited(req: NextRequest, token: string) { return checkPublicDocLinkRateLimit(`${extractIp(req.headers) || 'unknown'}:${token.slice(-8)}`) }
 
-export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const result = await getAdmissionByPublicToken(params.token, true)
   if (!result) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
@@ -31,11 +32,12 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
   })
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { token: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas.' }, { status: 429 })
-  const result = await getAdmissionByPublicToken(params.token)
+  const result = await getMutableAdmissionByPublicToken(params.token)
   if (!result) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
-  const parsed = saveSchema.safeParse(await req.json().catch(() => null)); if (!parsed.success) return NextResponse.json({ error: 'Dados inválidos.', fields: parsed.error.flatten().fieldErrors }, { status: 400 })
+  const parsed = saveSchema.safeParse(await req.json().catch(() => null));if (!parsed.success) return NextResponse.json({ error: 'Dados inválidos.', fields: parsed.error.flatten().fieldErrors }, { status: 400 })
   const allowed = new Set<string>(PUBLIC_FIELD_SECTIONS[parsed.data.section])
   const entries = Object.entries(parsed.data.fields).filter(([key]) => allowed.has(key))
   const cpf = parsed.data.fields.cpf

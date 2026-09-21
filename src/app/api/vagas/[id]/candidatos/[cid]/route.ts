@@ -5,7 +5,8 @@ import { unlink } from 'fs/promises'
 import path from 'path'
 import { CANDIDATO_STATUS_APROVADO, devePromoverParaAdmissao } from '@/lib/vagaStatus'
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string; cid: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string; cid: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)
@@ -13,9 +14,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
 
   const vaga = await prisma.vaga.findUnique({ where: { id: params.id } })
   if (!vaga) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const _u: string[] = (session!.user as any).unitIds?.length ? (session!.user as any).unitIds : (session!.user.unitId ? [session!.user.unitId] : []); if (session!.user.role === 'ANALYST' && !_u.includes(vaga.unidadeId ?? '')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const _u: string[] = (session!.user as any).unitIds?.length ? (session!.user as any).unitIds : (session!.user.unitId ? [session!.user.unitId] : []);if (session!.user.role === 'ANALYST' && !_u.includes(vaga.unidadeId ?? '')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
   const body = await req.json()
   const candidato = await prisma.candidato.update({
@@ -55,7 +56,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
   return NextResponse.json(candidato)
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string; cid: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string; cid: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)
@@ -63,9 +65,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   const vaga = await prisma.vaga.findUnique({ where: { id: params.id } })
   if (!vaga) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const _u: string[] = (session!.user as any).unitIds?.length ? (session!.user as any).unitIds : (session!.user.unitId ? [session!.user.unitId] : []); if (session!.user.role === 'ANALYST' && !_u.includes(vaga.unidadeId ?? '')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const _u: string[] = (session!.user as any).unitIds?.length ? (session!.user as any).unitIds : (session!.user.unitId ? [session!.user.unitId] : []);if (session!.user.role === 'ANALYST' && !_u.includes(vaga.unidadeId ?? '')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
   const c = await prisma.candidato.findUnique({ where: { id: params.cid } })
 

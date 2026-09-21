@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { FaceVerificationStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { getAdmissionByPublicToken } from '@/lib/admission/service'
+import { getMutableAdmissionByPublicToken } from '@/lib/admission/service'
 import { getFaceProvider, FaceProviderRequestError } from '@/lib/admission/faceProvider'
 import { deletePrivateAdmissionFile, detectMime, readPrivateAdmissionFile, savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
@@ -18,13 +18,14 @@ function safeReason(error: unknown) {
   return error instanceof FaceProviderRequestError ? error.code : 'FACE_PROVIDER_ERROR'
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const rateKey = `${extractIp(req.headers) || 'unknown'}:face:${params.token.slice(-8)}`
   if (!checkPublicDocLinkRateLimit(rateKey).allowed) {
     return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   }
 
-  const token = await getAdmissionByPublicToken(params.token)
+  const token = await getMutableAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   const badgePhoto = token.admission.badgePhotos[0]
   if (!badgePhoto) return NextResponse.json({ error: 'Confirme primeiro a foto para o crachá.' }, { status: 409 })

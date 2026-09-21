@@ -9,7 +9,11 @@ export const dynamic = 'force-dynamic'
 const MIME_INLINE = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
 
 // Rota pública (sem sessão) — o candidato revê o próprio arquivo já enviado.
-export async function GET(req: NextRequest, { params }: { params: { token: string; fileId: string } }) {
+export async function GET(
+  req: NextRequest,
+  props: { params: Promise<{ token: string; fileId: string }> }
+) {
+  const params = await props.params;
   const ip = extractIp(req.headers) ?? 'unknown'
   const rl = checkPublicDocLinkRateLimit(`${params.token}:${ip}`)
   if (!rl.allowed) {
@@ -32,5 +36,5 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
       'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="${arquivo.nomeOriginal.replace(/"/g, '')}"`,
       'Cache-Control': 'private, no-store',
     },
-  })
+  });
 }

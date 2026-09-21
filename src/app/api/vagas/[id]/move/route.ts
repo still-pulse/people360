@@ -4,7 +4,8 @@ import { getSessionOrUnauthorized, forbidIfReadOnly } from '@/lib/apiHelpers'
 import { VagaStatus } from '@prisma/client'
 import { log, extractIp } from '@/lib/audit'
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)

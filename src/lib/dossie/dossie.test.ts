@@ -33,7 +33,7 @@ describe('formatação pt-BR', () => {
   })
   it('formata CPF e converte datas de entrada', () => {
     expect(fmtCpf('17694852879')).toBe('176.948.528-79')
-    expect(parseDateInput('2026-13-40')?.getUTCMonth()).toBeDefined()
+    expect(parseDateInput('2026-13-40')).toBeNull()
     expect(parseDateInput('')).toBeNull()
   })
   it('sanitiza nomes de arquivo (sem acento nem separadores)', () => {

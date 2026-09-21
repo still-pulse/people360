@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAdmissionByPublicToken } from '@/lib/admission/service'
+import { getAdmissionByPublicToken, getMutableAdmissionByPublicToken } from '@/lib/admission/service'
 import { readPrivateAdmissionFile, savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 
-export async function GET(_: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const token = await getAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   const photo = token.admission.badgePhotos[0]
@@ -22,10 +23,12 @@ export async function GET(_: NextRequest, { params }: { params: { token: string 
   })
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
-  const token = await getAdmissionByPublicToken(params.token); if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
-  const file = (await req.formData()).get('file'); if (!(file instanceof File)) return NextResponse.json({ error: 'Capture ou selecione a foto.' }, { status: 400 })
-  let saved; try { saved = await savePrivateAdmissionFile(token.admissionId, 'badge-photo', file) } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Foto inválida.' }, { status: 400 }) }
+export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
+  const token = await getMutableAdmissionByPublicToken(params.token)
+  if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  const file = (await req.formData()).get('file');if (!(file instanceof File)) return NextResponse.json({ error: 'Capture ou selecione a foto.' }, { status: 400 })
+  let saved;try { saved = await savePrivateAdmissionFile(token.admissionId, 'badge-photo', file) } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Foto inválida.' }, { status: 400 }) }
   if (!saved.mimeType.startsWith('image/')) return NextResponse.json({ error: 'Envie uma imagem JPG ou PNG.' }, { status: 400 })
   await prisma.$transaction([
     prisma.badgePhoto.create({ data: { admissionId: token.admissionId, originalPath: saved.storagePath, mimeType: saved.mimeType, sizeBytes: saved.sizeBytes, confirmedAt: new Date() } }),

@@ -6,10 +6,8 @@ import { erpnextConfigured } from '@/lib/erpnextClient'
 
 const ALLOWED = ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE']
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   if (!ALLOWED.includes(session!.user.role)) {
@@ -56,5 +54,5 @@ export async function GET(
     erpnextUrl: process.env.ERPNEXT_BASE_URL
       ? `${process.env.ERPNEXT_BASE_URL.replace(/\/$/, '')}/app/employee/${encodeURIComponent(row.erpnextId)}`
       : null,
-  })
+  });
 }

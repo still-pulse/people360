@@ -6,7 +6,8 @@ import { getValidDocumentoLink } from '@/lib/documentoLink'
 export const dynamic = 'force-dynamic'
 
 // Rota pública (sem sessão) — o candidato consulta o status do próprio checklist pelo token do link.
-export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const ip = extractIp(req.headers) ?? 'unknown'
   const rl = checkPublicDocLinkRateLimit(`${params.token}:${ip}`)
   if (!rl.allowed) {

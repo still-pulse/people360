@@ -142,7 +142,7 @@ export default function VagasControlePage() {
   const analystUnit = units.find((u) => u.id === analystUnitId)
 
   async function exportExcel() {
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
 
     const rows = filtered.map((v) => {
       const candidatoAtivo = v.controleCandidato?.nome ?? (v as any).candidatos?.[0]?.nome ?? null

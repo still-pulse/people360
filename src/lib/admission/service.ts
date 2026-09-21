@@ -35,6 +35,18 @@ export async function getAdmissionByPublicToken(rawToken: string, touch = false)
   return token
 }
 
+const PUBLIC_MUTABLE_STATUSES = new Set([
+  'LINK_SENT', 'IN_PROGRESS', 'AWAITING_DOCUMENTS', 'DOCUMENTS_UNDER_REVIEW',
+  'CORRECTION_REQUESTED', 'DOCUMENTS_APPROVED', 'FACE_VALIDATION_PENDING',
+  'CONTRACT_PENDING', 'SIGNATURE_PENDING',
+])
+
+/** Resolve o link somente enquanto o candidato ainda pode alterar a admissão. */
+export async function getMutableAdmissionByPublicToken(rawToken: string, touch = false) {
+  const token = await getAdmissionByPublicToken(rawToken, touch)
+  return token && PUBLIC_MUTABLE_STATUSES.has(token.admission.status) ? token : null
+}
+
 export async function createAdmissionRecord(input: {
   candidateId?: string; vacancyId?: string; unitId: string; ownerId?: string; createdById: string
   candidateName: string; candidateEmail?: string; candidatePhone?: string; jobTitle: string; department?: string
@@ -44,7 +56,10 @@ export async function createAdmissionRecord(input: {
   documentTypeIds?: string[]
 }) {
   const types = await ensureAdmissionDocumentTypes()
-  const requested = input.documentTypeIds?.length ? types.filter((type) => input.documentTypeIds!.includes(type.id)) : types.filter((type) => type.defaultSelected)
+  const selectedIds = new Set(input.documentTypeIds ?? [])
+  const requested = input.documentTypeIds?.length
+    ? types.filter((type) => type.required || selectedIds.has(type.id))
+    : types.filter((type) => type.required || type.defaultSelected)
   if (!requested.length) throw new Error('Selecione ao menos um documento a solicitar.')
   const generated = generateAdmissionToken()
   const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, input.validityDays ?? 7)) * 86400000)

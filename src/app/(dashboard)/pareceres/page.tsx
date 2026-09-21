@@ -69,7 +69,7 @@ export default function PareceresPage() {
   }
 
   async function exportExcel() {
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const rows = filtered.map((p) => ({
       Candidato: p.candidatoNome,
       Cargo: p.cargo,

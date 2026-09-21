@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { isIP } from 'net'
 import { prisma } from './prisma'
 
 export type AuditAction =
@@ -39,6 +40,18 @@ export async function log(payload: AuditPayload): Promise<void> {
   }
 }
 
+/** Auditoria obrigatória para operações regulatórias e de dossiê. */
+export async function logOrThrow(payload: AuditPayload): Promise<void> {
+  await prisma.auditLog.create({
+    data: {
+      ...payload,
+      details: payload.details === null || payload.details === undefined
+        ? Prisma.JsonNull
+        : (payload.details as Prisma.InputJsonValue),
+    },
+  })
+}
+
 // Extrai IP do request (Next.js headers)
 export function extractIp(headers: Headers | Record<string, string | string[] | undefined>): string | null {
   const get = (key: string): string | null => {
@@ -46,9 +59,11 @@ export function extractIp(headers: Headers | Record<string, string | string[] | 
     const v = (headers as Record<string, string | string[] | undefined>)[key]
     return Array.isArray(v) ? v[0] : (v ?? null)
   }
-  const forwarded = get('x-forwarded-for')
-  if (forwarded) return forwarded.split(',')[0].trim()
-  return get('x-real-ip')
+  if (process.env.TRUST_PROXY_HEADERS !== 'true') return null
+  const candidate = get('cf-connecting-ip') || get('x-forwarded-for')?.split(',')[0].trim() || get('x-real-ip')
+  if (!candidate) return null
+  const normalized = candidate.startsWith('::ffff:') ? candidate.slice(7) : candidate
+  return isIP(normalized) ? normalized : null
 }
 
 // Gera diff entre objeto antigo e novo (apenas campos alterados)

@@ -6,7 +6,8 @@ import { log, extractIp } from '@/lib/audit'
 
 const MIME_INLINE = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
 
-export async function GET(req: NextRequest, { params }: { params: { fileId: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ fileId: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   if (session!.user.role === 'JURIDICO') {
@@ -44,5 +45,5 @@ export async function GET(req: NextRequest, { params }: { params: { fileId: stri
       'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="${arquivo.nomeOriginal.replace(/"/g, '')}"`,
       'Cache-Control': 'private, no-store',
     },
-  })
+  });
 }

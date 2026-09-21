@@ -462,7 +462,7 @@ function ListaTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function exportExcel() {
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const rows = filtered.map((c) => ({
       'Nome': c.nome, 'Telefone': c.telefone ?? '', 'Função': c.funcao,
       'Data do Processo': formatDate(c.dataProcesso), 'Analistas': c.analistas?.map((a) => a.name).join(', ') ?? '',

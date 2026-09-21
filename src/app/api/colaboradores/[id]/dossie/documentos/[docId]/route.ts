@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { changeStatus, DossieError, duplicateDocumento, generateDraft, updateDraft } from '@/lib/dossie/documentos'
+import { changeStatus, DossieError, duplicateDocumento, generateDraft, unpackDocumentData, updateDraft } from '@/lib/dossie/documentos'
 import { dossieRoute, readJson } from '@/lib/dossie/http'
 import { roleCan } from '@/lib/dossie/permissions'
 import { HISTORY_TYPES } from '@/lib/dossie/history'
+import { decryptAdmissionText } from '@/lib/admission/security'
 
 /** Detalhe: dados informados, assinaturas, cadeia de versões e eventos relacionados. */
-export async function GET(req: NextRequest, { params }: { params: { id: string; docId: string } }) {
+export async function GET(
+  req: NextRequest,
+  props: { params: Promise<{ id: string; docId: string }> }
+) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.view', params.id, async ({ colaborador }) => {
     const document = await prisma.colaboradorDocumento.findFirst({
       where: { id: params.docId, colaboradorId: colaborador.id },
@@ -31,15 +36,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
     const events = await prisma.colaboradorHistorico.findMany({ where: { colaboradorId: colaborador.id, documentoId: document.id }, orderBy: { createdAt: 'desc' }, take: 30 })
     const { arquivoPath, ...rest } = document
     return NextResponse.json({
-      ...rest, temArquivo: !!arquivoPath,
+      ...rest, dados: unpackDocumentData(rest.dados), temArquivo: !!arquivoPath,
       versoes: sameType.filter((d) => chain.has(d.id)),
-      eventos: events.map((e) => ({ id: e.id, tipo: HISTORY_TYPES[e.tipo] ?? e.tipo, titulo: e.titulo, motivo: e.motivo, em: e.createdAt, por: e.responsavelNome })),
+      eventos: events.map((e) => ({ id: e.id, tipo: HISTORY_TYPES[e.tipo] ?? e.tipo, titulo: e.titulo, motivo: decryptAdmissionText(e.motivo), em: e.createdAt, por: e.responsavelNome })),
     })
   })
 }
 
 /** Ações: editar rascunho, gerar, duplicar, mudar status (inclui cancelar). Nunca há exclusão física. */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; docId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  props: { params: Promise<{ id: string; docId: string }> }
+) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.edit', params.id, async ({ colaborador, actor, ip }) => {
     const body = await readJson(req)
     const action = String(body.action || '')

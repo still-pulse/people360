@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { log } from '@/lib/audit'
+import { logOrThrow } from '@/lib/audit'
+import { encryptAdmissionText } from '@/lib/admission/security'
 import type { Actor } from './types'
 
 export const HISTORY_TYPES: Record<string, string> = {
@@ -40,7 +41,7 @@ export async function addHistorico(input: {
   return prisma.colaboradorHistorico.create({
     data: {
       colaboradorId: input.colaboradorId, tipo: input.tipo, dataEvento: input.dataEvento, titulo: input.titulo,
-      anterior: input.anterior ?? null, novo: input.novo ?? null, motivo: input.motivo ?? null,
+      anterior: encryptAdmissionText(input.anterior), novo: encryptAdmissionText(input.novo), motivo: encryptAdmissionText(input.motivo),
       documentoId: input.documentoId ?? null, aditivoId: input.aditivoId ?? null,
       responsavelId: input.actor?.id ?? null, responsavelNome: input.actor?.name ?? null,
     },
@@ -57,7 +58,7 @@ export async function auditDossie(input: {
   ip?: string | null
   details?: Record<string, unknown>
 }) {
-  await log({
+  await logOrThrow({
     userId: input.actor.id, userName: input.actor.name, userRole: input.actor.role ?? null,
     action: input.action, entity: `Colaborador/${input.entity}`, entityId: input.entityId ?? input.colaboradorId,
     entityName: input.colaboradorId, details: input.details ?? null, ip: input.ip ?? null,

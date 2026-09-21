@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { decryptAdmissionValue, encryptAdmissionValue } from '@/lib/admission/security'
+import { decryptAdmissionText, decryptAdmissionValue, encryptAdmissionValue } from '@/lib/admission/security'
 import type { Actor, DependenteSnap, Endereco, Sensivel, Snapshot } from './types'
 
 const STATUS_LABEL: Record<string, string> = { Active: 'Ativo', Left: 'Desligado', Suspended: 'Suspenso', Inactive: 'Inativo' }
@@ -38,11 +38,15 @@ export function formatEndereco(e: Endereco | undefined): string {
   return [street, e.bairro, city, e.cep && `CEP ${e.cep}`].filter(Boolean).join(' — ')
 }
 
-export function employerInfo() {
+export function employerInfo(unitId?: string | null) {
+  let configured: Record<string, { nome?: string; cnpj?: string; endereco?: string }> = {}
+  try { configured = JSON.parse(process.env.ADMISSION_EMPLOYERS_BY_UNIT || '{}') }
+  catch { configured = {} }
+  const unit = unitId ? configured[unitId] : undefined
   return {
-    nome: process.env.ADMISSION_EMPLOYER_NAME || 'BENEFICÊNCIA HOSPITALAR DE CESÁRIO LANGE',
-    cnpj: process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0015-16',
-    endereco: process.env.ADMISSION_EMPLOYER_ADDRESS || 'R. dos Jesuítas, 533, Cidade Industrial Satélite de São Paulo, Guarulhos/SP',
+    nome: unit?.nome || process.env.ADMISSION_EMPLOYER_NAME || 'BENEFICÊNCIA HOSPITALAR DE CESÁRIO LANGE',
+    cnpj: unit?.cnpj || process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0015-16',
+    endereco: unit?.endereco || process.env.ADMISSION_EMPLOYER_ADDRESS || 'R. dos Jesuítas, 533, Cidade Industrial Satélite de São Paulo, Guarulhos/SP',
   }
 }
 
@@ -68,10 +72,10 @@ export async function buildSnapshot(colaboradorId: string, asOf: Date = new Date
   const colaborador = await prisma.colaborador.findUnique({
     where: { id: colaboradorId },
     include: {
-      unit: { select: { name: true } },
+      unit: { select: { id: true, name: true } },
       perfil: true,
       dependentes: { where: { exclusaoEm: null }, orderBy: { nascimento: 'asc' } },
-      aditivos: { where: { vigencia: { lte: asOf } }, orderBy: [{ vigencia: 'asc' }, { createdAt: 'asc' }] },
+      aditivos: { where: { vigencia: { lte: asOf }, documento: { is: { status: 'VIGENTE' } } }, orderBy: [{ vigencia: 'asc' }, { createdAt: 'asc' }] },
     },
   })
   if (!colaborador) return null
@@ -125,7 +129,7 @@ export async function buildSnapshot(colaboradorId: string, asOf: Date = new Date
     situacao: STATUS_LABEL[colaborador.status] || colaborador.status,
     gestor: colaborador.reportsToName || '',
     banco: { banco: sensivel.banco?.banco || '', agencia: sensivel.banco?.agencia || '', conta: [sensivel.banco?.conta, sensivel.banco?.digito].filter(Boolean).join('-') },
-    empregador: employerInfo(),
+    empregador: employerInfo(colaborador.unit?.id),
     dependentes: colaborador.dependentes.map(toDependenteSnap),
     ultimaAlteracao: null,
     geradoEm: asOf.toISOString(),
@@ -137,10 +141,10 @@ export async function buildSnapshot(colaboradorId: string, asOf: Date = new Date
     snap.ultimaAlteracao = amendment.vigencia.toISOString()
     if (!target) continue
     if (target === 'salario') {
-      const value = Number(amendment.valorNovo)
+      const value = Number(decryptAdmissionText(amendment.valorNovo))
       if (Number.isFinite(value)) snap.salario = value
     } else {
-      ;(snap as Record<string, unknown>)[target] = amendment.valorNovo
+      ;(snap as Record<string, unknown>)[target] = decryptAdmissionText(amendment.valorNovo) ?? ''
     }
   }
   return snap

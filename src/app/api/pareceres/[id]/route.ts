@@ -45,10 +45,8 @@ async function getParecer(id: string) {
   })
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { error } = await getSessionOrUnauthorized()
   if (error) return error
 
@@ -57,10 +55,8 @@ export async function GET(
   return NextResponse.json(parecer)
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const forbidden = forbidIfReadOnly(session!.user.role)
@@ -142,10 +138,8 @@ export async function PUT(
   return NextResponse.json(parecer)
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const forbidden = forbidIfReadOnly(session!.user.role)

@@ -1,10 +1,11 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import type { ColaboradorAvaliacao, ColaboradorDocumento } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { decryptAdmissionText } from '@/lib/admission/security'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 import { fileSlug, fmtCpf, fmtDate, fmtDateTime, fmtMoney } from './format'
 import { getDocType, SECOES } from './catalog'
-import { renderStoredInto, resolveDocType } from './documentos'
+import { DossieError, renderStoredInto, resolveDocType } from './documentos'
 import { HISTORY_TYPES } from './history'
 import { loadColaboradorPhoto, type ColaboradorPhoto } from './photo'
 import { BRAND, loadLogo, PAGE, PdfBuilder, pdfSafe } from './pdf/engine'
@@ -48,15 +49,27 @@ const A4 = { w: 595.28, h: 841.89 }
 
 async function loadAttachments(rows: ColaboradorDocumento[]): Promise<Attachment[]> {
   const out: Attachment[] = []
+  const maxBytes = 50 * 1024 * 1024
+  const declaredBytes = rows.reduce((total, row) => total + (row.arquivoTamanho ?? 0), 0)
+  if (declaredBytes > maxBytes) throw new DossieError('Os anexos selecionados excedem o limite de 50 MB por exportação.', 413)
+  let loadedBytes = 0
+  let pages = 0
   for (const row of rows) {
     const bytes = row.arquivoPath ? await readDossieFile(row.arquivoPath) : null
     if (!bytes) { out.push({ row, kind: 'error', pages: 1 }); continue }
+    loadedBytes += bytes.length
+    if (loadedBytes > maxBytes) throw new DossieError('Os anexos selecionados excedem o limite de 50 MB por exportação.', 413)
     try {
       if (row.arquivoMime === 'application/pdf') {
         const pdf = await PDFDocument.load(bytes)
-        out.push({ row, kind: 'pdf', pdf, pages: Math.max(1, pdf.getPageCount()) })
-      } else out.push({ row, kind: 'image', bytes, pages: 1 })
-    } catch { out.push({ row, kind: 'error', pages: 1 }) }
+        const count = Math.max(1, pdf.getPageCount()); pages += count
+        out.push({ row, kind: 'pdf', pdf, pages: count })
+      } else { pages += 1; out.push({ row, kind: 'image', bytes, pages: 1 }) }
+      if (pages > 500) throw new DossieError('Os anexos selecionados excedem o limite de 500 páginas por exportação.', 413)
+    } catch (error) {
+      if (error instanceof DossieError) throw error
+      out.push({ row, kind: 'error', pages: 1 })
+    }
   }
   return out
 }
@@ -323,7 +336,7 @@ export async function buildDossierPdf(params: { colaboradorId: string; selecao: 
     pdf.title('HISTÓRICO DE ADITIVOS CONTRATUAIS')
     pdf.table({
       head: ['Nº', 'Vigência', 'Alteração', 'Anterior', 'Nova informação', 'Motivo'], widths: [9, 20, 36, 33, 33, 43], empty: 'Nenhum aditivo registrado.',
-      rows: aditivos.filter((a) => a.documento?.status !== 'CANCELADO').map((a) => [String(a.numero), fmtDate(a.vigencia), a.campoAlterado, a.tipoAlteracao === 'SALARIO' ? fmtMoney(a.valorAnterior) : (a.valorAnterior || '—'), a.tipoAlteracao === 'SALARIO' ? fmtMoney(a.valorNovo) : a.valorNovo, a.motivo]),
+      rows: aditivos.filter((a) => a.documento?.status === 'VIGENTE').map((a) => { const anterior = decryptAdmissionText(a.valorAnterior); const novo = decryptAdmissionText(a.valorNovo); return [String(a.numero), fmtDate(a.vigencia), decryptAdmissionText(a.campoAlterado) || '—', a.tipoAlteracao === 'SALARIO' ? fmtMoney(anterior) : (anterior || '—'), a.tipoAlteracao === 'SALARIO' ? fmtMoney(novo) : (novo || '—'), decryptAdmissionText(a.motivo) || '—'] }),
     })
     await renderItems(entry, aditivoItems, true)
   }

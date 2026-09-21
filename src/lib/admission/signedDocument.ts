@@ -22,7 +22,9 @@ type SignedDocumentInput = {
 
 // Helvetica padrão só codifica WinAnsi; qualquer outro caractere faria o pdf-lib lançar erro.
 function safe(text: string) {
-  return text.replace(/[^\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026]/g, '?')
+  return text
+    .replace(/[\u2010-\u2012]/g, '-')
+    .replace(/[^\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026]/g, '?')
 }
 
 function wrap(text: string, font: Awaited<ReturnType<PDFDocument['embedFont']>>, size: number, width: number) {

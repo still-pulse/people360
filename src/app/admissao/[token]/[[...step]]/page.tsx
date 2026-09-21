@@ -1,2 +1,5 @@
 import { CandidatePortal } from '@/components/admission/CandidatePortal'
-export default function Page({params}:{params:{token:string;step?:string[]}}){return <CandidatePortal token={params.token} step={params.step?.[0]||'inicio'}/>}
+export default async function Page(props:{params: Promise<{token:string;step?:string[]}>}) {
+  const params = await props.params;
+  return <CandidatePortal token={params.token} step={params.step?.[0]||'inicio'}/>
+}

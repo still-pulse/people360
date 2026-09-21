@@ -41,9 +41,9 @@ export async function loadLogo(): Promise<string | null> {
 /** Remove/normaliza caracteres que a fonte Helvetica padrão (WinAnsi) não codifica. */
 export function pdfSafe(text: string): string {
   return text
-    .replace(/[‐-‒]/g, '-').replace(/―/g, '—').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
-    .replace(/→/g, '->').replace(/ /g, ' ').replace(/\t/g, ' ')
-    .replace(/[^\u0009\u000A -~ -ÿ–—•…]/g, '?')
+    .replace(/[\u2010-\u2012]/g, '-').replace(/\u2015/g, '\u2014').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u2192/g, '->').replace(/\u00A0/g, ' ').replace(/\t/g, ' ')
+    .replace(/[^\u0009\u000A\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2022\u2026]/g, '?')
 }
 
 export class PdfBuilder {

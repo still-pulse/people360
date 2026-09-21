@@ -12,7 +12,11 @@ type ViaCepResponse = {
   uf?: string
 }
 
-export async function GET(req: NextRequest, { params }: { params: { token: string; cep: string } }) {
+export async function GET(
+  req: NextRequest,
+  props: { params: Promise<{ token: string; cep: string }> }
+) {
+  const params = await props.params;
   const rateKey = `${extractIp(req.headers) || 'unknown'}:cep:${params.token.slice(-8)}`
   if (!checkPublicDocLinkRateLimit(rateKey).allowed) {
     return NextResponse.json({ error: 'Muitas consultas de CEP. Aguarde alguns minutos.' }, { status: 429 })

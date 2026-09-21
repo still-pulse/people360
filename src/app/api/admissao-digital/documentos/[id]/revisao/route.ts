@@ -9,10 +9,11 @@ const schema = z.object({ action: z.enum(['approve', 'reject', 'resubmit']), rea
   if (v.action !== 'approve' && !v.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Informe o motivo.' })
 })
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const { session, error } = await getSessionOrUnauthorized(); if (error) return error
-  const forbidden = forbidIfReadOnly(session!.user.role); if (forbidden) return forbidden
-  const parsed = schema.safeParse(await req.json().catch(() => null)); if (!parsed.success) return NextResponse.json({ error: 'O motivo é obrigatório para reprovar ou solicitar reenvio.' }, { status: 400 })
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const { session, error } = await getSessionOrUnauthorized();if (error) return error
+  const forbidden = forbidIfReadOnly(session!.user.role);if (forbidden) return forbidden
+  const parsed = schema.safeParse(await req.json().catch(() => null));if (!parsed.success) return NextResponse.json({ error: 'O motivo é obrigatório para reprovar ou solicitar reenvio.' }, { status: 400 })
   const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: true, type: true } })
   if (!doc) return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 })
   if (!analystCanAccessUnit(session!, doc.admission.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })

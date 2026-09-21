@@ -4,7 +4,8 @@ import { dossieRoute } from '@/lib/dossie/http'
 import { DOSSIE_FILE_MAX_SIZE } from '@/lib/dossie/storage'
 
 /** Upload de anexos: valida tamanho, formato real (PDF/JPG/PNG por magic bytes) e categoria. */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.create', params.id, async ({ colaborador, actor, ip }) => {
     const form = await req.formData().catch(() => null)
     const file = form?.get('arquivo')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { decryptAdmissionText } from '@/lib/admission/security'
 import { amendmentValueLabel } from '@/lib/dossie/catalog'
 import { createAditivo, docFileName, previewAditivo } from '@/lib/dossie/documentos'
 import { isoDay } from '@/lib/dossie/format'
@@ -17,7 +18,8 @@ const aditivoSchema = z.object({
   mode: z.enum(['preview', 'generate']).default('generate'),
 })
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.view', params.id, async ({ colaborador }) => {
     const rows = await prisma.colaboradorAditivo.findMany({
       where: { colaboradorId: colaborador.id }, orderBy: [{ vigencia: 'desc' }, { numero: 'desc' }],
@@ -25,8 +27,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     })
     return NextResponse.json({
       items: rows.map((row) => ({
-        id: row.id, numero: row.numero, tipoAlteracao: row.tipoAlteracao, campoAlterado: row.campoAlterado, vigencia: row.vigencia, motivo: row.motivo,
-        anterior: amendmentValueLabel(row.tipoAlteracao, row.valorAnterior), novo: amendmentValueLabel(row.tipoAlteracao, row.valorNovo),
+        id: row.id, numero: row.numero, tipoAlteracao: row.tipoAlteracao, campoAlterado: decryptAdmissionText(row.campoAlterado), vigencia: row.vigencia, motivo: decryptAdmissionText(row.motivo),
+        anterior: amendmentValueLabel(row.tipoAlteracao, decryptAdmissionText(row.valorAnterior)), novo: amendmentValueLabel(row.tipoAlteracao, decryptAdmissionText(row.valorNovo)),
         documentoId: row.documento?.id ?? null, status: row.documento?.status ?? null, criadoPorNome: row.criadoPorNome, createdAt: row.createdAt,
       })),
     })
@@ -34,7 +36,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 /** Cria um novo aditivo (insert-only) ou devolve o preview em PDF. Não altera nem apaga aditivos anteriores. */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.amendments.create', params.id, async ({ colaborador, actor, ip }) => {
     const { mode, ...input } = aditivoSchema.parse(await readJson(req))
     if (mode === 'preview') {

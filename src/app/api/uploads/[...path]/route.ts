@@ -17,10 +17,8 @@ const MIME: Record<string, string> = {
   '.avi':  'video/x-msvideo',
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ path: string[] }> }) {
+  const params = await props.params;
   const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
   const filePath = path.join(uploadsDir, ...params.path)
 

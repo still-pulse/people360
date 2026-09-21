@@ -151,7 +151,7 @@ export default function RelatoriosPage() {
 
   async function exportExcel() {
     setIsExporting('excel')
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const columns = getColumns()
     const companyLabel = settings.companyName || 'BHCL'
     const reportLabel = reportOptions.find((r) => r.value === reportType)?.label ?? ''

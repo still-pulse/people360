@@ -89,7 +89,7 @@ export default function VagasListaPage() {
   }
 
   async function exportExcel() {
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const rows = filtered.map((v) => ({
       'Cargo': v.cargo,
       'Título': v.titulo,

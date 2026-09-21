@@ -4,7 +4,8 @@ import { dossieRoute } from '@/lib/dossie/http'
 import { loadTimeline, TIMELINE_GROUPS } from '@/lib/dossie/timeline'
 
 /** Linha do tempo funcional paginada. `grupo`: todos | salario | cargo | jornada | unidade. */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return dossieRoute(req, 'employee.documents.view', params.id, async ({ colaborador }) => {
     const q = req.nextUrl.searchParams
     const grupo = q.get('grupo') ?? 'todos'

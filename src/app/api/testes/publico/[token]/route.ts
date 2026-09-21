@@ -11,7 +11,8 @@ import {
 import { Prisma } from '@prisma/client'
 
 // GET — dados públicos do convite (sem scores)
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const convite = await getValidTesteConvite(params.token)
   if (!convite) {
     return NextResponse.json({ error: 'Link inválido ou inexistente' }, { status: 404 })
@@ -29,7 +30,8 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 }
 
 // POST — submete respostas; calcula no servidor; NÃO devolve scores (só admin vê)
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const convite = await getValidTesteConvite(params.token)
   if (!convite) {
     return NextResponse.json({ error: 'Link inválido ou inexistente' }, { status: 404 })
@@ -119,7 +121,8 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
 }
 
 // PATCH — marca como EM_ANDAMENTO (opcional, ao iniciar o teste)
-export async function PATCH(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function PATCH(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const convite = await getValidTesteConvite(params.token)
   if (!convite) {
     return NextResponse.json({ error: 'Link inválido ou inexistente' }, { status: 404 })

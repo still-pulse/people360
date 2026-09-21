@@ -24,7 +24,8 @@ async function checkAccess(vagaId: string, session: any) {
 }
 
 // Retorna o link mais recente do candidato (o único relevante para a tela de gestão)
-export async function GET(req: NextRequest, { params }: { params: { id: string; cid: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string; cid: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const { forbidden } = await checkAccess(params.id, session!)
@@ -49,7 +50,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
   return NextResponse.json(link)
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string; cid: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string; cid: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)
@@ -119,7 +121,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
   return NextResponse.json(link, { status: 201 })
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; cid: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string; cid: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)

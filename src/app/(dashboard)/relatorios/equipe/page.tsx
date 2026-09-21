@@ -113,7 +113,7 @@ export default function DesempenhoEquipePage() {
   async function exportExcel() {
     if (!data) return
     setExporting('excel')
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const wb   = XLSX.utils.book_new()
 
     // Planilha 1 — Tarefas

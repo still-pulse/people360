@@ -4,7 +4,8 @@ import { TaskStatus } from '@prisma/client'
 import { getSessionOrUnauthorized, analystCanAccessUnit } from '@/lib/apiHelpers'
 import { log, extractIp } from '@/lib/audit'
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 

@@ -266,7 +266,7 @@ export default function TestesPage() {
       alert('Erro ao exportar')
       return
     }
-    const XLSX = await import('xlsx')
+    const XLSX = await import('@/lib/xlsxSafe')
     const flat = rows.map((r: any) => {
       const base: Record<string, unknown> = {
         Tipo: TIPO_LABEL[r.tipo as TipoTeste] || r.tipo,

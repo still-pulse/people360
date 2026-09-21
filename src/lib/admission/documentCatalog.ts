@@ -55,7 +55,8 @@ export async function syncDocumentCatalog(force = false) {
     const doc = DOCUMENT_CATALOG[index]
     await prisma.admissionDocumentType.upsert({
       where: { key: doc.key },
-      update: { name: doc.name, description: doc.description ?? null, position: index + 1, requiresFrontBack: doc.requiresFrontBack ?? false, defaultSelected: doc.defaultSelected },
+      // O RH pode personalizar nome, descrição, ordem e seleção padrão. O boot só cria itens ausentes.
+      update: {},
       create: { key: doc.key, name: doc.name, description: doc.description, required: doc.required, position: index + 1, requiresFrontBack: doc.requiresFrontBack ?? false, defaultSelected: doc.defaultSelected },
     })
   }

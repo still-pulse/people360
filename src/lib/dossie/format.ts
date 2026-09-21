@@ -39,10 +39,11 @@ export function fmtCpf(value?: string | null): string {
 /** "AAAA-MM-DD" (ou ISO completo) → Date em UTC/meia-noite; devolve null se inválida. */
 export function parseDateInput(value: unknown): Date | null {
   if (typeof value !== 'string' || !value.trim()) return null
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim())
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?=$|T)/.exec(value.trim())
   if (!match) return null
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-  return Number.isNaN(date.getTime()) ? null : date
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null
 }
 
 export function toDateInput(value?: Date | string | null): string {

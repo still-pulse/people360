@@ -146,7 +146,7 @@ export default function AdmissaoDashboardPage() {
       if (unitId) params.set('unitId', unitId)
       const lista = await fetch(`/api/admissao?${params}`).then((r) => r.json())
 
-      const xlsxMod = await import('xlsx')
+      const xlsxMod = await import('@/lib/xlsxSafe')
       const XLSX = (xlsxMod as any).default ?? xlsxMod
       const wb = XLSX.utils.book_new()
       const company = settings?.companyName || 'BHCL'

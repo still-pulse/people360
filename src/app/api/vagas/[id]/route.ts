@@ -19,7 +19,8 @@ async function checkAccess(vagaId: string, session: any) {
   return { vaga, forbidden: false }
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(full)
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const ro = forbidIfReadOnly(session!.user.role)
@@ -159,7 +161,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
             if (body.requisicaoNextId === undefined) return undefined as any
             const raw = (body.requisicaoNextId || '').trim()
             if (!raw) return null
-            if (/^RP-\d{4}-\d+$/i.test(raw)) return raw.replace(/^rp-/i, 'RP-')
+            if (/^RP-\d{4}-\d+$/i.test(raw)) return raw.replace(/^rp-/i, 'RP-');
             if (/^\d{4}-\d+$/.test(raw)) return `RP-${raw}`
             return raw
           })(),
@@ -177,7 +179,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
           controleCandidato: { select: { id: true, nome: true, telefone: true, funcao: true } },
           _count: { select: { candidatos: true } },
         },
-      })
+      });
     })
 
     const statusMudou = newStatus !== vaga.status
@@ -223,7 +225,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 

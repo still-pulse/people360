@@ -8,7 +8,8 @@ function parseDate(value: string | null | undefined): Date | null {
   return new Date(value.length === 10 ? `${value}T12:00:00` : value)
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { error } = await getSessionOrUnauthorized()
   if (error) return error
 
@@ -21,7 +22,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json(candidato)
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 
@@ -62,7 +64,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(candidato)
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
 

@@ -58,7 +58,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { session, error } = await getSessionOrUnauthorized(); if (error) return error
-  const forbidden = forbidIfReadOnly(session!.user.role); if (forbidden) return forbidden
+  const actualRole = session!.user.actualRole ?? session!.user.role
+  if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para criar admissões.' }, { status: 403 })
+  const forbidden = forbidIfReadOnly(actualRole); if (forbidden) return forbidden
   const parsed = createSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
     const fields = parsed.error.flatten().fieldErrors
@@ -76,9 +78,15 @@ export async function POST(req: NextRequest) {
   parsed.data.weeklyHours = undefined
   const monthlyHours = ADMISSION_MONTHLY_HOURS
   if (!analystCanAccessUnit(session!, parsed.data.unitId)) return NextResponse.json({ error: 'Sem acesso a esta unidade.' }, { status: 403 })
+  if (parsed.data.vacancyId) {
+    const vacancy = await prisma.vaga.findUnique({ where: { id: parsed.data.vacancyId }, select: { unidadeId: true } })
+    if (!vacancy || vacancy.unidadeId !== parsed.data.unitId) return NextResponse.json({ error: 'A vaga selecionada não pertence à unidade informada.' }, { status: 400 })
+  }
   if (parsed.data.candidateId) {
-    const candidate = await prisma.candidato.findUnique({ where: { id: parsed.data.candidateId }, select: { status: true } })
+    const candidate = await prisma.candidato.findUnique({ where: { id: parsed.data.candidateId }, select: { status: true, vagaId: true, vaga: { select: { unidadeId: true } } } })
     if (!candidate || !['APROVADO', 'AGUARDANDO_ADMISSAO'].includes(candidate.status)) return NextResponse.json({ error: 'Selecione um candidato aprovado.' }, { status: 400 })
+    if (candidate.vaga?.unidadeId && candidate.vaga.unidadeId !== parsed.data.unitId) return NextResponse.json({ error: 'O candidato pertence a outra unidade.' }, { status: 400 })
+    if (parsed.data.vacancyId && candidate.vagaId && candidate.vagaId !== parsed.data.vacancyId) return NextResponse.json({ error: 'A vaga selecionada não corresponde à vaga do candidato.' }, { status: 400 })
   }
   let created: Awaited<ReturnType<typeof createAdmissionRecord>>
   try { created = await createAdmissionRecord({ ...parsed.data, monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
