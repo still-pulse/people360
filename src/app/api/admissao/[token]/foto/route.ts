@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAdmissionByPublicToken } from '@/lib/admission/service'
-import { savePrivateAdmissionFile } from '@/lib/admission/storage'
+import { readPrivateAdmissionFile, savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
+
+export async function GET(_: NextRequest, { params }: { params: { token: string } }) {
+  const token = await getAdmissionByPublicToken(params.token)
+  if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  const photo = token.admission.badgePhotos[0]
+  if (!photo) return NextResponse.json({ error: 'Foto não encontrada.' }, { status: 404 })
+  const file = await readPrivateAdmissionFile(photo.processedPath || photo.originalPath)
+  if (!file) return NextResponse.json({ error: 'Foto indisponível.' }, { status: 404 })
+  return new NextResponse(file, {
+    headers: {
+      'Content-Type': photo.mimeType,
+      'Content-Disposition': 'inline; filename="foto-cracha"',
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+}
 
 export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
   const token = await getAdmissionByPublicToken(params.token); if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })

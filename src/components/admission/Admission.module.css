@@ -126,12 +126,15 @@
 .choice { border:1px solid var(--adm-border); background:#fff; border-radius:11px; padding:14px; cursor:pointer; text-align:left }
 .choiceActive { border-color:var(--adm-primary); box-shadow:0 0 0 2px rgba(15,155,142,.12); background:#F5FBFA }
 .cameraFrame { aspect-ratio:3/4; max-height:430px; margin:12px auto; border-radius:50% 50% 44% 44%; border:3px solid var(--adm-primary); background:#E7EFEE; display:grid; place-items:center; color:var(--adm-subtle); overflow:hidden }
-.cameraFrame img { width:100%; height:100%; object-fit:cover }
+.cameraFrame img,.cameraFrame video { width:100%; height:100%; object-fit:cover }
+.cameraFrame video { transform:scaleX(-1) }
+.cameraActions { display:flex; justify-content:center; gap:9px; flex-wrap:wrap; margin-top:12px }
+.cameraActions > * { flex:1 1 160px }
 
 @media (max-width:1000px) { .kpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))} .grid2,.grid3{grid-template-columns:1fr} }
 @media (max-width:640px) {
   .module{padding:18px 14px 36px}.title{font-size:22px}.kpiGrid{grid-template-columns:1fr 1fr;gap:9px}.kpi{padding:13px;min-height:96px}.kpiValue{font-size:23px}
   .formGrid{grid-template-columns:1fr}.fieldWide{grid-column:auto}.button,.buttonPrimary,.buttonDanger{min-height:42px}.modalOverlay{align-items:flex-end;padding:0}.modal{border-radius:16px 16px 0 0;max-height:92vh}
-  .portalMain{padding:14px 12px 92px}.portalCard{padding:20px 16px}.portalNav{padding:10px 12px}.choiceGrid{grid-template-columns:1fr}.filterBar>*{flex-basis:100%}
+  .portalMain{padding:14px 12px 92px}.portalCard{padding:20px 16px}.portalNav{padding:10px 12px}.choiceGrid{grid-template-columns:1fr}.cameraActions>*{flex-basis:100%}.filterBar>*{flex-basis:100%}
   .module > div[style*='grid-template-columns']{grid-template-columns:1fr!important}.module > div[style*='grid-template-columns'] > main{min-height:560px}.module > div[style*='grid-template-columns'] > aside{max-height:none}
 }
