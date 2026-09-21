@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises'
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { randomBytes } from 'crypto'
 import path from 'path'
 
@@ -34,4 +34,10 @@ export async function readPrivateAdmissionFile(storagePath: string) {
   const resolved = path.resolve(ROOT, storagePath)
   if (!resolved.startsWith(ROOT + path.sep)) return null
   try { return await readFile(resolved) } catch { return null }
+}
+
+export async function deletePrivateAdmissionFile(storagePath: string) {
+  const resolved = path.resolve(ROOT, storagePath)
+  if (!resolved.startsWith(ROOT + path.sep)) return false
+  try { await unlink(resolved); return true } catch { return false }
 }

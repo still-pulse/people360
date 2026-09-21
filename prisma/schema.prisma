@@ -1392,16 +1392,20 @@ model BadgePhoto {
 }
 
 model FaceVerification {
-  id             String                 @id @default(cuid())
-  admissionId    String
-  provider       String                 @default("mock")
-  providerRef    String?
-  status         FaceVerificationStatus @default(NOT_STARTED)
-  attempts       Int                    @default(0)
-  resultMetadata Json?
-  completedAt    DateTime?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  id               String                 @id @default(cuid())
+  admissionId      String
+  provider         String                 @default("mock")
+  providerRef      String?
+  status           FaceVerificationStatus @default(NOT_STARTED)
+  attempts         Int                    @default(0)
+  capturePath      String?
+  captureMimeType  String?
+  captureSizeBytes Int?
+  capturedAt       DateTime?
+  resultMetadata   Json?
+  completedAt      DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
 

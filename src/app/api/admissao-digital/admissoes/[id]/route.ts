@@ -10,7 +10,8 @@ const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
   owner: { select: { id: true, name: true } }, tokens: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { expiresAt: true, revokedAt: true, tokenHint: true } },
   fields: true, dependents: true, transport: { include: { routes: true } }, documents: { include: { type: true, reviewedBy: { select: { name: true } } }, orderBy: { type: { position: 'asc' as const } } },
-  badgePhotos: { orderBy: { createdAt: 'desc' as const }, take: 1 }, faceVerifications: { orderBy: { createdAt: 'desc' as const }, take: 1 },
+  badgePhotos: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, confirmedAt: true, createdAt: true } },
+  faceVerifications: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, provider: true, status: true, attempts: true, resultMetadata: true, completedAt: true, capturedAt: true, createdAt: true, updatedAt: true } },
   generatedDocuments: { include: { template: true } }, signatureEnvelopes: { include: { events: { orderBy: { createdAt: 'desc' as const } } } },
   erpnextSyncs: { orderBy: { createdAt: 'desc' as const } }, auditLogs: { orderBy: { createdAt: 'desc' as const }, take: 100 },
 }
@@ -67,7 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }
       await prisma.$transaction([
         prisma.faceVerification.update({ where: { id: verification.id }, data: { status: 'REJECTED', completedAt: null } }),
-        prisma.admission.update({ where: { id: current.id }, data: { currentStep: 'foto', lastActivityAt: new Date() } }),
+        prisma.admission.update({ where: { id: current.id }, data: { currentStep: 'validacao-facial', lastActivityAt: new Date() } }),
       ])
     }
   } else return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 })

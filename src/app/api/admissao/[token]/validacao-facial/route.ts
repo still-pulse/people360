@@ -3,7 +3,7 @@ import type { FaceVerificationStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getAdmissionByPublicToken } from '@/lib/admission/service'
 import { getFaceProvider, FaceProviderRequestError } from '@/lib/admission/faceProvider'
-import { detectMime, readPrivateAdmissionFile } from '@/lib/admission/storage'
+import { deletePrivateAdmissionFile, detectMime, readPrivateAdmissionFile, savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
@@ -26,8 +26,8 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
 
   const token = await getAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
-  const selfie = token.admission.badgePhotos[0]
-  if (!selfie) return NextResponse.json({ error: 'Confirme primeiro a foto para o crachá.' }, { status: 409 })
+  const badgePhoto = token.admission.badgePhotos[0]
+  if (!badgePhoto) return NextResponse.json({ error: 'Confirme primeiro a foto para o crachá.' }, { status: 409 })
   if (token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')) {
     return NextResponse.json({ error: 'Aguarde a aprovação dos documentos obrigatórios pelo RH.' }, { status: 409 })
   }
@@ -86,6 +86,20 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   const attempt = current.attempts + 1
 
   try {
+    const savedCapture = await savePrivateAdmissionFile(token.admissionId, 'face-captures', capture)
+    await prisma.faceVerification.update({
+      where: { id: current.id },
+      data: {
+        capturePath: savedCapture.storagePath,
+        captureMimeType: savedCapture.mimeType,
+        captureSizeBytes: savedCapture.sizeBytes,
+        capturedAt: new Date(),
+      },
+    })
+    if (current.capturePath && current.capturePath !== savedCapture.storagePath) {
+      await deletePrivateAdmissionFile(current.capturePath).catch(() => {})
+    }
+
     if (providerName === 'compreface' && (!selfieMime || !referenceMime)) {
       const reason = !referenceMime ? 'REFERENCE_DOCUMENT_NOT_IMAGE' : 'SELFIE_NOT_IMAGE'
       const verification = await prisma.faceVerification.update({
