@@ -1,0 +1,5 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { hashToken } from '@/lib/admission/security'
+
+export async function GET(_:Request,{params}:{params:{token:string}}){const doc=await prisma.generatedDocument.findUnique({where:{validationTokenHash:hashToken(params.token)},select:{validationCode:true,status:true,templateVersion:true,originalHash:true,finalHash:true,generatedAt:true,signedAt:true,template:{select:{name:true}},admission:{select:{protocol:true,candidateName:true,unit:{select:{name:true}}}}}});if(!doc)return NextResponse.json({error:'Documento não encontrado.'},{status:404});return NextResponse.json({valid:true,name:doc.template.name,version:doc.templateVersion,status:doc.status,protocol:doc.admission.protocol,signer:`${doc.admission.candidateName.split(' ')[0]} ${doc.admission.candidateName.split(' ').slice(-1)[0]?.[0]||''}.`,unit:doc.admission.unit.name,generatedAt:doc.generatedAt,signedAt:doc.signedAt,hash:doc.finalHash||doc.originalHash,validationCode:doc.validationCode})}

@@ -55,4 +55,4 @@ ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
 # --skip-generate: client já foi gerado no stage builder; só sincroniza o schema
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --skip-generate && node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]

@@ -1,0 +1,7 @@
+import { NextRequest,NextResponse } from 'next/server'
+import { getAdmissionByPublicToken } from '@/lib/admission/service'
+import { generateAdmissionDocuments } from '@/lib/admission/documentGenerator'
+import { logAdmissionEvent } from '@/lib/admission/audit'
+import { extractIp } from '@/lib/audit'
+
+export async function POST(req:NextRequest,{params}:{params:{token:string}}){const token=await getAdmissionByPublicToken(params.token);if(!token)return NextResponse.json({error:'Link inválido ou expirado.'},{status:404});const pending=token.admission.documents.filter(d=>d.type.required&&d.status!=='APPROVED').length;if(pending)return NextResponse.json({error:'Os documentos obrigatórios ainda não foram aprovados pelo RH.'},{status:409});if(token.admission.faceVerifications[0]?.status!=='APPROVED')return NextResponse.json({error:'Conclua a validação facial.'},{status:409});try{const docs=await generateAdmissionDocuments(token.admissionId,req.nextUrl.origin);await logAdmissionEvent({admissionId:token.admissionId,actorName:token.admission.candidateName,actorType:'CANDIDATE',action:'DOCUMENTS_GENERATED',ip:extractIp(req.headers),userAgent:req.headers.get('user-agent'),metadata:{count:docs.length}});return NextResponse.json({documents:docs.map(d=>({id:d.id,status:d.status,validationUrl:'validationUrl'in d?d.validationUrl:undefined}))})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Falha ao gerar documentos.'},{status:500})}}

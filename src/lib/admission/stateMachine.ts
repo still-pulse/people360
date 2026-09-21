@@ -1,0 +1,28 @@
+import type { AdmissionStatus } from '@prisma/client'
+
+const transitions: Record<AdmissionStatus, AdmissionStatus[]> = {
+  DRAFT: ['LINK_SENT', 'CANCELLED'],
+  LINK_SENT: ['IN_PROGRESS', 'EXPIRED', 'CANCELLED'],
+  IN_PROGRESS: ['AWAITING_DOCUMENTS', 'DOCUMENTS_UNDER_REVIEW', 'CANCELLED', 'EXPIRED'],
+  AWAITING_DOCUMENTS: ['DOCUMENTS_UNDER_REVIEW', 'CORRECTION_REQUESTED', 'CANCELLED', 'EXPIRED'],
+  DOCUMENTS_UNDER_REVIEW: ['CORRECTION_REQUESTED', 'DOCUMENTS_APPROVED', 'CANCELLED'],
+  CORRECTION_REQUESTED: ['AWAITING_DOCUMENTS', 'DOCUMENTS_UNDER_REVIEW', 'CANCELLED', 'EXPIRED'],
+  DOCUMENTS_APPROVED: ['FACE_VALIDATION_PENDING', 'CONTRACT_PENDING', 'CANCELLED'],
+  FACE_VALIDATION_PENDING: ['CONTRACT_PENDING', 'CANCELLED'],
+  CONTRACT_PENDING: ['SIGNATURE_PENDING', 'CANCELLED'],
+  SIGNATURE_PENDING: ['SIGNED', 'CANCELLED', 'EXPIRED'],
+  SIGNED: ['READY_FOR_ERPNEXT', 'CANCELLED'],
+  READY_FOR_ERPNEXT: ['SYNCING', 'CANCELLED'],
+  SYNCING: ['SYNCED', 'ERPNEXT_ERROR'],
+  SYNCED: ['COMPLETED'],
+  ERPNEXT_ERROR: ['SYNCING', 'CANCELLED'],
+  COMPLETED: [], CANCELLED: [], EXPIRED: ['LINK_SENT', 'CANCELLED'],
+}
+
+export function canTransition(from: AdmissionStatus, to: AdmissionStatus) {
+  return transitions[from].includes(to)
+}
+
+export function assertTransition(from: AdmissionStatus, to: AdmissionStatus) {
+  if (!canTransition(from, to)) throw new Error(`Transição inválida: ${from} → ${to}`)
+}

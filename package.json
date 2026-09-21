@@ -18,6 +18,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:documento-tipos": "tsx prisma/seed-documento-tipos.ts",
+    "db:seed:admissao": "tsx prisma/seed-admission.ts",
+    "test:admissao": "vitest run src/lib/admission",
     "db:studio": "prisma studio"
   },
   "dependencies": {
@@ -79,7 +81,8 @@
     "prisma": "^5.16.1",
     "tailwindcss": "^3.4.6",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.9"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,

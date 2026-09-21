@@ -6,6 +6,10 @@ export default withAuth(
     const token = req.nextauth.token
     const pathname = req.nextUrl.pathname
 
+    // Portal público: o token forte da admissão é validado e limitado nas rotas de API.
+    const publicAdmission = /^\/admissao\/[^/]+(?:\/.*)?$/.test(pathname) && !pathname.startsWith('/admissao/lista')
+    if (publicAdmission) return NextResponse.next()
+
     // Usuário com senha temporária — força troca antes de qualquer coisa
     if (token?.mustChangePassword && pathname !== '/trocar-senha') {
       return NextResponse.redirect(new URL('/trocar-senha', req.url))
@@ -17,7 +21,7 @@ export default withAuth(
 
     // Superintendente só acessa: calendário, tarefas, vagas, candidatos, admissão, pareceres, colaboradores e evidências PCD
     if (token?.role === 'SUPERINTENDENT') {
-      const allowed = ['/calendario', '/tarefas', '/vagas', '/candidatos', '/admissao', '/pareceres', '/colaboradores', '/indicadores/pcd/evidencias', '/perfil', '/trocar-senha']
+      const allowed = ['/calendario', '/tarefas', '/vagas', '/candidatos', '/admissao', '/admissao-digital', '/pareceres', '/colaboradores', '/indicadores/pcd/evidencias', '/perfil', '/trocar-senha']
       const isAllowed = allowed.some((p) => pathname === p || pathname.startsWith(p + '/'))
       if (!isAllowed) return NextResponse.redirect(new URL('/calendario', req.url))
     }
@@ -46,7 +50,11 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token }) => !!token,
+      authorized: ({ token, req }) => {
+        const pathname = req.nextUrl.pathname
+        const publicAdmission = /^\/admissao\/[^/]+(?:\/.*)?$/.test(pathname) && !pathname.startsWith('/admissao/lista')
+        return publicAdmission || !!token
+      },
     },
   }
 )
@@ -69,6 +77,8 @@ export const config = {
     '/colaboradores/:path*',
     '/admissao',
     '/admissao/:path*',
+    '/admissao-digital',
+    '/admissao-digital/:path*',
     '/pareceres',
     '/pareceres/:path*',
     '/testes',
