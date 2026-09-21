@@ -35,11 +35,11 @@ export const ADMISSION_STEPS = [
 
 export const SENSITIVE_FIELD_KEYS = new Set([
   'cpf', 'rg', 'pis', 'bank', 'agency', 'account', 'accountDigit', 'accountType',
-  'motherName', 'fatherName', 'disability',
+  'motherName', 'fatherName', 'disability', 'disabilityDetails',
 ])
 
 export const PUBLIC_FIELD_SECTIONS = {
-  personal: ['name', 'birthDate', 'phone', 'messagePhone', 'email', 'rg', 'rgIssuedAt', 'rgIssuer', 'cpf', 'pis', 'birthCity', 'ethnicity', 'disability', 'fatherName', 'motherName', 'education', 'maritalStatus'],
+  personal: ['name', 'birthDate', 'phone', 'messagePhone', 'email', 'rg', 'rgIssuedAt', 'rgIssuer', 'cpf', 'pis', 'birthCity', 'ethnicity', 'disability', 'disabilityDetails', 'fatherName', 'motherName', 'education', 'maritalStatus'],
   address: ['zipCode', 'street', 'number', 'complement', 'district', 'city', 'state'],
   bank: ['bank', 'agency', 'account', 'accountDigit', 'accountType'],
 } as const
