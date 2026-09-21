@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { randomBytes, createHash } from 'crypto'
+import { readFile } from 'fs/promises'
+import path from 'path'
 
 const prisma = new PrismaClient()
 
@@ -10,15 +12,17 @@ const documentTypes = [
 ] as const
 
 const templates = [
-  {key:'contrato_trabalho',name:'Contrato de Trabalho',content:'Instrumento admissional de {{candidateName}}, para o cargo de {{jobTitle}}, na unidade {{unit}}, com admissão em {{hireDate}}. Protocolo {{protocol}}. Conteúdo jurídico sujeito à versão aprovada pela BHCL.'},
-  {key:'ficha_registro',name:'Ficha de Registro',content:'Ficha de registro de {{candidateName}}. Cargo: {{jobTitle}}. Unidade: {{unit}}. Tipo de contrato: {{contractType}}. Protocolo: {{protocol}}.'},
-  {key:'termo_vale_transporte',name:'Termo de Vale-Transporte',content:'Declaração de Vale-Transporte vinculada ao processo de {{candidateName}}, protocolo {{protocol}}. Aplicam-se o texto e a versão validados pelo Jurídico/DPO.'},
+  {key:'ficha_registro',name:'Ficha de Registro',version:1,content:'Ficha de registro de {{candidateName}}. Cargo: {{jobTitle}}. Unidade: {{unit}}. Tipo de contrato: {{contractType}}. Protocolo: {{protocol}}.'},
+  {key:'termo_vale_transporte',name:'Termo de Vale-Transporte',version:1,content:'Declaração de Vale-Transporte vinculada ao processo de {{candidateName}}, protocolo {{protocol}}. Opção: {{transportChoice}}. Itinerário: {{transportRoutes}}. Aplicam-se o texto e a versão validados pelo Jurídico/DPO.'},
 ] as const
 
 async function main(){
  for(const [key,name,position] of documentTypes)await prisma.admissionDocumentType.upsert({where:{key},update:{name,position,active:true},create:{key,name,position}})
- for(const t of templates)await prisma.documentTemplate.upsert({where:{key_version:{key:t.key,version:1}},update:{name:t.name,content:t.content,active:true},create:{...t,version:1,variables:{candidateName:'string',jobTitle:'string',unit:'string',hireDate:'date',protocol:'string'}}})
- console.log(`Admissão Digital: ${documentTypes.length} tipos e ${templates.length} templates configurados.`)
+ const contractContent=await readFile(path.join(process.cwd(),'prisma','templates','contrato-experiencia-v2.txt'),'utf8')
+ await prisma.documentTemplate.updateMany({where:{key:'contrato_trabalho'},data:{active:false}})
+ const configuredTemplates=[{key:'contrato_trabalho',name:'Contrato de Experiência',version:2,content:contractContent},...templates]
+ for(const t of configuredTemplates)await prisma.documentTemplate.upsert({where:{key_version:{key:t.key,version:t.version}},update:{name:t.name,content:t.content,active:true},create:{...t,variables:{candidateName:'string',jobTitle:'string',unit:'string',hireDate:'date',protocol:'string'}}})
+ console.log(`Admissão Digital: ${documentTypes.length} tipos e ${configuredTemplates.length} templates configurados.`)
  if(process.env.ADMISSION_SEED_DEMO!=='true')return
  const [user,unit]=await Promise.all([prisma.user.findFirst({where:{active:true,role:'ADMIN'}}),prisma.unit.findFirst({where:{active:true}})])
  if(!user||!unit){console.log('Demo não criada: execute o seed principal primeiro.');return}

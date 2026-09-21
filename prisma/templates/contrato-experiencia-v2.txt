@@ -1,0 +1,56 @@
+CONTRATO INDIVIDUAL DE TRABALHO — CONTRATO DE EXPERIÊNCIA
+
+Pelo presente instrumento particular de Contrato de Experiência, {{employerName}}, com sede em {{employerAddress}}, inscrita no CNPJ sob nº {{employerCnpj}}, doravante denominada EMPREGADORA, e {{candidateName}}, CPF nº {{cpf}}, RG nº {{rg}}, domiciliado(a) em {{addressFull}}, doravante denominado(a) EMPREGADO(A), firmam o presente contrato individual de trabalho, regido pelas cláusulas seguintes:
+
+1 — FUNÇÃO
+O(A) EMPREGADO(A) trabalhará para a EMPREGADORA na função de {{jobTitle}}, no departamento {{department}}, executando também atividades compatíveis com suas atribuições e determinadas pela EMPREGADORA.
+
+2 — LOCAL DE TRABALHO
+O local principal de trabalho será a unidade {{unit}}. A transferência temporária ou definitiva observará as hipóteses e condições previstas na legislação trabalhista vigente.
+
+3 — JORNADA
+Horário de trabalho: {{workSchedule}}.
+Intervalo: {{breakSchedule}}.
+Carga horária semanal: {{weeklyHours}}.
+
+4 — REMUNERAÇÃO
+O(A) EMPREGADO(A) receberá salário mensal de {{salary}}. Adicional de insalubridade informado para a contratação: {{hazardPayPercentage}}.
+
+5 — PRAZO
+Este contrato inicia-se em {{hireDate}}, pelo prazo de {{experienceDays}}, com término previsto em {{contractEndDate}}. Eventual prorrogação deverá ser formalizada e respeitar os limites legais.
+
+6 — DESCONTOS E RESPONSABILIDADES
+Além dos descontos previstos em lei, poderão ser descontadas as importâncias correspondentes a danos causados pelo(a) EMPREGADO(A), quando presentes os requisitos legais aplicáveis.
+
+7 — NORMAS INTERNAS E SEGURANÇA
+O(A) EMPREGADO(A) declara ciência do regulamento interno, das normas de segurança e da obrigação de utilizar os equipamentos de proteção fornecidos para o exercício de suas atividades.
+
+8 — CONTINUIDADE
+Permanecendo o(a) EMPREGADO(A) a serviço da EMPREGADORA após o término da experiência, continuarão em vigor as cláusulas compatíveis deste contrato, observada a legislação aplicável.
+
+9 — RESCISÃO ANTECIPADA
+A rescisão antecipada observará as disposições legais aplicáveis aos contratos por prazo determinado, inclusive os artigos 479 e 480 da Consolidação das Leis do Trabalho, quando cabíveis.
+
+DADOS DA ADMISSÃO
+Protocolo: {{protocol}}
+Tipo de contratação: {{contractType}}
+Vaga: {{vacancyTitle}}
+Data de admissão: {{hireDate}}
+Unidade: {{unit}}
+
+DADOS DO(A) EMPREGADO(A)
+Nome: {{candidateName}}
+Data de nascimento: {{birthDate}}
+CPF: {{cpf}}
+RG: {{rg}} — órgão emissor {{rgIssuer}} — expedição {{rgIssuedAt}}
+PIS: {{pis}}
+Estado civil: {{maritalStatus}}
+Grau de instrução: {{education}}
+Filiação: {{fatherName}} / {{motherName}}
+Endereço: {{addressFull}}
+Telefone: {{phone}}
+E-mail: {{email}}
+
+As partes declaram que leram e compreenderam este instrumento. A assinatura eletrônica e suas evidências técnicas serão anexadas ao PDF final.
+
+{{city}}, {{signatureDateLong}}.

@@ -130,6 +130,10 @@
 .cameraFrame video { transform:scaleX(-1) }
 .cameraActions { display:flex; justify-content:center; gap:9px; flex-wrap:wrap; margin-top:12px }
 .cameraActions > * { flex:1 1 160px }
+.signatureBlock { margin:16px 0; display:flex; flex-wrap:wrap; align-items:center; gap:10px }
+.signatureBlock .label { width:100% }
+.signatureCanvas { display:block; width:100%; height:180px; border:1px solid #C7D6D4; border-radius:11px; background:#fff; box-shadow:inset 0 -1px 0 #EEF3F2; touch-action:none; cursor:crosshair }
+.signatureBlock .saveState { margin-left:auto }
 
 .helpWelcomeOverlay { position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; padding:18px; background:rgba(12,44,42,.6) }
 .helpWelcomeDialog { width:min(440px,100%); border:1px solid rgba(255,255,255,.35); border-radius:16px; background:#fff; padding:25px; box-shadow:0 24px 70px rgba(6,44,38,.3) }

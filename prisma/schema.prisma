@@ -1457,18 +1457,26 @@ model GeneratedDocument {
 }
 
 model SignatureEnvelope {
-  id            String                  @id @default(cuid())
-  admissionId   String
-  documentId    String
-  provider      String                  @default("mock")
-  providerRef   String?                 @unique
-  signerName    String
-  signerEmail   String?
-  status        SignatureEnvelopeStatus @default(CREATED)
-  transactionId String?                 @unique
-  signedAt      DateTime?
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
+  id                String                  @id @default(cuid())
+  admissionId       String
+  documentId        String
+  provider          String                  @default("mock")
+  providerRef       String?                 @unique
+  signerName        String
+  signerEmail       String?
+  status            SignatureEnvelopeStatus @default(CREATED)
+  transactionId     String?                 @unique
+  signaturePath     String?
+  signatureMimeType String?
+  signatureHash     String?
+  signedIp          String?
+  signedUserAgent   String?
+  latitude          Float?
+  longitude         Float?
+  locationAccuracy  Float?
+  signedAt          DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   admission Admission         @relation(fields: [admissionId], references: [id], onDelete: Cascade)
   document  GeneratedDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)

@@ -5,6 +5,7 @@ import { createAdmissionToken } from '@/lib/admission/service'
 import { assertTransition } from '@/lib/admission/stateMachine'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
+import { decryptAdmissionValue } from '@/lib/admission/security'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -12,7 +13,8 @@ const include = {
   fields: true, dependents: true, transport: { include: { routes: true } }, documents: { include: { type: true, reviewedBy: { select: { name: true } } }, orderBy: { type: { position: 'asc' as const } } },
   badgePhotos: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, confirmedAt: true, createdAt: true } },
   faceVerifications: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, provider: true, status: true, attempts: true, resultMetadata: true, completedAt: true, capturedAt: true, createdAt: true, updatedAt: true } },
-  generatedDocuments: { include: { template: true } }, signatureEnvelopes: { include: { events: { orderBy: { createdAt: 'desc' as const } } } },
+  generatedDocuments: { select: { id: true, status: true, templateVersion: true, generatedAt: true, signedAt: true, validationCode: true, originalHash: true, finalHash: true, template: { select: { key: true, name: true } } } },
+  signatureEnvelopes: { select: { id: true, documentId: true, provider: true, signerName: true, signerEmail: true, status: true, transactionId: true, signedAt: true, signedIp: true, signedUserAgent: true, latitude: true, longitude: true, locationAccuracy: true, events: { orderBy: { createdAt: 'desc' as const }, select: { id: true, type: true, ip: true, userAgent: true, hash: true, metadata: true, createdAt: true } } } },
   erpnextSyncs: { orderBy: { createdAt: 'desc' as const } }, auditLogs: { orderBy: { createdAt: 'desc' as const }, take: 100 },
 }
 
@@ -21,8 +23,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   const item = await prisma.admission.findUnique({ where: { id: params.id }, include })
   if (!item) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!analystCanAccessUnit(session!, item.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
-  const canReviewBiometrics = ['ADMIN', 'ANALYST'].includes(session!.user.role)
-  return NextResponse.json(canReviewBiometrics ? item : { ...item, badgePhotos: [], faceVerifications: [] })
+  const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.role)
+  const response = canViewSensitiveData ? {
+    ...item,
+    fields: item.fields.map((field) => ({ ...field, value: field.sensitive ? decryptAdmissionValue(field.value) : field.value })),
+  } : { ...item, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
+  return NextResponse.json(response)
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
