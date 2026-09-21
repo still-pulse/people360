@@ -63,7 +63,7 @@ export function createCompreFaceProvider(options?: {
   const approveThreshold = options?.approveThreshold ?? envNumber('COMPREFACE_APPROVE_THRESHOLD', 0.75, 0, 1)
   const reviewThreshold = options?.reviewThreshold ?? envNumber('COMPREFACE_REVIEW_THRESHOLD', 0.45, 0, 1)
   const detectionThreshold = options?.detectionThreshold ?? envNumber('COMPREFACE_DETECTION_THRESHOLD', 0.8, 0, 1)
-  const timeoutMs = options?.timeoutMs ?? envNumber('COMPREFACE_TIMEOUT_MS', 30000, 1000, 120000)
+  const timeoutMs = options?.timeoutMs ?? envNumber('COMPREFACE_TIMEOUT_MS', 55000, 1000, 120000)
   const autoApprove = options?.autoApprove ?? booleanEnv('COMPREFACE_AUTO_APPROVE', false)
   const autoReject = options?.autoReject ?? booleanEnv('COMPREFACE_AUTO_REJECT', false)
   const fetchImpl = options?.fetchImpl ?? fetch

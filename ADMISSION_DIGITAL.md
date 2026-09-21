@@ -71,7 +71,7 @@ O teste automatizado `flow.e2e.test.ts` cobre o contrato completo dos providers 
 
 ## CompreFace
 
-O provider `compreface` faz comparação facial 1:1 entre a foto de crachá e o documento `rg_frente` aprovado. Ele não cadastra a pessoa em uma coleção do CompreFace e não trata o score isolado como prova de vida.
+O provider `compreface` faz comparação facial 1:1 entre uma nova captura feita na etapa de validação e o documento `rg_frente` aprovado. A captura é processada em memória, não substitui a foto do crachá e não é persistida como outro arquivo. O provider não cadastra a pessoa em uma coleção do CompreFace e não trata o score isolado como prova de vida.
 
 1. Crie no CompreFace uma aplicação e um serviço do tipo `VERIFICATION`.
 2. Mantenha o serviço acessível somente pela rede privada dos containers.

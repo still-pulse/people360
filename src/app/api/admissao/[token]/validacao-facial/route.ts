@@ -3,7 +3,7 @@ import type { FaceVerificationStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getAdmissionByPublicToken } from '@/lib/admission/service'
 import { getFaceProvider, FaceProviderRequestError } from '@/lib/admission/faceProvider'
-import { readPrivateAdmissionFile } from '@/lib/admission/storage'
+import { detectMime, readPrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
@@ -40,13 +40,36 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     return NextResponse.json({ error: 'Não encontramos o documento de identidade aprovado para a comparação.' }, { status: 409 })
   }
 
+  let capture: File | null = null
+  try {
+    const form = await req.formData()
+    const value = form.get('file')
+    capture = value instanceof File ? value : null
+  } catch {
+    return NextResponse.json({ error: 'Não foi possível ler a captura facial.' }, { status: 400 })
+  }
+  if (!capture || capture.size <= 0) {
+    return NextResponse.json({ error: 'Abra a câmera e faça uma nova captura para a validação facial.' }, { status: 400 })
+  }
+  const maximumCaptureBytes = 5 * 1024 * 1024
+  if (capture.size > maximumCaptureBytes) {
+    return NextResponse.json({ error: 'A captura facial deve ter no máximo 5 MB.' }, { status: 400 })
+  }
+  const captureBuffer = Buffer.from(await capture.arrayBuffer())
+  const captureType = detectMime(captureBuffer)
+  if (!captureType || !imageMimeTypes.has(captureType.mime)) {
+    return NextResponse.json({ error: 'A captura facial deve ser uma imagem JPG ou PNG válida.' }, { status: 400 })
+  }
+
   const current = token.admission.faceVerifications[0]
   if (!current) return NextResponse.json({ error: 'Registro de validação facial não encontrado.' }, { status: 409 })
   if (current.status === 'APPROVED') return NextResponse.json({ status: 'APPROVED', canRetry: false })
   if (current.status === 'MANUAL_REVIEW') {
     return NextResponse.json({ error: 'A comparação está aguardando revisão do RH.', status: 'MANUAL_REVIEW' }, { status: 409 })
   }
-  const staleAt = new Date(Date.now() - 2 * 60 * 1000)
+  const providerTimeout = Number(process.env.COMPREFACE_TIMEOUT_MS || 55000)
+  const staleAfterMs = Math.min(135000, Math.max(45000, providerTimeout + 15000))
+  const staleAt = new Date(Date.now() - staleAfterMs)
   if (current.status === 'IN_PROGRESS' && current.updatedAt > staleAt) {
     return NextResponse.json({ error: 'A validação já está sendo processada.' }, { status: 409 })
   }
@@ -58,7 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   if (!claimed.count) return NextResponse.json({ error: 'A validação já está sendo processada.' }, { status: 409 })
 
   const providerName = (process.env.FACE_VERIFICATION_PROVIDER || 'mock').toLowerCase()
-  const selfieMime = faceMime(selfie.mimeType)
+  const selfieMime = faceMime(captureType.mime)
   const referenceMime = faceMime(reference.mimeType)
   const attempt = current.attempts + 1
 
@@ -82,16 +105,13 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       return NextResponse.json({ status: 'MANUAL_REVIEW', canRetry: false, requiresHumanReview: true })
     }
 
-    const [selfieBuffer, referenceBuffer] = await Promise.all([
-      readPrivateAdmissionFile(selfie.originalPath),
-      readPrivateAdmissionFile(reference.storagePath),
-    ])
-    if (!selfieBuffer || !referenceBuffer) throw new Error('FACE_FILE_NOT_FOUND')
+    const referenceBuffer = await readPrivateAdmissionFile(reference.storagePath)
+    if (!referenceBuffer) throw new Error('FACE_FILE_NOT_FOUND')
 
     const provider = getFaceProvider()
     const result = await provider.verify({
       admissionId: token.admissionId,
-      selfie: { buffer: selfieBuffer, mimeType: selfie.mimeType, filename: `selfie.${selfieMime === 'image/png' ? 'png' : 'jpg'}` },
+      selfie: { buffer: captureBuffer, mimeType: captureType.mime, filename: `captura-facial.${selfieMime === 'image/png' ? 'png' : 'jpg'}` },
       reference: { buffer: referenceBuffer, mimeType: reference.mimeType || 'application/octet-stream', filename: `documento.${referenceMime === 'image/png' ? 'png' : referenceMime === 'image/jpeg' ? 'jpg' : 'bin'}` },
     })
     const status: FaceVerificationStatus = result.decision
@@ -122,6 +142,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
       metadata: {
         provider: provider.name, reason: result.reason, attempt,
+        captureMimeType: captureType.mime, captureSizeBytes: captureBuffer.length,
         decision: status, similarity: result.similarity ?? null,
         approveThreshold: result.metadata.approveThreshold ?? null,
         reviewThreshold: result.metadata.reviewThreshold ?? null,
@@ -130,6 +151,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     return NextResponse.json({ status, canRetry: status === 'REJECTED', requiresHumanReview: status === 'MANUAL_REVIEW' })
   } catch (error) {
     const reason = safeReason(error)
+    console.error('[admission-face] provider failure', { provider: providerName, reason, attempt })
     await prisma.faceVerification.update({
       where: { id: current.id },
       data: {
