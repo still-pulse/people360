@@ -5,7 +5,7 @@ import { analystCanAccessUnit, enforceUnitFilter, forbidIfReadOnly, getSessionOr
 import { createAdmissionRecord } from '@/lib/admission/service'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
-import { mockAdmissionNotificationProvider } from '@/lib/admission/providers'
+import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { decryptAdmissionValue, hashSensitive, maskCpf } from '@/lib/admission/security'
 import { ADMISSION_DEPARTMENTS, ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition } from '@/lib/admission/positions'
 
@@ -91,9 +91,9 @@ export async function POST(req: NextRequest) {
   let created: Awaited<ReturnType<typeof createAdmissionRecord>>
   try { created = await createAdmissionRecord({ ...parsed.data, monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Não foi possível criar a admissão.' }, { status: 400 }) }
-  const destination = parsed.data.candidatePhone || parsed.data.candidateEmail
-  if (destination) await mockAdmissionNotificationProvider.send({ channel: parsed.data.candidatePhone ? 'whatsapp' : 'email', destination, template: 'admission_invitation' })
-  await logAdmissionEvent({ admissionId: created.admission.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: 'ADMISSION_CREATED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { protocol: created.admission.protocol } })
   const base = process.env.NEXTAUTH_URL || req.nextUrl.origin
-  return NextResponse.json({ admission: created.admission, publicUrl: `${base}/admissao/${created.token}`, expiresAt: created.expiresAt }, { status: 201 })
+  const publicUrl = `${base}/admissao/${created.token}`
+  await notifyAdmissionCandidate({ ...created.admission, title: 'Sua admissão digital começou', message: 'O RH iniciou seu processo de admissão. Preencha os dados e envie os documentos solicitados pelo link abaixo.', portalUrl: publicUrl })
+  await logAdmissionEvent({ admissionId: created.admission.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: 'ADMISSION_CREATED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { protocol: created.admission.protocol } })
+  return NextResponse.json({ admission: created.admission, publicUrl, expiresAt: created.expiresAt }, { status: 201 })
 }

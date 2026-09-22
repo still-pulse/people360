@@ -15,6 +15,12 @@ O módulo pertence ao People360 e reutiliza NextAuth, Prisma/PostgreSQL, unidade
 | Modelos | `/admissao-digital/modelos` |
 | Central de Ajuda | `/admissao-digital/ajuda` |
 | Configurações | `/admissao-digital/configuracoes` |
+
+## Notificações por e-mail e WhatsApp
+
+O SMTP continua sendo configurado pelas variáveis `SMTP_*`. A Evolution API é configurada por um administrador em **Administração → Configurações → WhatsApp — Evolution API**. Informe a URL, o nome da instância e a `apikey`, salve e use **Gerar / atualizar QR Code** para conectar o aparelho. A chave é armazenada criptografada e não volta para o navegador.
+
+Convites, links renovados, aprovação/reprovação/reenvio de documentos, nova foto de crachá e inconsistências da validação facial são enviados aos dois canais disponíveis do candidato. Falhas externas de notificação não revertem a decisão do RH.
 | Auditoria | `/admissao-digital/auditoria` |
 | Portal do candidato | `/admissao/:token` e subetapas |
 | Validação pública | `/validar-documento/:token` |

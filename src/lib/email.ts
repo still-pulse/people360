@@ -72,8 +72,8 @@ const BRAND_COLOR = '#15AFA4'
 interface EmailTemplateParams {
   title: string
   body?: string
-  ctaLabel: string
-  ctaUrl: string
+  ctaLabel?: string
+  ctaUrl?: string
   footer?: string
 }
 
@@ -87,7 +87,7 @@ export function emailTemplate({ title, body, ctaLabel, ctaUrl, footer }: EmailTe
     <div style="background: #fff; border-radius: 0 0 12px 12px; padding: 24px; border: 1px solid #E5E7EB; border-top: none;">
       <h2 style="margin: 0 0 12px; font-size: 16px; color: #111827;">${title}</h2>
       ${body ? `<p style="margin: 0 0 20px; font-size: 14px; color: #4B5563; line-height: 1.5; white-space: pre-line;">${body}</p>` : ''}
-      <a href="${ctaUrl}" style="display: inline-block; background: ${BRAND_COLOR}; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 8px;">${ctaLabel}</a>
+      ${ctaLabel && ctaUrl ? `<a href="${ctaUrl}" style="display: inline-block; background: ${BRAND_COLOR}; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 8px;">${ctaLabel}</a>` : ''}
     </div>
     <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 16px;">${footer ?? 'Esta é uma notificação automática do People 360.'}</p>
   </div>

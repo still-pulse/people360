@@ -7,6 +7,7 @@ import { deletePrivateAdmissionFile, detectMime, readPrivateAdmissionFile, saveP
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
+import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 
 const imageMimeTypes = new Set(['image/jpeg', 'image/png'])
 
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   const token = await getMutableAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   const badgePhoto = token.admission.badgePhotos[0]
-  if (!badgePhoto) return NextResponse.json({ error: 'Confirme primeiro a foto para o crachá.' }, { status: 409 })
+  if (!badgePhoto?.confirmedAt) return NextResponse.json({ error: 'Confirme primeiro a foto para o crachá.' }, { status: 409 })
   if (token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')) {
     return NextResponse.json({ error: 'Aguarde a aprovação dos documentos obrigatórios pelo RH.' }, { status: 409 })
   }
@@ -114,6 +115,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
         ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
         metadata: { provider: providerName, reason, attempt },
       })
+      await notifyAdmissionCandidate({ ...token.admission, title: 'Validação facial em análise', message: 'A comparação facial apresentou uma inconsistência e foi encaminhada para análise do RH. Você será avisado sobre a próxima ação.' })
       return NextResponse.json({ status: 'MANUAL_REVIEW', canRetry: false, requiresHumanReview: true })
     }
 
@@ -160,6 +162,11 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
         reviewThreshold: result.metadata.reviewThreshold ?? null,
       },
     })
+    if (status !== 'APPROVED') await notifyAdmissionCandidate({
+      ...token.admission,
+      title: status === 'REJECTED' ? 'Nova captura facial necessária' : 'Validação facial em análise',
+      message: status === 'REJECTED' ? 'Não foi possível confirmar a captura facial. Acesse o mesmo link da admissão e faça uma nova foto com boa iluminação.' : 'A comparação facial apresentou uma inconsistência e foi encaminhada para análise do RH.',
+    })
     return NextResponse.json({ status, canRetry: status === 'REJECTED', requiresHumanReview: status === 'MANUAL_REVIEW' })
   } catch (error) {
     const reason = safeReason(error)
@@ -178,6 +185,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
       ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
       metadata: { provider: providerName, reason, attempt },
     }).catch(() => {})
+    await notifyAdmissionCandidate({ ...token.admission, title: 'Instabilidade na validação facial', message: 'Não foi possível concluir a validação facial agora. Aguarde alguns minutos e tente novamente pelo mesmo link da admissão.' }).catch(() => {})
     return NextResponse.json({
       error: 'Não foi possível concluir a validação agora. Tente novamente ou aguarde a revisão do RH.',
       status: 'ERROR', canRetry: true,

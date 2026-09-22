@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSettings } from '@/components/providers/SettingsProvider'
 import {
-  Upload, X, CheckCircle2, Building2, Loader2, ImageIcon, Trash2,
+  Upload, X, CheckCircle2, Building2, Loader2, ImageIcon, Trash2, QrCode, Wifi,
 } from 'lucide-react'
 
 export default function ConfiguracoesPage() {
@@ -246,7 +246,40 @@ export default function ConfiguracoesPage() {
             </div>
           </CardContent>
         </Card>
+
+        <EvolutionSettings />
       </div>
     </>
   )
+}
+
+type EvolutionState = { baseUrl:string;instance:string;hasApiKey:boolean;enabled:boolean;connected:boolean;state:string;error?:string;qrCode?:string;pairingCode?:string|null }
+
+function EvolutionSettings() {
+  const [data,setData]=useState<EvolutionState>({baseUrl:'',instance:'',hasApiKey:false,enabled:true,connected:false,state:'not_configured'})
+  const [apiKey,setApiKey]=useState('')
+  const [loading,setLoading]=useState(true)
+  const [saving,setSaving]=useState(false)
+  const [qrLoading,setQrLoading]=useState(false)
+  const [message,setMessage]=useState('')
+  async function load(){setLoading(true);try{const response=await fetch('/api/admin/evolution',{cache:'no-store'});const result=await response.json();if(response.ok)setData(result);else setMessage(result.error)}finally{setLoading(false)}}
+  useEffect(()=>{load()},[])
+  async function save(){setSaving(true);setMessage('');const response=await fetch('/api/admin/evolution',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseUrl:data.baseUrl,instance:data.instance,apiKey,enabled:data.enabled})});const result=await response.json();setSaving(false);if(!response.ok){setMessage(result.error||'Não foi possível salvar.');return}setApiKey('');setMessage('Configuração da Evolution API salva.');await load()}
+  async function qr(){setQrLoading(true);setMessage('');const response=await fetch('/api/admin/evolution?qr=1',{cache:'no-store'});const result=await response.json();setQrLoading(false);if(!response.ok){setMessage(result.error||'Não foi possível gerar o QR Code.');return}setData(current=>({...current,...result}))}
+  return <Card>
+    <CardHeader><CardTitle>WhatsApp — Evolution API</CardTitle></CardHeader>
+    <CardContent className="space-y-4">
+      <p className="text-sm text-gray-500">Configure a instância e leia o QR Code sem sair do painel. A chave fica criptografada e nunca é exibida novamente.</p>
+      {loading?<div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin"/>Carregando conexão…</div>:<>
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${data.connected?'bg-green-50 text-green-700':'bg-amber-50 text-amber-700'}`}><Wifi className="w-4 h-4"/>{data.connected?'WhatsApp conectado':data.state==='not_configured'?'Evolution API ainda não configurada':`Status: ${data.state}`}</div>
+        <label className="block text-sm font-medium text-gray-700">URL da Evolution API<Input className="mt-1" value={data.baseUrl} placeholder="https://evolution.suaempresa.com" onChange={event=>setData(current=>({...current,baseUrl:event.target.value}))}/></label>
+        <label className="block text-sm font-medium text-gray-700">Nome da instância<Input className="mt-1" value={data.instance} placeholder="people360" onChange={event=>setData(current=>({...current,instance:event.target.value}))}/></label>
+        <label className="block text-sm font-medium text-gray-700">Chave da API<Input className="mt-1" type="password" value={apiKey} placeholder={data.hasApiKey?'Chave já cadastrada — deixe vazio para manter':'Informe a apikey'} onChange={event=>setApiKey(event.target.value)}/></label>
+        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={data.enabled} onChange={event=>setData(current=>({...current,enabled:event.target.checked}))}/>Ativar notificações por WhatsApp</label>
+        {message&&<div className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700" role="status">{message}</div>}
+        <div className="flex gap-3"><Button isLoading={saving} onClick={save} disabled={!data.baseUrl||!data.instance||(!apiKey&&!data.hasApiKey)}>Salvar integração</Button><Button variant="secondary" icon={<QrCode className="w-4 h-4"/>} isLoading={qrLoading} onClick={qr} disabled={!data.hasApiKey}>Gerar / atualizar QR Code</Button></div>
+        {data.qrCode&&<div className="flex flex-col items-center rounded-xl border border-gray-200 p-5"><img src={data.qrCode} alt="QR Code para conectar o WhatsApp" className="h-64 w-64"/><p className="mt-3 text-center text-sm text-gray-600">No WhatsApp, abra <strong>Aparelhos conectados</strong> e escaneie este código.</p>{data.pairingCode&&<p className="mt-2 font-mono text-lg font-semibold">{data.pairingCode}</p>}</div>}
+      </>}
+    </CardContent>
+  </Card>
 }

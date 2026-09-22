@@ -7,6 +7,7 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp, log } from '@/lib/audit'
 import { deleteAdmissionStorage } from '@/lib/admission/storage'
 import { decryptAdmissionValue } from '@/lib/admission/security'
+import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -46,7 +47,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (action === 'renew-link' || action === 'resend-link') {
     const link = await createAdmissionToken(current.id, Number(body.validityDays || 7))
     if (current.status === 'EXPIRED') await prisma.admission.update({ where: { id: current.id }, data: { status: 'LINK_SENT', lastActivityAt: new Date() } })
-    response = { publicUrl: `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${link.token}`, expiresAt: link.expiresAt }
+    const publicUrl = `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${link.token}`
+    await notifyAdmissionCandidate({ ...current, title: action === 'renew-link' ? 'Novo link da admissão' : 'Lembrete da admissão digital', message: 'Use o link abaixo para continuar seu processo de admissão.', portalUrl: publicUrl })
+    response = { publicUrl, expiresAt: link.expiresAt }
   } else if (action === 'invalidate-link') {
     await prisma.admissionToken.updateMany({ where: { admissionId: current.id, revokedAt: null }, data: { revokedAt: new Date() } })
   } else if (action === 'cancel') {
@@ -58,10 +61,20 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       prisma.admission.update({ where: { id: current.id }, data: { status: 'SYNCING', lastActivityAt: new Date() } }),
       prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${current.id}` }, create: { admissionId: current.id, idempotencyKey: `admission:${current.id}`, status: 'RETRYING', attempts: 1, nextAttemptAt: new Date() }, update: { status: 'RETRYING', attempts: { increment: 1 }, nextAttemptAt: new Date(), lastError: null } }),
     ])
-  } else if (action === 'approve-face' || action === 'request-face-retry') {
+  } else if (action === 'approve-face' || action === 'request-face-retry' || action === 'request-badge-retry') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) {
       return NextResponse.json({ error: 'Sem permissão para revisar biometria.' }, { status: 403 })
     }
+    if (action === 'request-badge-retry') {
+      const reason = String(body.reason || '').trim()
+      if (!reason) return NextResponse.json({ error: 'Informe o motivo para solicitar uma nova foto.' }, { status: 400 })
+      await prisma.$transaction([
+        prisma.badgePhoto.updateMany({ where: { admissionId: current.id, confirmedAt: { not: null } }, data: { confirmedAt: null } }),
+        prisma.admission.update({ where: { id: current.id }, data: { currentStep: 'foto', status: 'CORRECTION_REQUESTED', lastActivityAt: new Date() } }),
+      ])
+      await notifyAdmissionCandidate({ ...current, title: 'Reenvio da foto do crachá', message: `O RH solicitou uma nova foto para o crachá. Motivo: ${reason}. Acesse o mesmo link da admissão para reenviar.` })
+      response = { requested: true }
+    } else {
     const verification = await prisma.faceVerification.findFirst({ where: { admissionId: current.id }, orderBy: { createdAt: 'desc' } })
     if (!verification) return NextResponse.json({ error: 'Validação facial não encontrada.' }, { status: 404 })
     if (action === 'approve-face') {
@@ -80,6 +93,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
         prisma.faceVerification.update({ where: { id: verification.id }, data: { status: 'REJECTED', completedAt: null } }),
         prisma.admission.update({ where: { id: current.id }, data: { currentStep: 'validacao-facial', lastActivityAt: new Date() } }),
       ])
+      await notifyAdmissionCandidate({ ...current, title: 'Nova validação facial solicitada', message: `Não foi possível concluir a validação facial${body.reason ? `: ${String(body.reason)}` : '.'} Acesse o mesmo link da admissão e faça uma nova captura.` })
+    }
     }
   } else return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 })
   await logAdmissionEvent({ admissionId: current.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: action.toUpperCase().replace(/-/g, '_'), ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { reason: body.reason } })

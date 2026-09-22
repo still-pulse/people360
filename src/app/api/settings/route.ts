@@ -7,7 +7,7 @@ import { log, extractIp } from '@/lib/audit'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const rows = await prisma.systemSettings.findMany()
+  const rows = await prisma.systemSettings.findMany({ where: { key: { not: 'evolutionApiKeyEncrypted' } } })
   const settings: Record<string, string> = {}
   for (const r of rows) settings[r.key] = r.value
   return NextResponse.json(settings)
