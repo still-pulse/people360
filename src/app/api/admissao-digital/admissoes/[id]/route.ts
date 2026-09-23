@@ -59,7 +59,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     if (!['ERPNEXT_ERROR', 'READY_FOR_ERPNEXT'].includes(current.status)) return NextResponse.json({ error: 'A integração não pode ser reprocessada neste status.' }, { status: 409 })
     await prisma.$transaction([
       prisma.admission.update({ where: { id: current.id }, data: { status: 'SYNCING', lastActivityAt: new Date() } }),
-      prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${current.id}` }, create: { admissionId: current.id, idempotencyKey: `admission:${current.id}`, status: 'RETRYING', attempts: 1, nextAttemptAt: new Date() }, update: { status: 'RETRYING', attempts: { increment: 1 }, nextAttemptAt: new Date(), lastError: null } }),
+      prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${current.id}` }, create: { admissionId: current.id, idempotencyKey: `admission:${current.id}`, status: 'RETRYING', nextAttemptAt: new Date() }, update: { status: 'RETRYING', nextAttemptAt: new Date(), lastError: null } }),
     ])
   } else if (action === 'approve-face' || action === 'request-face-retry' || action === 'request-badge-retry') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) {
