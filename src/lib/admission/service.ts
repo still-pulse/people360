@@ -57,8 +57,8 @@ export async function createAdmissionRecord(input: {
 }) {
   const types = await ensureAdmissionDocumentTypes()
   const selectedIds = new Set(input.documentTypeIds ?? [])
-  const requested = input.documentTypeIds?.length
-    ? types.filter((type) => type.required || selectedIds.has(type.id))
+  const requested = input.documentTypeIds !== undefined
+    ? types.filter((type) => selectedIds.has(type.id))
     : types.filter((type) => type.required || type.defaultSelected)
   if (!requested.length) throw new Error('Selecione ao menos um documento a solicitar.')
   const generated = generateAdmissionToken()
