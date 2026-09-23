@@ -8,6 +8,7 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
+import { renderPdfFirstPageAsJpeg } from '@/lib/admission/pdfImage'
 
 const imageMimeTypes = new Set(['image/jpeg', 'image/png'])
 
@@ -81,7 +82,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
 
   const providerName = (process.env.FACE_VERIFICATION_PROVIDER || 'mock').toLowerCase()
   const selfieMime = faceMime(captureType.mime)
-  const referenceMime = faceMime(reference.mimeType)
   const attempt = current.attempts + 1
 
   try {
@@ -97,6 +97,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
     })
     if (current.capturePath && current.capturePath !== savedCapture.storagePath) {
       await deletePrivateAdmissionFile(current.capturePath).catch(() => {})
+    }
+
+    const storedReference = await readPrivateAdmissionFile(reference.storagePath)
+    if (!storedReference) throw new Error('FACE_FILE_NOT_FOUND')
+    const storedReferenceType = detectMime(storedReference)?.mime
+    let referenceBuffer = storedReference
+    let referenceMime = faceMime(storedReferenceType)
+    if (storedReferenceType === 'application/pdf') {
+      referenceBuffer = await renderPdfFirstPageAsJpeg(storedReference)
+      referenceMime = 'image/jpeg'
     }
 
     if (providerName === 'compreface' && (!selfieMime || !referenceMime)) {
@@ -119,14 +129,11 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
       return NextResponse.json({ status: 'MANUAL_REVIEW', canRetry: false, requiresHumanReview: true })
     }
 
-    const referenceBuffer = await readPrivateAdmissionFile(reference.storagePath)
-    if (!referenceBuffer) throw new Error('FACE_FILE_NOT_FOUND')
-
     const provider = getFaceProvider()
     const result = await provider.verify({
       admissionId: token.admissionId,
       selfie: { buffer: captureBuffer, mimeType: captureType.mime, filename: `captura-facial.${selfieMime === 'image/png' ? 'png' : 'jpg'}` },
-      reference: { buffer: referenceBuffer, mimeType: reference.mimeType || 'application/octet-stream', filename: `documento.${referenceMime === 'image/png' ? 'png' : referenceMime === 'image/jpeg' ? 'jpg' : 'bin'}` },
+      reference: { buffer: referenceBuffer, mimeType: referenceMime || 'application/octet-stream', filename: `documento.${referenceMime === 'image/png' ? 'png' : referenceMime === 'image/jpeg' ? 'jpg' : 'bin'}` },
     })
     const status: FaceVerificationStatus = result.decision
     const approved = status === 'APPROVED'
