@@ -26,6 +26,20 @@ function asBool(v: unknown): boolean {
   return false
 }
 
+const CHILD_ROW_META = new Set(['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'idx', 'parent', 'parentfield', 'parenttype', 'doctype'])
+
+// Campos Table MultiSelect vêm como lista de linhas no documento completo e como texto na listagem.
+export function tableFieldText(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const items = value.flatMap((row) => {
+      if (row && typeof row === 'object') return Object.entries(row).filter(([key, v]) => !CHILD_ROW_META.has(key) && typeof v === 'string' && v.trim()).map(([, v]) => (v as string).trim())
+      return typeof row === 'string' && row.trim() ? [row.trim()] : []
+    })
+    return items.length ? [...new Set(items)].join(', ') : null
+  }
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 async function resolveUnidadeId(company?: string | null, branch?: string | null): Promise<string | null> {
   const units = await prisma.unit.findMany({ where: { active: true }, select: { id: true, name: true } })
   return resolveEmployeeUnit(units, company, branch)?.id ?? null
@@ -54,7 +68,7 @@ export function mapEmployeeToColaboradorData(doc: EmployeeDoc, unitId: string | 
     rg: (doc.custom_rg as string) || null,
     secao: (doc.custom_seção as string) || null,
     pcd: asBool(doc.custom_pessoa_com_deficiência),
-    tipoDeficiencia: (doc.custom_tipo_de_deficiencia as string) || null,
+    tipoDeficiencia: tableFieldText(doc.custom_tipo_de_deficiencia),
     etnia: (doc.custom_etnia as string) || null,
     cargaHoraria:
       doc.custom_carga_horária_mensal != null

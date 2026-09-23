@@ -22,3 +22,13 @@ describe('unidade do colaborador no ERPNext', () => {
     expect(resolveEmployeeUnit(units, '')).toBeNull()
   })
 })
+
+describe('tableFieldText', async () => {
+  const { tableFieldText } = await import('../erpnextEmployees')
+  it('converte linhas de Table MultiSelect em texto', () => {
+    expect(tableFieldText([])).toBeNull()
+    expect(tableFieldText([{ name: 'x1', idx: 1, parent: 'HR-EMP-1', doctype: 'Tipo Deficiencia Item', tipo_de_deficiencia: 'Física' }, { name: 'x2', tipo_de_deficiencia: 'Visual' }])).toBe('Física, Visual')
+    expect(tableFieldText('Auditiva')).toBe('Auditiva')
+    expect(tableFieldText(null)).toBeNull()
+  })
+})
