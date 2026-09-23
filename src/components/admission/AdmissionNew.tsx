@@ -18,7 +18,7 @@ export function AdmissionNew(){
  const [form,setForm]=useState({candidateId:'',candidateName:'',candidateEmail:'',candidatePhone:'',vacancyId:'',unitId:'',jobTitle:'',department:'',hireDate:'',hazardPayPercentage:'20',workSchedule:'',breakSchedule:'',contractType:'CLT - prazo indeterminado',experienceDays:'90',contractEndDate:'',ownerId:'',validityDays:'7'})
  const [docIds,setDocIds]=useState<string[]>([])
  const [processType,setProcessType]=useState<'ADMISSION'|'REGISTRATION_UPDATE'>('ADMISSION'),[collaboratorId,setCollaboratorId]=useState(''),[requestedSections,setRequestedSections]=useState<string[]>([])
- useEffect(()=>{fetch('/api/admissao-digital/meta').then(r=>r.json()).then((m:Meta)=>{setMeta(m);setDocIds(m.documentTypes.filter(d=>d.required||d.defaultSelected).map(d=>d.id))})},[])
+ useEffect(()=>{fetch('/api/admissao-digital/meta').then(async r=>{const data=await r.json();if(!r.ok)throw new Error(data.error||'Não foi possível carregar os colaboradores.');return data}).then((m:Meta)=>{setMeta(m);setDocIds(m.documentTypes.filter(d=>d.required||d.defaultSelected).map(d=>d.id))}).catch(err=>setError(err instanceof Error?err.message:'Não foi possível carregar os colaboradores.'))},[])
  const position=findPosition(form.jobTitle)
  function chooseCargo(cargo:string){const pos=findPosition(cargo);setForm(f=>({...f,jobTitle:pos?.cargo||'',department:pos?.departamento||f.department}))}
  const candidate=useMemo(()=>meta?.candidates.find(c=>c.id===form.candidateId),[meta,form.candidateId]);const vacancy=useMemo(()=>meta?.vacancies.find(v=>v.id===form.vacancyId),[meta,form.vacancyId])

@@ -1,3 +1,5 @@
+import { refreshColaboradorFromErpnext } from '@/lib/erpnextEmployees'
+import { erpnextConfigured } from '@/lib/erpnextClient'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
@@ -13,13 +15,14 @@ import { getPerfilView } from '@/lib/dossie/perfil'
 import { ADMISSION_DEPARTMENTS, ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition } from '@/lib/admission/positions'
 
 const FIELD_LABELS: Record<string, string> = {
+  collaboratorId: 'Colaborador', requestedSections: 'Seções para atualização',
   candidateName: 'Nome completo', candidateEmail: 'E-mail', candidatePhone: 'Telefone', unitId: 'Unidade', jobTitle: 'Cargo', department: 'Departamento',
   hireDate: 'Data prevista de admissão', workSchedule: 'Horário', contractType: 'Tipo de contrato', hazardPayPercentage: 'Insalubridade',
   experienceDays: 'Experiência (dias)', validityDays: 'Validade do link', documentTypeIds: 'Documentos necessários',
 }
 
-const createSchema = z.object({
-  processType: z.enum(['ADMISSION', 'REGISTRATION_UPDATE']).optional().default('ADMISSION'),
+const admissionSchema = z.object({
+  processType: z.literal('ADMISSION').default('ADMISSION'),
   collaboratorId: z.string().cuid().optional(),
   requestedSections: z.array(z.enum(['personal', 'address', 'bank', 'dependents', 'transport', 'documents', 'photo'])).max(7).optional(),
   candidateId: z.string().cuid().optional(), vacancyId: z.string().cuid().optional(), unitId: z.string().min(1),
@@ -29,6 +32,15 @@ const createSchema = z.object({
   workSchedule: z.string().max(120).optional(), breakSchedule: z.string().max(120).optional(), weeklyHours: z.coerce.number().int().min(1).max(80).optional(),
   contractType: z.string().min(2).max(80), experienceDays: z.coerce.number().int().min(0).max(365).optional(),
   contractEndDate: z.coerce.date().optional(), validityDays: z.coerce.number().int().min(1).max(30).default(7),
+  documentTypeIds: z.array(z.string().min(1)).max(60).optional(),
+})
+
+const registrationSchema = z.object({
+  processType: z.literal('REGISTRATION_UPDATE'),
+  collaboratorId: z.string().cuid(),
+  requestedSections: z.array(z.enum(['personal', 'address', 'bank', 'dependents', 'transport', 'documents', 'photo'])).max(7),
+  ownerId: z.string().cuid().optional(),
+  validityDays: z.coerce.number().int().min(1).max(30).default(7),
   documentTypeIds: z.array(z.string().min(1)).max(60).optional(),
 })
 
@@ -67,7 +79,8 @@ export async function POST(req: NextRequest) {
   const actualRole = session!.user.actualRole ?? session!.user.role
   if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para criar admissões.' }, { status: 403 })
   const forbidden = forbidIfReadOnly(actualRole); if (forbidden) return forbidden
-  const parsed = createSchema.safeParse(await req.json().catch(() => null))
+  const body = await req.json().catch(() => null)
+  const parsed = (body?.processType === 'REGISTRATION_UPDATE' ? registrationSchema : admissionSchema).safeParse(body)
   if (!parsed.success) {
     const fields = parsed.error.flatten().fieldErrors
     const names = Object.keys(fields).map((key) => FIELD_LABELS[key] ?? key)
@@ -76,7 +89,12 @@ export async function POST(req: NextRequest) {
   if (parsed.data.processType === 'REGISTRATION_UPDATE') {
     if (!parsed.data.collaboratorId) return NextResponse.json({ error: 'Selecione o colaborador.' }, { status: 400 })
     if (!parsed.data.requestedSections?.length) return NextResponse.json({ error: 'Selecione ao menos uma seção para atualização.' }, { status: 400 })
-    const collaborator = await prisma.colaborador.findUnique({ where: { id: parsed.data.collaboratorId }, include: { unit: { select: { id: true, name: true } } } })
+    let collaborator = await prisma.colaborador.findUnique({ where: { id: parsed.data.collaboratorId } })
+    if (collaborator && erpnextConfigured()) {
+      try { collaborator = await refreshColaboradorFromErpnext(collaborator.erpnextId) }
+      catch { return NextResponse.json({ error: 'Não foi possível consultar o colaborador no ERPNext. Tente novamente.' }, { status: 502 }) }
+    }
+    if (collaborator?.status !== 'Active') return NextResponse.json({ error: 'Colaborador não encontrado ou inativo.' }, { status: 404 })
     if (!collaborator || !collaborator.unitId || !analystCanAccessUnit(session!, collaborator.unitId)) return NextResponse.json({ error: 'Colaborador não encontrado ou sem unidade vinculada.' }, { status: 404 })
     if (parsed.data.requestedSections.includes('documents') && !parsed.data.documentTypeIds?.length) return NextResponse.json({ error: 'Selecione os documentos que deverão ser apresentados.' }, { status: 400 })
     const profile = await getPerfilView(collaborator.id) as Record<string, any>

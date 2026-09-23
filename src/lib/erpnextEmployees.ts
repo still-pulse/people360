@@ -1,3 +1,4 @@
+import { resolveEmployeeUnit } from './erpnextEmployeeUnit'
 /**
  * Sync Employee (ERPNext) → Colaborador (People360)
  */
@@ -25,23 +26,9 @@ function asBool(v: unknown): boolean {
   return false
 }
 
-function companyKey(name: string): string {
-  return name.split(' - ')[0].trim().toLowerCase()
-}
-
-async function resolveUnidadeId(company?: string | null): Promise<string | null> {
-  if (!company) return null
-  const units = await prisma.unit.findMany({
-    where: { active: true },
-    select: { id: true, name: true },
-  })
-  if (!units.length) return null
-  const c = company.trim().toLowerCase()
-  const key = companyKey(company)
-  let hit = units.find((u) => u.name.toLowerCase() === c)
-  if (hit) return hit.id
-  hit = units.find((u) => c.includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(key))
-  return hit?.id ?? null
+async function resolveUnidadeId(company?: string | null, branch?: string | null): Promise<string | null> {
+  const units = await prisma.unit.findMany({ where: { active: true }, select: { id: true, name: true } })
+  return resolveEmployeeUnit(units, company, branch)?.id ?? null
 }
 
 export function mapEmployeeToColaboradorData(doc: EmployeeDoc, unitId: string | null) {
@@ -126,7 +113,7 @@ export async function syncEmployeesFromErpnext(opts?: {
     return empty
   }
 
-  // Cache de company → unitId
+  // Cache de empresa + local de trabalho → unitId
   const unitCache = new Map<string, string | null>()
 
   for (let page = 0; page < maxPages; page++) {
@@ -150,12 +137,13 @@ export async function syncEmployeesFromErpnext(opts?: {
     for (const doc of batch) {
       try {
         let unitId: string | null = null
-        if (doc.company) {
-          if (unitCache.has(doc.company)) {
-            unitId = unitCache.get(doc.company)!
+        if (doc.company || doc.branch) {
+          const key = JSON.stringify([doc.company, doc.branch])
+          if (unitCache.has(key)) {
+            unitId = unitCache.get(key)!
           } else {
-            unitId = await resolveUnidadeId(doc.company)
-            unitCache.set(doc.company, unitId)
+            unitId = await resolveUnidadeId(doc.company, doc.branch)
+            unitCache.set(key, unitId)
           }
         }
         const data = mapEmployeeToColaboradorData(doc, unitId)
@@ -180,7 +168,7 @@ export async function syncEmployeesFromErpnext(opts?: {
 /** Atualiza um colaborador com GET completo no ERPNext (detalhe / refresh). */
 export async function refreshColaboradorFromErpnext(erpnextId: string) {
   const doc = await getEmployee(erpnextId)
-  const unitId = await resolveUnidadeId(doc.company)
+  const unitId = await resolveUnidadeId(doc.company, doc.branch)
   const data = mapEmployeeToColaboradorData(doc, unitId)
   return prisma.colaborador.upsert({
     where: { erpnextId: data.erpnextId },

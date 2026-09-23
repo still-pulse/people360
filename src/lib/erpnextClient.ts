@@ -261,6 +261,7 @@ export const EMPLOYEE_SYNC_FIELDS = [
   'employee_name',
   'status',
   'company',
+  'branch',
   'department',
   'designation',
   'cell_number',
@@ -291,6 +292,7 @@ export type EmployeeDoc = {
   employee_name?: string
   status?: string
   company?: string | null
+  branch?: string | null
   department?: string | null
   designation?: string | null
   cell_number?: string | null
