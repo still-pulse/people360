@@ -207,3 +207,8 @@ label.docRow > div { min-width:0 }
   .module > div[style*='grid-template-columns']{grid-template-columns:1fr!important}.module > div[style*='grid-template-columns'] > main{min-height:560px}.module > div[style*='grid-template-columns'] > aside{max-height:none}
   .helpGrid,.faceScoreBands{grid-template-columns:1fr}.helpWelcomeDialog{padding:21px}.helpWelcomeDialog .actions{flex-direction:column-reverse}.helpWelcomeDialog .actions>*{width:100%;justify-content:center}.helpWelcomePrimary{min-height:42px}
 }
+
+.suggest { position:relative }
+.suggestList { position:absolute; z-index:30; left:0; right:0; top:calc(100% + 4px); margin:0; padding:4px 0; list-style:none; max-height:240px; overflow-y:auto; background:#fff; border:1px solid var(--adm-border); border-radius:8px; box-shadow:0 8px 24px rgba(29,43,46,.14) }
+.suggestList li { padding:10px 12px; font:600 13px 'Public Sans'; color:var(--adm-ink); cursor:pointer }
+.suggestList li:hover,.suggestActive { background:#E9F6F4 }
