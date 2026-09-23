@@ -17,6 +17,13 @@ export async function createAdmissionToken(admissionId: string, validityDays = 7
   return { token: generated.token, expiresAt }
 }
 
+export async function createAdditionalAdmissionToken(admissionId: string, validityDays = 7) {
+  const generated = generateAdmissionToken()
+  const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, validityDays)) * 86400000)
+  await prisma.admissionToken.create({ data: { admissionId, tokenHash: generated.hash, tokenHint: generated.hint, expiresAt } })
+  return { token: generated.token, expiresAt }
+}
+
 export async function getAdmissionByPublicToken(rawToken: string, touch = false) {
   const token = await prisma.admissionToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },

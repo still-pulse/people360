@@ -9,12 +9,12 @@ export const statusLabel: Record<string, string> = {
   DOCUMENTS_UNDER_REVIEW:'Documentos em análise', CORRECTION_REQUESTED:'Correção solicitada', DOCUMENTS_APPROVED:'Documentos aprovados',
   FACE_VALIDATION_PENDING:'Validação facial pendente', CONTRACT_PENDING:'Contrato pendente', SIGNATURE_PENDING:'Aguardando assinatura',
   SIGNED:'Assinado', READY_FOR_ERPNEXT:'Pronto para ERPNext', SYNCING:'Sincronizando', SYNCED:'Sincronizado', ERPNEXT_ERROR:'Erro no ERPNext',
-  COMPLETED:'Concluída', CANCELLED:'Cancelada', EXPIRED:'Expirada', NOT_STARTED:'Não iniciada', PENDING:'Pendente',
+  COMPLETED:'Concluída', CANCELLED:'Cancelada', EXPIRED:'Expirada', NOT_STARTED:'Não iniciada', PENDING:'Pendente', UPLOADED:'Documento já enviado',
   MANUAL_REVIEW:'Revisão manual', ERROR:'Erro no processamento', APPROVED:'Aprovada', REJECTED:'Nova captura necessária',
 }
 
 export function statusTone(status: string) {
-  if (['COMPLETED','SYNCED','SIGNED','APPROVED','DOCUMENTS_APPROVED','SUCCESS'].includes(status)) return 'ok'
+  if (['COMPLETED','SYNCED','SIGNED','APPROVED','DOCUMENTS_APPROVED','SUCCESS','UPLOADED'].includes(status)) return 'ok'
   if (['ERPNEXT_ERROR','CANCELLED','REJECTED','ERROR'].includes(status)) return 'error'
   if (['LINK_SENT','AWAITING_DOCUMENTS','CORRECTION_REQUESTED','SIGNATURE_PENDING','EXPIRED','RESUBMISSION_REQUIRED'].includes(status)) return 'warn'
   return 'info'
