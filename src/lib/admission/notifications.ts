@@ -19,7 +19,7 @@ export async function notifyAdmissionCandidate(input: AdmissionNotification) {
     subject: `${input.title} — ${input.protocol}`,
     html: emailTemplate({ title: escapeHtml(input.title), body: escapeHtml(`Olá, ${input.candidateName.split(' ')[0]}.\n\n${input.message}\n\nProtocolo: ${input.protocol}`), ctaLabel: input.portalUrl ? 'Acessar admissão' : undefined, ctaUrl: input.portalUrl }),
   }))
-  if (input.candidatePhone) tasks.push(sendEvolutionText(input.candidatePhone, `Olá, ${input.candidateName.split(' ')[0]}!\n\n${input.message}\n\nProtocolo: ${input.protocol}${input.portalUrl ? `\n\nAcesse: ${input.portalUrl}` : ''}\nPeople 360`).catch((error) => {
+  if (input.candidatePhone) tasks.push(sendEvolutionText(input.candidatePhone, `Olá, ${input.candidateName.split(' ')[0]}!\n\n${input.message}\n\nProtocolo: ${input.protocol}${input.portalUrl ? `\n\nAcesse: ${input.portalUrl}` : ''}\nBHCL`).catch((error) => {
     console.error('[admission-whatsapp] Falha ao enviar:', error)
     return { error }
   }))

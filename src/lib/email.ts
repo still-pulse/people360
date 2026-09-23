@@ -77,19 +77,19 @@ interface EmailTemplateParams {
   footer?: string
 }
 
-/** Template HTML padrão das notificações por e-mail do People 360. */
+/** Template HTML padrão das notificações por e-mail da BHCL. */
 export function emailTemplate({ title, body, ctaLabel, ctaUrl, footer }: EmailTemplateParams) {
   return `
   <div style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #F8FAFB; padding: 24px;">
     <div style="background: ${BRAND_COLOR}; border-radius: 12px 12px 0 0; padding: 20px 24px;">
-      <span style="color: #fff; font-size: 18px; font-weight: 700;">People 360</span>
+      <span style="color: #fff; font-size: 18px; font-weight: 700;">BHCL</span>
     </div>
     <div style="background: #fff; border-radius: 0 0 12px 12px; padding: 24px; border: 1px solid #E5E7EB; border-top: none;">
       <h2 style="margin: 0 0 12px; font-size: 16px; color: #111827;">${title}</h2>
       ${body ? `<p style="margin: 0 0 20px; font-size: 14px; color: #4B5563; line-height: 1.5; white-space: pre-line;">${body}</p>` : ''}
       ${ctaLabel && ctaUrl ? `<a href="${ctaUrl}" style="display: inline-block; background: ${BRAND_COLOR}; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 8px;">${ctaLabel}</a>` : ''}
     </div>
-    <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 16px;">${footer ?? 'Esta é uma notificação automática do People 360.'}</p>
+    <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 16px;">${footer ?? 'Esta é uma notificação automática da BHCL.'}</p>
   </div>
   `.trim()
 }
@@ -136,7 +136,7 @@ export function digestEmailTemplate(sections: DigestSection[], dateLabel: string
   return `
   <div style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; background: #F8FAFB; padding: 24px;">
     <div style="background: ${BRAND_COLOR}; border-radius: 12px 12px 0 0; padding: 20px 24px;">
-      <span style="color: #fff; font-size: 18px; font-weight: 700;">People 360</span>
+      <span style="color: #fff; font-size: 18px; font-weight: 700;">BHCL</span>
       <div style="color: rgba(255,255,255,0.85); font-size: 12px; margin-top: 4px;">Resumo diário — ${dateLabel}</div>
     </div>
     <div style="background: #fff; border-radius: 0 0 12px 12px; padding: 24px; border: 1px solid #E5E7EB; border-top: none;">
@@ -146,7 +146,7 @@ export function digestEmailTemplate(sections: DigestSection[], dateLabel: string
       ${sectionHtml}
       <a href="${appUrl('/')}" style="display: inline-block; background: ${BRAND_COLOR}; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 8px;">Acessar o sistema</a>
     </div>
-    <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 16px;">Esta é uma notificação automática do People 360.</p>
+    <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 16px;">Esta é uma notificação automática da BHCL.</p>
   </div>
   `.trim()
 }
