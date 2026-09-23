@@ -178,14 +178,20 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   } catch (error) {
     const reason = safeReason(error)
     console.error('[admission-face] provider failure', { provider: providerName, reason, attempt })
-    await prisma.faceVerification.update({
-      where: { id: current.id },
-      data: {
-        provider: providerName,
-        status: 'ERROR',
-        resultMetadata: { provider: providerName, reason } satisfies Prisma.InputJsonObject,
-      },
-    })
+    await prisma.$transaction([
+      prisma.faceVerification.update({
+        where: { id: current.id },
+        data: {
+          provider: providerName,
+          status: 'ERROR',
+          resultMetadata: { provider: providerName, reason } satisfies Prisma.InputJsonObject,
+        },
+      }),
+      prisma.admission.update({
+        where: { id: token.admissionId },
+        data: { currentStep: 'validacao-facial', status: 'FACE_VALIDATION_PENDING', lastActivityAt: new Date() },
+      }),
+    ])
     await logAdmissionEvent({
       admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE',
       action: 'FACE_ERROR', resource: 'FaceVerification', resourceId: current.id,
