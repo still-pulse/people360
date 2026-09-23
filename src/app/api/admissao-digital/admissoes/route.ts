@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     const collaborator = await prisma.colaborador.findUnique({ where: { id: parsed.data.collaboratorId }, include: { unit: { select: { id: true, name: true } } } })
     if (!collaborator || !collaborator.unitId || !analystCanAccessUnit(session!, collaborator.unitId)) return NextResponse.json({ error: 'Colaborador não encontrado ou sem unidade vinculada.' }, { status: 404 })
     if (parsed.data.requestedSections.includes('documents') && !parsed.data.documentTypeIds?.length) return NextResponse.json({ error: 'Selecione os documentos que deverão ser apresentados.' }, { status: 400 })
-    const profile = await getPerfilView(collaborator.id)
+    const profile = await getPerfilView(collaborator.id) as Record<string, any>
     let created: Awaited<ReturnType<typeof createAdmissionRecord>>
     try {
       created = await createAdmissionRecord({
