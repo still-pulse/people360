@@ -13,6 +13,7 @@ const routes:Record<string,string>={inicio:'',dados:'dados',endereco:'endereco',
 const progress:Record<string,number>={inicio:4,dados:14,endereco:22,'dados-bancarios':30,dependentes:38,'vale-transporte':46,documentos:58,foto:68,'validacao-facial':76,revisao:84,assinatura:94,conclusao:100}
 const EDUCATION_OPTIONS=['Não alfabetizado','Ensino Fundamental incompleto','Ensino Fundamental completo','Ensino Médio incompleto','Ensino Médio completo','Ensino Técnico incompleto','Ensino Técnico completo','Ensino Superior incompleto','Ensino Superior completo','Pós-graduação completa','Mestrado completo','Doutorado completo']
 const MARITAL_STATUS_OPTIONS=['Solteiro(a)','Casado(a)','União estável','Separado(a)','Divorciado(a)','Viúvo(a)']
+const ETHNICITY_OPTIONS=['Branca','Preta','Parda','Amarela','Indígena','Não informado']
 const ACCOUNT_TYPE_OPTIONS=['Conta corrente','Conta poupança','Conta salário','Conta de pagamento']
 type PortalField={key:string;label:string;type?:string;inputMode?:'text'|'numeric'|'tel'|'email';format?:(value:unknown)=>string;maxLength?:number;options?:string[];suggestions?:string[];placeholder?:string;required?:boolean;onChange?:(value:string)=>void}
 type SignatureLocation={latitude:number;longitude:number;accuracy:number}
@@ -83,7 +84,7 @@ function Personal({form,set,municipalities}:{form:any;set:(k:string,v:any)=>void
   {key:'rgIssuer',label:'Órgão emissor'},
   {key:'pis',label:'PIS',inputMode:'numeric',format:formatPis,maxLength:14},
   {key:'birthCity',label:'Cidade de nascimento',suggestions:municipalities,placeholder:'Digite para buscar o município'},
-  {key:'ethnicity',label:'Etnia'},
+  {key:'ethnicity',label:'Etnia',options:ETHNICITY_OPTIONS,placeholder:'Selecione'},
   {key:'disability',label:'Pessoa com deficiência',options:['Não','Sim'],placeholder:'Selecione',onChange:value=>{set('disability',value);if(value!=='Sim')set('disabilityDetails','')}},
   ...(form.disability==='Sim'?[{key:'disabilityDetails',label:'Especifique a deficiência',required:true} satisfies PortalField]:[]),
   {key:'fatherName',label:'Nome do pai'},
