@@ -39,7 +39,7 @@ export const SENSITIVE_FIELD_KEYS = new Set([
 ])
 
 export const PUBLIC_FIELD_SECTIONS = {
-  personal: ['name', 'birthDate', 'phone', 'messagePhone', 'email', 'rg', 'rgIssuedAt', 'rgIssuer', 'cpf', 'pis', 'birthCity', 'ethnicity', 'disability', 'disabilityDetails', 'fatherName', 'motherName', 'education', 'maritalStatus'],
+  personal: ['name', 'birthDate', 'gender', 'phone', 'messagePhone', 'email', 'rg', 'rgIssuedAt', 'rgIssuer', 'cpf', 'pis', 'birthCity', 'ethnicity', 'disability', 'disabilityDetails', 'fatherName', 'motherName', 'education', 'maritalStatus'],
   address: ['zipCode', 'street', 'number', 'complement', 'district', 'city', 'state'],
   bank: ['bank', 'agency', 'account', 'accountDigit', 'accountType'],
 } as const

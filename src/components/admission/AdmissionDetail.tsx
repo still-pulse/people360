@@ -37,12 +37,12 @@ export function AdmissionDetail({id}:{id:string}){
 }
 
 const fieldGroups = [
- {title:'Identificação e contato',keys:[['name','Nome completo'],['birthDate','Data de nascimento'],['phone','Telefone'],['messagePhone','Telefone de recado'],['email','E-mail'],['cpf','CPF'],['rg','RG'],['rgIssuedAt','Expedição do RG'],['rgIssuer','Órgão emissor'],['pis','PIS'],['birthCity','Cidade de nascimento'],['ethnicity','Etnia'],['disability','Pessoa com deficiência'],['disabilityDetails','Deficiência'],['fatherName','Nome do pai'],['motherName','Nome da mãe'],['education','Grau de instrução'],['maritalStatus','Estado civil']]},
+ {title:'Identificação e contato',keys:[['name','Nome completo'],['birthDate','Data de nascimento'],['gender','Gênero'],['phone','Telefone'],['messagePhone','Telefone de recado'],['email','E-mail'],['cpf','CPF'],['rg','RG'],['rgIssuedAt','Expedição do RG'],['rgIssuer','Órgão emissor'],['pis','PIS'],['birthCity','Cidade de nascimento'],['ethnicity','Etnia'],['disability','Pessoa com deficiência'],['disabilityDetails','Deficiência'],['fatherName','Nome do pai'],['motherName','Nome da mãe'],['education','Grau de instrução'],['maritalStatus','Estado civil']]},
  {title:'Endereço',keys:[['zipCode','CEP'],['street','Logradouro'],['number','Número'],['complement','Complemento'],['district','Bairro'],['city','Cidade'],['state','UF']]},
  {title:'Dados bancários',keys:[['bank','Banco'],['agency','Agência'],['account','Conta'],['accountDigit','Dígito'],['accountType','Tipo de conta']]},
 ] as const
 
-function displayValue(value:unknown){if(value==null||value==='')return '—';if(typeof value==='boolean')return value?'Sim':'Não';return String(value)}
+function displayValue(value:unknown){if(value==null||value==='')return '—';if(typeof value==='boolean')return value?'Sim':'Não';const labels:Record<string,string>={Female:'Feminino',Male:'Masculino',Other:'Outro','Prefer not to say':'Prefiro não informar'};return labels[String(value)]||String(value)}
 
 function PersonalDataPanel({data}:{data:Detail}){
  const values=Object.fromEntries(data.fields.map(field=>[field.key,field.value]))

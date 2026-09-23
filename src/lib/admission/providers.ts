@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { syncAdmissionToERPNext } from './erpnextProvider'
 
 export type FaceVerificationDecision = 'APPROVED' | 'REJECTED' | 'MANUAL_REVIEW'
 
@@ -76,6 +77,7 @@ export const mockERPNextAdmissionProvider: ERPNextAdmissionProvider = {
 export function getERPNextAdmissionProvider(): ERPNextAdmissionProvider {
   const name = (process.env.ADMISSION_ERPNEXT_PROVIDER || 'disabled').trim().toLowerCase()
   if (name === 'mock' && process.env.NODE_ENV !== 'production') return mockERPNextAdmissionProvider
+  if (name === 'erpnext') return { sync: syncAdmissionToERPNext }
   throw new Error(name === 'erpnext'
     ? 'A integração de criação de Employee no ERPNext ainda não está configurada para este ambiente.'
     : 'Integração ERPNext da admissão desativada.')

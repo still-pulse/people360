@@ -47,6 +47,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ token: 
   const allowed = new Set<string>(PUBLIC_FIELD_SECTIONS[parsed.data.section])
   const entries = Object.entries(parsed.data.fields).filter(([key]) => allowed.has(key))
   const cpf = parsed.data.fields.cpf
+  if (parsed.data.validate && parsed.data.section === 'personal' && !String(parsed.data.fields.gender || '').trim()) {
+    return NextResponse.json({ error: 'Selecione o gênero.', fields: { gender: ['Selecione o gênero.'] } }, { status: 400 })
+  }
   if (parsed.data.validate && parsed.data.section === 'personal' && (typeof cpf !== 'string' || !cpf.trim())) {
     return NextResponse.json({ error: 'Informe o CPF.', fields: { cpf: ['Informe o CPF.'] } }, { status: 400 })
   }

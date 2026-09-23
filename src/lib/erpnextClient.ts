@@ -361,3 +361,29 @@ export async function countEmployees(status?: string | null): Promise<number> {
   )
   return Number(res.message) || 0
 }
+
+export async function listErpnextResourceNames(doctype: string): Promise<string[]> {
+  const params = new URLSearchParams({
+    fields: JSON.stringify(['name']),
+    limit_page_length: '1000',
+    order_by: 'name asc',
+  })
+  const res = await request<{ data: { name: string }[] }>('GET', `/api/resource/${encodeURIComponent(doctype)}?${params}`)
+  return (res.data ?? []).map((item) => item.name).filter(Boolean)
+}
+
+export async function findEmployeeByCpf(cpf: string): Promise<EmployeeDoc | null> {
+  const params = new URLSearchParams({
+    fields: JSON.stringify(['name', 'employee_name', 'custom_cpf']),
+    filters: JSON.stringify([['custom_cpf', '=', cpf]]),
+    limit_page_length: '1',
+  })
+  const res = await request<{ data: EmployeeDoc[] }>('GET', `/api/resource/Employee?${params}`)
+  return res.data?.[0] ?? null
+}
+
+export async function createEmployee(data: Record<string, unknown>): Promise<EmployeeDoc> {
+  const res = await request<{ data: EmployeeDoc }>('POST', '/api/resource/Employee', data)
+  if (!res.data?.name) throw new ErpnextApiError('O ERPNext não retornou o identificador do Employee criado.', 502, res)
+  return res.data
+}
