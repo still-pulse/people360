@@ -61,13 +61,14 @@ export async function createAdmissionRecord(input: {
   weeklyHours?: number; monthlyHours?: number; contractType: string; experienceDays?: number; contractEndDate?: Date; validityDays?: number
   /** Tipos de documento a solicitar; sem informar, usa os marcados por padrão no catálogo. */
   documentTypeIds?: string[]
+  allowNoDocuments?: boolean
 }) {
   const types = await ensureAdmissionDocumentTypes()
   const selectedIds = new Set(input.documentTypeIds ?? [])
   const requested = input.documentTypeIds !== undefined
     ? types.filter((type) => selectedIds.has(type.id))
     : types.filter((type) => type.required || type.defaultSelected)
-  if (!requested.length) throw new Error('Selecione ao menos um documento a solicitar.')
+  if (!requested.length && !input.allowNoDocuments) throw new Error('Selecione ao menos um documento a solicitar.')
   const generated = generateAdmissionToken()
   const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, input.validityDays ?? 7)) * 86400000)
   const admission = await prisma.admission.create({ data: {

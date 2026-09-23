@@ -7,13 +7,14 @@ import { ADMISSION_MONTHLY_HOURS, ADMISSION_POSITIONS, ADMISSION_SCHEDULES, ADMI
 export async function GET() {
   const { session, error } = await getSessionOrUnauthorized(); if (error) return error
   const unitWhere: Record<string, any> = { active: true }; enforceUnitFilter(unitWhere, session!, null, 'id')
-  const [units, candidates, vacancies, users, documentTypes] = await Promise.all([
+  const [units, candidates, vacancies, users, documentTypes, collaborators] = await Promise.all([
     prisma.unit.findMany({ where: unitWhere, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.candidato.findMany({ where: { status: { in: ['APROVADO', 'AGUARDANDO_ADMISSAO'] } }, select: { id: true, nome: true, email: true, telefone: true, vagaId: true, vaga: { select: { cargo: true, unidadeId: true } } }, orderBy: { updatedAt: 'desc' }, take: 100 }),
     prisma.vaga.findMany({ where: { status: { in: ['APROVADA_CONTRATACAO', 'ADMISSAO_EM_ANDAMENTO'] } }, select: { id: true, titulo: true, cargo: true, setor: true, unidadeId: true, salarioMin: true, salarioMax: true, horarioTrabalho: true, cargaHoraria: true, tipoContrato: true }, orderBy: { updatedAt: 'desc' }, take: 100 }),
     prisma.user.findMany({ where: { active: true, role: { in: ['ADMIN', 'ANALYST'] } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ensureAdmissionDocumentTypes(),
+    prisma.colaborador.findMany({ where: { status: 'Active', ...(('unitId' in unitWhere && unitWhere.id) ? { unitId: unitWhere.id } : {}) }, select: { id: true, erpnextId: true, employeeName: true, personalEmail: true, cellNumber: true, designation: true, department: true, dateOfJoining: true, dateOfBirth: true, gender: true, cpf: true, rg: true, etnia: true, naturalidade: true, unitId: true, unit: { select: { name: true } } }, orderBy: { employeeName: 'asc' }, take: 1000 }),
   ])
   const positions = ADMISSION_POSITIONS.map((p) => ({ cargo: p.cargo, departamento: p.departamento, salario: p.salario }))
-  return NextResponse.json({ units, candidates, vacancies, users, documentTypes, positions, schedules: ADMISSION_SCHEDULES, monthlyHours: ADMISSION_MONTHLY_HOURS, hazardPay: ADMISSION_DEFAULT_HAZARD_PAY })
+  return NextResponse.json({ units, candidates, vacancies, users, documentTypes, collaborators, positions, schedules: ADMISSION_SCHEDULES, monthlyHours: ADMISSION_MONTHLY_HOURS, hazardPay: ADMISSION_DEFAULT_HAZARD_PAY })
 }

@@ -389,6 +389,7 @@ model Colaborador {
   dependentes ColaboradorDependente[]
   avaliacoes  ColaboradorAvaliacao[]
   historico   ColaboradorHistorico[]
+  registrationUpdates Admission[] @relation("RegistrationUpdateEmployee")
 
   @@index([status])
   @@index([company])
@@ -1189,6 +1190,9 @@ model Admission {
   unitId              String
   ownerId             String?
   createdById         String
+  processType         String            @default("ADMISSION")
+  collaboratorId      String?
+  requestedSections   String[]          @default([])
   candidateName       String
   candidateEmail      String?
   candidatePhone      String?
@@ -1220,6 +1224,7 @@ model Admission {
   unit               Unit                 @relation(fields: [unitId], references: [id])
   owner              User?                @relation("AdmissionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdBy          User                 @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
+  collaborator       Colaborador?         @relation("RegistrationUpdateEmployee", fields: [collaboratorId], references: [id], onDelete: SetNull)
   tokens             AdmissionToken[]
   fields             AdmissionField[]
   dependents         AdmissionDependent[]
@@ -1238,6 +1243,7 @@ model Admission {
   @@index([ownerId])
   @@index([candidateName])
   @@index([hireDate])
+  @@index([processType, collaboratorId])
   @@map("admissions")
 }
 

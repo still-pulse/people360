@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { analystCanAccessUnit, enforceUnitFilter, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { createAdmissionRecord } from '@/lib/admission/service'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
-import { decryptAdmissionValue, hashSensitive, maskCpf } from '@/lib/admission/security'
+import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, maskCpf } from '@/lib/admission/security'
+import { SENSITIVE_FIELD_KEYS } from '@/lib/admission/constants'
+import { getPerfilView } from '@/lib/dossie/perfil'
 import { ADMISSION_DEPARTMENTS, ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition } from '@/lib/admission/positions'
 
 const FIELD_LABELS: Record<string, string> = {
@@ -16,6 +19,9 @@ const FIELD_LABELS: Record<string, string> = {
 }
 
 const createSchema = z.object({
+  processType: z.enum(['ADMISSION', 'REGISTRATION_UPDATE']).optional().default('ADMISSION'),
+  collaboratorId: z.string().cuid().optional(),
+  requestedSections: z.array(z.enum(['personal', 'address', 'bank', 'dependents', 'transport', 'documents', 'photo'])).max(7).optional(),
   candidateId: z.string().cuid().optional(), vacancyId: z.string().cuid().optional(), unitId: z.string().min(1),
   ownerId: z.string().cuid().optional(), candidateName: z.string().min(3).max(160), candidateEmail: z.string().email().optional().or(z.literal('')),
   candidatePhone: z.string().max(30).optional(), jobTitle: z.string().min(2).max(120), department: z.string().max(120).optional(),
@@ -66,6 +72,34 @@ export async function POST(req: NextRequest) {
     const fields = parsed.error.flatten().fieldErrors
     const names = Object.keys(fields).map((key) => FIELD_LABELS[key] ?? key)
     return NextResponse.json({ error: `Dados inválidos: revise ${names.join(', ')}.`, fields }, { status: 400 })
+  }
+  if (parsed.data.processType === 'REGISTRATION_UPDATE') {
+    if (!parsed.data.collaboratorId) return NextResponse.json({ error: 'Selecione o colaborador.' }, { status: 400 })
+    if (!parsed.data.requestedSections?.length) return NextResponse.json({ error: 'Selecione ao menos uma seção para atualização.' }, { status: 400 })
+    const collaborator = await prisma.colaborador.findUnique({ where: { id: parsed.data.collaboratorId }, include: { unit: { select: { id: true, name: true } } } })
+    if (!collaborator || !collaborator.unitId || !analystCanAccessUnit(session!, collaborator.unitId)) return NextResponse.json({ error: 'Colaborador não encontrado ou sem unidade vinculada.' }, { status: 404 })
+    if (parsed.data.requestedSections.includes('documents') && !parsed.data.documentTypeIds?.length) return NextResponse.json({ error: 'Selecione os documentos que deverão ser apresentados.' }, { status: 400 })
+    const profile = await getPerfilView(collaborator.id)
+    let created: Awaited<ReturnType<typeof createAdmissionRecord>>
+    try {
+      created = await createAdmissionRecord({
+        unitId: collaborator.unitId, ownerId: parsed.data.ownerId, createdById: session!.user.id,
+        candidateName: collaborator.employeeName, candidateEmail: collaborator.personalEmail || collaborator.companyEmail || undefined,
+        candidatePhone: collaborator.cellNumber || undefined, jobTitle: collaborator.designation || 'Colaborador', department: collaborator.department || undefined,
+        hireDate: collaborator.dateOfJoining || new Date(), contractType: collaborator.employmentType || 'Não informado',
+        validityDays: parsed.data.validityDays, documentTypeIds: parsed.data.requestedSections.includes('documents') ? parsed.data.documentTypeIds : [], allowNoDocuments: true,
+      })
+      const preload: Record<string, unknown> = { name: collaborator.employeeName, email: collaborator.personalEmail || collaborator.companyEmail || '', phone: collaborator.cellNumber || '', birthDate: collaborator.dateOfBirth?.toISOString().slice(0, 10) || '', gender: collaborator.gender || '', cpf: collaborator.cpf || '', rg: collaborator.rg || '', ethnicity: collaborator.etnia || '', birthCity: collaborator.naturalidade || '', motherName: profile.nomeMae, fatherName: profile.nomePai, education: profile.escolaridade, maritalStatus: profile.estadoCivil, rgIssuer: profile.rgOrgao, rgIssuedAt: profile.rgEmissao, pis: profile.pis, zipCode: profile.endereco.cep, street: profile.endereco.logradouro, number: profile.endereco.numero, complement: profile.endereco.complemento, district: profile.endereco.bairro, city: profile.endereco.cidade, state: profile.endereco.uf, bank: profile.banco.banco, agency: profile.banco.agencia, account: profile.banco.conta, accountDigit: profile.banco.digito, accountType: profile.banco.tipo }
+      await prisma.$transaction([
+        prisma.admission.update({ where: { id: created.admission.id }, data: { processType: 'REGISTRATION_UPDATE', collaboratorId: collaborator.id, requestedSections: parsed.data.requestedSections, currentStep: 'inicio' } }),
+        ...Object.entries(preload).map(([key, value]) => { const section = ['zipCode','street','number','complement','district','city','state'].includes(key) ? 'address' : ['bank','agency','account','accountDigit','accountType'].includes(key) ? 'bank' : 'personal'; return prisma.admissionField.create({ data: { admissionId: created.admission.id, section, key, value: (SENSITIVE_FIELD_KEYS.has(key) ? encryptAdmissionValue(value) : value) as Prisma.InputJsonValue, sensitive: SENSITIVE_FIELD_KEYS.has(key), searchHash: key === 'cpf' && String(value).replace(/\D/g, '').length === 11 ? hashSensitive(String(value)) : null } }) }),
+      ])
+    } catch (caught) { return NextResponse.json({ error: caught instanceof Error ? caught.message : 'Não foi possível criar a atualização cadastral.' }, { status: 400 }) }
+    const base = process.env.NEXTAUTH_URL || req.nextUrl.origin
+    const publicUrl = `${base}/admissao/${created.token}`
+    await notifyAdmissionCandidate({ ...created.admission, title: 'Atualização cadastral solicitada', message: 'O RH solicitou a conferência de alguns dados e documentos. Acesse o link abaixo para concluir a atualização.', portalUrl: publicUrl })
+    await logAdmissionEvent({ admissionId: created.admission.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: 'REGISTRATION_UPDATE_CREATED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { sections: parsed.data.requestedSections } })
+    return NextResponse.json({ admission: created.admission, publicUrl, expiresAt: created.expiresAt }, { status: 201 })
   }
   // Cargo, departamento, horário, salário e carga horária são definidos pelo RH (não digitados): validados e fixados aqui.
   const position = findPosition(parsed.data.jobTitle)

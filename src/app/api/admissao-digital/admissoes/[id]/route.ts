@@ -8,6 +8,8 @@ import { extractIp, log } from '@/lib/audit'
 import { deleteAdmissionStorage } from '@/lib/admission/storage'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
+import { updateEmployee } from '@/lib/erpnextClient'
+import { savePerfil } from '@/lib/dossie/perfil'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -61,6 +63,30 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       prisma.admission.update({ where: { id: current.id }, data: { status: 'SYNCING', lastActivityAt: new Date() } }),
       prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${current.id}` }, create: { admissionId: current.id, idempotencyKey: `admission:${current.id}`, status: 'RETRYING', nextAttemptAt: new Date() }, update: { status: 'RETRYING', nextAttemptAt: new Date(), lastError: null } }),
     ])
+  } else if (action === 'apply-registration-update') {
+    if (current.processType !== 'REGISTRATION_UPDATE' || !current.collaboratorId) return NextResponse.json({ error: 'Este processo não é uma atualização cadastral.' }, { status: 409 })
+    if (current.status !== 'DOCUMENTS_UNDER_REVIEW') return NextResponse.json({ error: 'A atualização ainda não foi enviada para revisão.' }, { status: 409 })
+    const process = await prisma.admission.findUnique({ where: { id: current.id }, include: { fields: true, documents: true, collaborator: true } })
+    if (!process?.collaborator) return NextResponse.json({ error: 'Colaborador vinculado não encontrado.' }, { status: 404 })
+    const pendingDocuments = process.documents.filter(document => document.status !== 'APPROVED')
+    if (pendingDocuments.length) return NextResponse.json({ error: `Ainda existem ${pendingDocuments.length} documento(s) sem aprovação.` }, { status: 409 })
+    const values = Object.fromEntries(process.fields.map(field => [field.key, field.sensitive ? decryptAdmissionValue(field.value) : field.value]))
+    const erpData: Record<string, unknown> = {}
+    const erpMap: Record<string, string> = { name: 'employee_name', email: 'personal_email', phone: 'cell_number', birthDate: 'date_of_birth', gender: 'gender', cpf: 'custom_cpf', rg: 'custom_rg', ethnicity: 'custom_etnia', birthCity: 'custom_naturalidade_cidade' }
+    for (const [field, target] of Object.entries(erpMap)) if (values[field] !== undefined && values[field] !== '') erpData[target] = values[field]
+    try {
+      if (Object.keys(erpData).length) await updateEmployee(process.collaborator.erpnextId, erpData)
+      const address = { cep: String(values.zipCode || ''), logradouro: String(values.street || ''), numero: String(values.number || ''), complemento: String(values.complement || ''), bairro: String(values.district || ''), cidade: String(values.city || ''), uf: String(values.state || '') }
+      const banco = { banco: String(values.bank || ''), agencia: String(values.agency || ''), conta: String(values.account || ''), digito: String(values.accountDigit || ''), tipo: String(values.accountType || '') }
+      await savePerfil(process.collaborator.id, { nomeMae: String(values.motherName || '') || undefined, nomePai: String(values.fatherName || '') || undefined, estadoCivil: String(values.maritalStatus || '') || undefined, escolaridade: String(values.education || '') || undefined, rgOrgao: String(values.rgIssuer || '') || undefined, rgEmissao: String(values.rgIssuedAt || '') || undefined, pis: String(values.pis || '') || undefined, ...(current.requestedSections.includes('address') ? { endereco: address } : {}), ...(current.requestedSections.includes('bank') ? { banco } : {}) }, { id: session!.user.id, name: session!.user.name })
+      await prisma.$transaction([
+        prisma.colaborador.update({ where: { id: process.collaborator.id }, data: { employeeName: String(values.name || process.collaborator.employeeName), personalEmail: String(values.email || '') || null, cellNumber: String(values.phone || '') || null, gender: String(values.gender || '') || null, cpf: String(values.cpf || '') || null, rg: String(values.rg || '') || null, etnia: String(values.ethnicity || '') || null, naturalidade: String(values.birthCity || '') || null, syncedAt: new Date() } }),
+        prisma.admission.update({ where: { id: current.id }, data: { status: 'COMPLETED', completedAt: new Date(), lastActivityAt: new Date() } }),
+        prisma.colaboradorHistorico.create({ data: { colaboradorId: process.collaborator.id, tipo: 'ATUALIZACAO_CADASTRAL', dataEvento: new Date(), titulo: `Atualização cadastral ${current.protocol} aprovada`, novo: current.requestedSections.join(', '), responsavelId: session!.user.id, responsavelNome: session!.user.name } }),
+      ])
+      await notifyAdmissionCandidate({ ...current, title: 'Atualização cadastral aprovada', message: 'O RH conferiu e aprovou sua atualização cadastral.' })
+      response = { updated: true, employeeId: process.collaborator.erpnextId }
+    } catch (caught) { return NextResponse.json({ error: caught instanceof Error ? caught.message : 'Não foi possível atualizar o ERPNext.' }, { status: 502 }) }
   } else if (action === 'approve-face' || action === 'request-face-retry' || action === 'request-badge-retry') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) {
       return NextResponse.json({ error: 'Sem permissão para revisar biometria.' }, { status: 403 })

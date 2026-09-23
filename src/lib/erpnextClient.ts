@@ -387,3 +387,9 @@ export async function createEmployee(data: Record<string, unknown>): Promise<Emp
   if (!res.data?.name) throw new ErpnextApiError('O ERPNext não retornou o identificador do Employee criado.', 502, res)
   return res.data
 }
+
+export async function updateEmployee(name: string, data: Record<string, unknown>): Promise<EmployeeDoc> {
+  const res = await request<{ data: EmployeeDoc }>('PUT', `/api/resource/Employee/${encodeURIComponent(name)}`, data)
+  if (!res.data?.name) throw new ErpnextApiError('O ERPNext não confirmou a atualização do Employee.', 502, res)
+  return res.data
+}

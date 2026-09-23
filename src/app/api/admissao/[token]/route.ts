@@ -20,14 +20,15 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   if (!result) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   const a = result.admission
   const requiredPending = a.documents.some((document) => document.type.required && document.status !== 'APPROVED')
-  const resumeStep = a.signatureEnvelopes.some((envelope) => envelope.status === 'SIGNED') ? 'conclusao'
+  const resumeStep = a.processType === 'REGISTRATION_UPDATE' ? (a.status === 'DOCUMENTS_UNDER_REVIEW' || a.status === 'COMPLETED' ? 'conclusao' : (a.currentStep || 'inicio'))
+    : a.signatureEnvelopes.some((envelope) => envelope.status === 'SIGNED') ? 'conclusao'
     : a.generatedDocuments.length ? 'assinatura'
     : a.faceVerifications[0]?.status === 'APPROVED' ? 'revisao'
     : a.badgePhotos[0]?.confirmedAt ? (requiredPending ? 'foto' : 'validacao-facial')
     : ['presentation', 'inicio'].includes(a.currentStep) ? 'inicio' : a.currentStep
   await logAdmissionEvent({ admissionId: a.id, actorName: a.candidateName, actorType: 'CANDIDATE', action: 'LINK_OPENED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') }).catch(() => {})
   return NextResponse.json({
-    protocol: a.protocol, candidateName: a.candidateName, status: a.status, currentStep: a.currentStep, resumeStep, progress: a.progress,
+    protocol: a.protocol, candidateName: a.candidateName, status: a.status, currentStep: a.currentStep, resumeStep, progress: a.progress, processType: a.processType, requestedSections: a.requestedSections,
     locked: { jobTitle: a.jobTitle, department: a.department, unit: a.unit.name, hireDate: a.hireDate, contractType: a.contractType, workSchedule: a.workSchedule },
     fields: Object.fromEntries(a.fields.map((f) => [f.key, f.sensitive ? decryptAdmissionValue(f.value) : f.value])), dependents: a.dependents, transport: a.transport,
     documents: a.documents.map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),
@@ -43,7 +44,15 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ token: 
   if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas.' }, { status: 429 })
   const result = await getMutableAdmissionByPublicToken(params.token)
   if (!result) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
-  const parsed = saveSchema.safeParse(await req.json().catch(() => null));if (!parsed.success) return NextResponse.json({ error: 'Dados inválidos.', fields: parsed.error.flatten().fieldErrors }, { status: 400 })
+  const body = await req.json().catch(() => null)
+  if (body?.completeUpdate === true && result.admission.processType === 'REGISTRATION_UPDATE') {
+    const missingDocuments = result.admission.documents.filter((document) => !document.uploadedAt)
+    if (missingDocuments.length) return NextResponse.json({ error: `Envie os ${missingDocuments.length} documento(s) solicitado(s) antes de concluir.` }, { status: 400 })
+    await prisma.admission.update({ where: { id: result.admissionId }, data: { status: 'DOCUMENTS_UNDER_REVIEW', currentStep: 'conclusao', progress: 100, lastActivityAt: new Date() } })
+    await logAdmissionEvent({ admissionId: result.admissionId, actorName: result.admission.candidateName, actorType: 'CANDIDATE', action: 'REGISTRATION_UPDATE_SUBMITTED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') })
+    return NextResponse.json({ success: true })
+  }
+  const parsed = saveSchema.safeParse(body);if (!parsed.success) return NextResponse.json({ error: 'Dados inválidos.', fields: parsed.error.flatten().fieldErrors }, { status: 400 })
   const allowed = new Set<string>(PUBLIC_FIELD_SECTIONS[parsed.data.section])
   const entries = Object.entries(parsed.data.fields).filter(([key]) => allowed.has(key))
   const cpf = parsed.data.fields.cpf
