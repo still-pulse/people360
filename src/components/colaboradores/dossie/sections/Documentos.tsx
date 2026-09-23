@@ -1,20 +1,20 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Upload } from 'lucide-react'
+import { ChevronDown, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { errorMessage } from '../api'
 import { AdmissaoImportBanner } from '../AdmissaoImportBanner'
 import { useDossie } from '../context'
-import { inputCls, Notice, SectionTitle } from '../parts'
+import { inputCls, Notice } from '../parts'
+import { EmployeeDocumentHistory } from '../../EmployeeDocumentHistory'
 import { DocumentList } from './DocumentList'
 
 const MAX_MB = 15
 
 /** Todos os documentos do colaborador (gerados e anexados) + envio de anexos validado no backend. */
 export function Documentos() {
-  const { id, catalog, can, reload, toast } = useDossie()
+  const { id, catalog, can, reload, toast, version } = useDossie()
   const [categoria, setCategoria] = useState('')
   const [titulo, setTitulo] = useState('')
   const [obs, setObs] = useState('')
@@ -40,11 +40,11 @@ export function Documentos() {
 
   return (
     <div className="space-y-5">
-      <SectionTitle title="Documentos" description="Documentos gerados pelo sistema e arquivos anexados. Os arquivos ficam protegidos e só são entregues a usuários autorizados." />
-      <AdmissaoImportBanner />
+      <EmployeeDocumentHistory key={version} employeeId={id} />
       {can('employee.documents.create') && (
-        <Card className="p-5 space-y-4">
-          <p className="text-sm font-semibold text-gray-800">Anexar documento</p>
+        <details className="group rounded-2xl border border-gray-200 bg-white">
+          <summary className="cursor-pointer list-none p-4 text-sm font-medium text-gray-700 flex items-center justify-between">Anexar novo documento<ChevronDown className="w-4 h-4 group-open:rotate-180" /></summary>
+          <div className="px-5 pb-5 space-y-4">
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="block space-y-1.5"><span className="text-sm font-medium text-gray-700">Arquivo (PDF, JPG ou PNG — até {MAX_MB} MB)</span>
               <input ref={input} type="file" accept="application/pdf,image/jpeg,image/png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className={`${inputCls} file:mr-3 file:rounded-lg file:border-0 file:bg-[#15AFA4]/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-[#0d8c83]`} /></label>
@@ -57,9 +57,10 @@ export function Documentos() {
           </div>
           {error && <Notice tone="danger">{error}</Notice>}
           <div className="flex justify-end"><Button size="sm" isLoading={busy} icon={<Upload className="w-4 h-4" />} onClick={upload}>Enviar documento</Button></div>
-        </Card>
+          </div>
+        </details>
       )}
-      <DocumentList emptyTitle="Nenhum documento registrado." emptyDescription="Gere documentos a partir de “Novo Documento” ou anexe arquivos digitalizados." />
+      <details className="group rounded-2xl border border-gray-200 bg-white"><summary className="cursor-pointer list-none p-4 text-sm font-medium text-gray-700 flex items-center justify-between">Gerenciar documentos do dossiê<ChevronDown className="w-4 h-4 group-open:rotate-180" /></summary><div className="p-4 pt-0 space-y-4"><AdmissaoImportBanner /><DocumentList emptyTitle="Nenhum documento registrado." emptyDescription="Gere documentos a partir de “Novo Documento” ou anexe arquivos digitalizados." /></div></details>
     </div>
   )
 }

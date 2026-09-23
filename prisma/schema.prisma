@@ -1381,6 +1381,8 @@ model AdmissionDocument {
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
+  revisions AdmissionDocumentRevision[]
+
   admission  Admission             @relation(fields: [admissionId], references: [id], onDelete: Cascade)
   type       AdmissionDocumentType @relation(fields: [typeId], references: [id])
   reviewedBy User?                 @relation("AdmissionDocumentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
@@ -1388,6 +1390,24 @@ model AdmissionDocument {
   @@index([admissionId, status])
   @@index([status, uploadedAt])
   @@map("admission_documents")
+}
+
+model AdmissionDocumentRevision {
+  id              String                  @id @default(cuid())
+  documentId      String
+  version         Int
+  storagePath     String
+  originalName    String?
+  mimeType        String?
+  sizeBytes       Int?
+  status          AdmissionDocumentStatus
+  uploadedAt      DateTime?
+  archivedAt      DateTime                @default(now())
+
+  document AdmissionDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@map("admission_document_revisions")
 }
 
 model BadgePhoto {

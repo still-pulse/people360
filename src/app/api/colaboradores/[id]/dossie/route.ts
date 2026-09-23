@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { employeeDocumentHistory } from '@/lib/dossie/documentHistory'
 import { admissionImportStatus } from '@/lib/dossie/admissaoImport'
 import { dossieRoute } from '@/lib/dossie/http'
 import { fmtCpf } from '@/lib/dossie/format'
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     const snapshot = await buildSnapshot(colaborador.id)
     if (!snapshot) return NextResponse.json({ error: 'Colaborador não encontrado.' }, { status: 404 })
     const [documentos, aditivos, dependentes, avaliacoes, perfil, linked] = await Promise.all([
-      prisma.colaboradorDocumento.count({ where: { colaboradorId: colaborador.id, status: { not: 'CANCELADO' } } }),
+      employeeDocumentHistory(colaborador).then(files => files.length),
       prisma.colaboradorAditivo.count({ where: { colaboradorId: colaborador.id } }),
       prisma.colaboradorDependente.count({ where: { colaboradorId: colaborador.id, exclusaoEm: null } }),
       prisma.colaboradorAvaliacao.count({ where: { colaboradorId: colaborador.id, status: { not: 'CANCELADA' } } }),

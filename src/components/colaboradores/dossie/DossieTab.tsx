@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FilePlus2, FileText, FolderOpen, Package } from 'lucide-react'
+import { ChevronDown, FilePlus2, FolderOpen, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -24,21 +24,29 @@ import { Acordos, Contratos, Experiencia, Exportacoes } from './sections/Simples
 import { Visao } from './sections/Visao'
 import type { Catalog, Overview } from './types'
 
-const SECTIONS: { id: SectionId; label: string }[] = [
-  { id: 'visao', label: 'Visão Geral' }, { id: 'cadastro', label: 'Dados Cadastrais' }, { id: 'contratos', label: 'Contratos' },
-  { id: 'aditivos', label: 'Aditivos' }, { id: 'dependentes', label: 'Dependentes' }, { id: 'acordos', label: 'Acordos e Termos' },
-  { id: 'experiencia', label: 'Período de Experiência' }, { id: 'avaliacoes', label: 'Avaliações' }, { id: 'historico', label: 'Histórico Funcional' },
-  { id: 'documentos', label: 'Documentos' }, { id: 'exportacoes', label: 'Exportações' },
+const GROUPS: { label: string; sections: { id: SectionId; label: string }[] }[] = [
+  { label: 'Colaborador', sections: [
+    { id: 'visao', label: 'Visão geral' }, { id: 'cadastro', label: 'Dados cadastrais' },
+    { id: 'dependentes', label: 'Dependentes' }, { id: 'avaliacoes', label: 'Avaliações' },
+  ] },
+  { label: 'Vínculo de trabalho', sections: [
+    { id: 'contratos', label: 'Contratos' }, { id: 'aditivos', label: 'Aditivos' },
+    { id: 'acordos', label: 'Acordos e termos' }, { id: 'experiencia', label: 'Experiência' },
+    { id: 'historico', label: 'Histórico funcional' },
+  ] },
+  { label: 'Arquivo', sections: [
+    { id: 'documentos', label: 'Documentos e arquivos' }, { id: 'exportacoes', label: 'Exportar dossiê' },
+  ] },
 ]
 
 function Photo({ id, name, hasPhoto }: { id: string; name: string; hasPhoto: boolean }) {
   const [failed, setFailed] = useState(false)
   const initials = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
   if (!hasPhoto || failed) {
-    return <div className="w-28 h-36 rounded-2xl bg-gradient-to-br from-[#15AFA4] to-[#0d8c83] flex items-center justify-center text-white text-3xl font-bold flex-shrink-0">{initials}</div>
+    return <div className="w-16 h-20 rounded-2xl bg-gradient-to-br from-[#15AFA4] to-[#0d8c83] flex items-center justify-center text-white text-xl font-bold flex-shrink-0">{initials}</div>
   }
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={`/api/colaboradores/${id}/dossie/foto`} alt={name} onError={() => setFailed(true)} className="w-28 h-36 rounded-2xl object-cover border border-gray-100 flex-shrink-0" />
+  return <img src={`/api/colaboradores/${id}/dossie/foto`} alt={name} onError={() => setFailed(true)} className="w-16 h-20 rounded-2xl object-cover border border-gray-100 flex-shrink-0" />
 }
 
 export function DossieTab({ colaboradorId }: { colaboradorId: string }) {
@@ -92,45 +100,48 @@ export function DossieTab({ colaboradorId }: { colaboradorId: string }) {
   return (
     <DossieContext.Provider value={ctx}>
       <div className="space-y-5">
-        <Card className="p-5">
-          <div className="flex flex-col sm:flex-row gap-5">
+        <Card className="overflow-hidden">
+          <div className="p-5 flex flex-wrap items-center gap-4">
             <Photo id={colaboradorId} name={c.nome} hasPhoto={c.temFoto} />
-            <div className="min-w-0 flex-1 space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-lg font-semibold text-gray-900 break-words">{c.nome}</h2>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <Badge variant={c.situacao === 'Ativo' ? 'success' : 'secondary'}>{c.situacao}</Badge>
-                    <span className="text-sm text-gray-500">Matrícula {c.matricula}</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {can('employee.documents.export') && <Button size="sm" icon={<Package className="w-4 h-4" />} onClick={ctx.openExport}>Gerar Dossiê Completo</Button>}
-                  {can('employee.documents.create') && <Button variant="outline" size="sm" icon={<FilePlus2 className="w-4 h-4" />} onClick={() => ctx.openNovoDocumento()}>Novo Documento</Button>}
-                  {can('employee.amendments.create') && <Button variant="outline" size="sm" icon={<FileText className="w-4 h-4" />} onClick={ctx.openAditivo}>Novo Aditivo</Button>}
-                  <Button variant="outline" size="sm" icon={<FolderOpen className="w-4 h-4" />} onClick={() => setSection('documentos')}>Visualizar Documentos</Button>
-                </div>
-              </div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
-                <Field label="CPF" value={c.cpf} mono /><Field label="Cargo" value={c.cargo} /><Field label="Setor" value={c.setor} /><Field label="Unidade" value={c.unidade} />
-                <Field label="Centro de custo" value={c.centroCusto} /><Field label="Data de admissão" value={fmtDate(c.admissao)} /><Field label="Tipo de contrato" value={c.tipoContrato} /><Field label="Jornada" value={c.jornada} />
-                <Field label="Escala" value={c.escala} /><Field label="Salário" value={fmtMoney(c.salario)} /><Field label="Gestor imediato" value={c.gestor} />
-                <Field label="Última alteração contratual" value={c.ultimaAlteracao ? fmtDate(c.ultimaAlteracao) : '—'} />
-              </div>
+            <div className="min-w-0 flex-1 basis-48">
+              <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold text-gray-900 break-words">{c.nome}</h2><Badge variant={c.situacao === 'Ativo' ? 'success' : 'secondary'}>{c.situacao}</Badge></div>
+              <p className="text-sm text-gray-600 mt-1">{c.cargo || 'Cargo não informado'}</p>
+              {!!c.matricula && c.matricula !== '0' && <p className="text-xs text-gray-400 mt-1">Matrícula {c.matricula}</p>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" icon={<FolderOpen className="w-4 h-4" />} onClick={() => setSection('documentos')}>Documentos</Button>
+              {can('employee.documents.create') && <Button variant="outline" size="sm" icon={<FilePlus2 className="w-4 h-4" />} onClick={() => ctx.openNovoDocumento()}>Novo documento</Button>}
+              {can('employee.documents.export') && <Button variant="ghost" size="sm" icon={<Package className="w-4 h-4" />} onClick={ctx.openExport}>Exportar dossiê</Button>}
             </div>
           </div>
+          <div className="border-t border-gray-100 px-5 py-4 grid grid-cols-2 sm:grid-cols-3 gap-4 bg-gray-50/50">
+            <div className="col-span-2 sm:col-span-1"><Field label="Unidade" value={c.unidade} /></div><Field label="Admissão" value={fmtDate(c.admissao)} /><Field label="Contrato" value={c.tipoContrato} />
+          </div>
+          <details className="group border-t border-gray-100">
+            <summary className="cursor-pointer list-none px-5 py-3 text-xs font-medium text-gray-500 flex items-center gap-2 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#15AFA4]">Mais informações do vínculo<ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" /></summary>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 px-5 pb-5">
+              <Field label="CPF" value={c.cpf} mono /><Field label="Setor" value={c.setor} /><Field label="Centro de custo" value={c.centroCusto} />
+              <Field label="Jornada" value={c.jornada} /><Field label="Escala" value={c.escala} /><Field label="Salário" value={fmtMoney(c.salario)} /><Field label="Gestor imediato" value={c.gestor} />
+              <Field label="Última alteração contratual" value={c.ultimaAlteracao ? fmtDate(c.ultimaAlteracao) : '—'} />
+            </div>
+          </details>
         </Card>
 
-        <nav aria-label="Seções do dossiê" className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto max-w-full">
-          {SECTIONS.map((s) => (
-            <button key={s.id} onClick={() => setSection(s.id)} aria-current={section === s.id ? 'page' : undefined}
-              className={`px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${section === s.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              {s.label}
-            </button>
-          ))}
-        </nav>
-
-        <div>
+        <div className="lg:hidden">
+          <label htmlFor="dossie-section" className="block text-xs font-medium text-gray-500 mb-2">Navegar pelo dossiê</label>
+          <select id="dossie-section" value={section} onChange={event => setSection(event.target.value as SectionId)} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#15AFA4]/30">
+            {GROUPS.map(group => <optgroup key={group.label} label={group.label}>{group.sections.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}
+          </select>
+        </div>
+        <div className="grid lg:grid-cols-[190px_minmax(0,1fr)] gap-6 items-start">
+          <nav aria-label="Seções do dossiê" className="hidden lg:block space-y-5 sticky top-5">
+            {GROUPS.map(group => <div key={group.label}>
+              <p className="px-3 mb-2 text-[10px] uppercase tracking-wider font-semibold text-gray-400">{group.label}</p>
+              <div className="space-y-1">{group.sections.map(item => <button key={item.id} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#15AFA4] ${section === item.id ? 'bg-[#15AFA4]/10 text-[#0d8c83] font-semibold' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}>{item.label}</button>)}</div>
+            </div>)}
+          </nav>
+          <div className="min-w-0">
           {section === 'visao' && <Visao />}
           {section === 'cadastro' && <Cadastro />}
           {section === 'contratos' && <Contratos />}
@@ -142,6 +153,7 @@ export function DossieTab({ colaboradorId }: { colaboradorId: string }) {
           {section === 'historico' && <Historico />}
           {section === 'documentos' && <Documentos />}
           {section === 'exportacoes' && <Exportacoes />}
+          </div>
         </div>
       </div>
 

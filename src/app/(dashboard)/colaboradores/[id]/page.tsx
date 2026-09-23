@@ -11,6 +11,7 @@ import {
   Calendar, User, Accessibility, Clock,
 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { EmployeeDocumentHistory } from '@/components/colaboradores/EmployeeDocumentHistory'
 import { DossieTab } from '@/components/colaboradores/dossie/DossieTab'
 
 interface ColaboradorDetail {
@@ -122,7 +123,7 @@ export default function ColaboradorDetailPage() {
         subtitle={`${STATUS_LABEL[data.status] || data.status} · ${data.designation || 'Sem cargo'}`}
       />
 
-      <div className={cn('p-6 space-y-5', aba === 'dossie' && canDossie ? 'max-w-6xl' : 'max-w-5xl')}>
+      <div className={cn('p-4 sm:p-6 space-y-5 min-w-0', aba === 'dossie' && canDossie ? 'max-w-7xl' : 'max-w-5xl')}>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => router.push('/colaboradores')} icon={<ArrowLeft className="w-4 h-4" />}>
             Lista
@@ -238,6 +239,8 @@ export default function ColaboradorDetailPage() {
                 <Field label="Gestor (ID ERPNext)" value={data.reportsTo} mono />
               </div>
             </Card>
+
+            {canDossie && <EmployeeDocumentHistory employeeId={data.id} />}
 
             {data.syncedAt && (
               <p className="text-[11px] text-gray-400 flex items-center gap-1">

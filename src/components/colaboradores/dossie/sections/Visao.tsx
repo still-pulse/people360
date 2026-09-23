@@ -28,7 +28,7 @@ export function Visao() {
   }) : []
 
   const stats = [
-    { label: 'Documentos', value: k.documentos, icon: FileText, go: 'documentos' as const },
+    { label: 'Arquivos', value: k.documentos, icon: FileText, go: 'documentos' as const },
     { label: 'Aditivos', value: k.aditivos, icon: FileSignature, go: 'aditivos' as const },
     { label: 'Dependentes ativos', value: k.dependentes, icon: Users, go: 'dependentes' as const },
     { label: 'Avaliações', value: k.avaliacoes, icon: GraduationCap, go: 'avaliacoes' as const },
@@ -56,7 +56,7 @@ export function Visao() {
             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-amber-800">Cadastro incompleto para gerar alguns documentos</p>
-              <p className="text-sm text-amber-700 mt-0.5">Falta informar: {missing.join(', ')}.</p>
+              <details className="mt-1 text-sm text-amber-700"><summary className="cursor-pointer">Ver {missing.length} campo(s) pendente(s)</summary><p className="mt-2">{missing.join(', ')}.</p></details>
               <Button variant="outline" size="sm" className="mt-3" onClick={() => goTo('cadastro')}>Completar dados cadastrais</Button>
             </div>
           </div>

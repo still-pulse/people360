@@ -4,6 +4,7 @@ import { getMutableAdmissionByPublicToken } from '@/lib/admission/service'
 import { savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
+import { replaceAdmissionDocumentFile } from '@/lib/admission/documentHistory'
 
 export async function POST(
   req: NextRequest,
@@ -17,10 +18,15 @@ export async function POST(
   let saved
   try { saved = await savePrivateAdmissionFile(token.admissionId, `document-${doc.typeId}`, file) } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Arquivo inválido.' }, { status: 400 }) }
   if (!doc.type.allowedMimeTypes.includes(saved.mimeType)) return NextResponse.json({ error: 'Formato não permitido para este documento.' }, { status: 400 })
-  await prisma.$transaction([
-    prisma.admissionDocument.update({ where: { id: doc.id }, data: { storagePath: saved.storagePath, originalName: file.name.slice(0, 180), mimeType: saved.mimeType, sizeBytes: saved.sizeBytes, status: 'UPLOADED', uploadedAt: new Date(), version: doc.storagePath ? { increment: 1 } : undefined, rejectionReason: null, reviewedAt: null, reviewedById: null } }),
-    prisma.admission.update({ where: { id: token.admissionId }, data: { status: 'DOCUMENTS_UNDER_REVIEW', progress: { set: Math.max(55, token.admission.progress) }, lastActivityAt: new Date() } }),
-  ])
+  try {
+    await prisma.$transaction(async tx => {
+      await replaceAdmissionDocumentFile(tx, doc, { ...saved, originalName: file.name.slice(0, 180) })
+      await tx.admission.update({ where: { id: token.admissionId }, data: { status: 'DOCUMENTS_UNDER_REVIEW', progress: { set: Math.max(55, token.admission.progress) }, lastActivityAt: new Date() } })
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === 'DOCUMENT_CHANGED') return NextResponse.json({ error: 'Este documento foi atualizado em outra janela. Atualize a página e tente novamente.' }, { status: 409 })
+    throw error
+  }
   await logAdmissionEvent({ admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE', action: 'DOCUMENT_UPLOADED', resource: 'AdmissionDocument', resourceId: doc.id, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { documentType: doc.type.name, sizeBytes: saved.sizeBytes, mimeType: saved.mimeType } })
   return NextResponse.json({ success: true, status: 'UPLOADED' })
 }
