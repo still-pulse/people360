@@ -85,7 +85,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
     prisma.eRPNextSync.upsert({ where: { idempotencyKey: `admission:${token.admissionId}` }, create: { admissionId: token.admissionId, idempotencyKey: `admission:${token.admissionId}`, status: 'WAITING', nextAttemptAt: new Date() }, update: { status: 'WAITING', nextAttemptAt: new Date(), lastError: null } }),
     prisma.consentRecord.create({ data: { admissionId: token.admissionId, type: 'ELECTRONIC_SIGNATURE', version: process.env.SIGNATURE_CONSENT_VERSION || 'v1', accepted: true, ip, userAgent } }),
     prisma.consentRecord.create({ data: { admissionId: token.admissionId, type: 'SIGNATURE_GEOLOCATION', version: process.env.SIGNATURE_CONSENT_VERSION || 'v1', accepted: true, ip, userAgent } }),
-    prisma.admissionToken.updateMany({ where: { admissionId: token.admissionId, revokedAt: null }, data: { revokedAt: new Date() } }),
   ])
   await logAdmissionEvent({ admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE', action: 'DOCUMENTS_SIGNED', ip, userAgent, metadata: { documentCount: docs.length, provider: providerName } })
   return NextResponse.json({ success: true, protocol: token.admission.protocol })
