@@ -1,0 +1,22 @@
+services:
+  app:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      traefik.http.routers.people360.entrypoints: web
+      traefik.http.routers.people360.rule: Host(`people360.ossbhcl.org.br`)
+      traefik.http.routers.people360.middlewares: redirect-to-https@file
+      traefik.http.routers.people360.service: people360
+      traefik.http.routers.people360-secure.entrypoints: websecure
+      traefik.http.routers.people360-secure.rule: Host(`people360.ossbhcl.org.br`)
+      traefik.http.routers.people360-secure.service: people360
+      traefik.http.routers.people360-secure.tls: "true"
+      traefik.http.routers.people360-secure.tls.certresolver: letsencrypt
+      traefik.http.services.people360.loadbalancer.server.port: "3000"
+    networks:
+      - default
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
