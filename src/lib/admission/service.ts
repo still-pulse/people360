@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { syncDocumentCatalog } from './documentCatalog'
 import { generateAdmissionToken, hashToken, makeProtocol } from './security'
+import { isFaceVerificationEnabled } from './features'
 
 export async function ensureAdmissionDocumentTypes() {
   await syncDocumentCatalog()
@@ -81,7 +82,7 @@ export async function createAdmissionRecord(input: {
     experienceDays: input.experienceDays, contractEndDate: input.contractEndDate, status: 'LINK_SENT',
     tokens: { create: { tokenHash: generated.hash, tokenHint: generated.hint, expiresAt } },
     documents: { create: requested.map((type) => ({ typeId: type.id })) },
-    faceVerifications: { create: { provider: process.env.FACE_VERIFICATION_PROVIDER || 'mock' } },
+    ...(isFaceVerificationEnabled() ? { faceVerifications: { create: { provider: process.env.FACE_VERIFICATION_PROVIDER || 'mock' } } } : {}),
   }, include: { unit: true, owner: { select: { id: true, name: true } } } })
   return { admission, token: generated.token, expiresAt }
 }

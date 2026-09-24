@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { analystCanAccessUnit, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { readPrivateAdmissionFile } from '@/lib/admission/storage'
+import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  if (!isFaceVerificationEnabled()) {
+    return NextResponse.json({ error: 'A validação facial está desativada.' }, { status: 410 })
+  }
   const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error

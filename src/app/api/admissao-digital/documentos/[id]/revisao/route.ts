@@ -6,6 +6,7 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { createAdditionalAdmissionToken } from '@/lib/admission/service'
+import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
 const schema = z.object({ action: z.enum(['approve', 'reject', 'resubmit']), reason: z.string().trim().max(500).optional() }).superRefine((v, ctx) => {
   if (v.action !== 'approve' && !v.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Informe o motivo.' })
@@ -20,13 +21,15 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!doc) return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 })
   if (!analystCanAccessUnit(session!, doc.admission.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const status = parsed.data.action === 'approve' ? 'APPROVED' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'
+  const faceVerificationEnabled = isFaceVerificationEnabled()
   await prisma.$transaction(async (tx) => {
     await tx.admissionDocument.update({ where: { id: doc.id }, data: { status, rejectionReason: parsed.data.action === 'approve' ? null : parsed.data.reason, reviewedById: session!.user.id, reviewedAt: new Date() } })
     const remaining = await tx.admissionDocument.count({ where: { admissionId: doc.admissionId, type: { required: true }, status: { not: 'APPROVED' } } })
     const badgePhoto = remaining === 0 ? await tx.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, select: { id: true } }) : null
     await tx.admission.update({ where: { id: doc.admissionId }, data: {
-      status: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? 'FACE_VALIDATION_PENDING' : 'DOCUMENTS_APPROVED') : status === 'APPROVED' ? 'DOCUMENTS_UNDER_REVIEW' : 'CORRECTION_REQUESTED',
-      currentStep: status === 'APPROVED' && remaining === 0 && badgePhoto ? 'validacao-facial' : undefined,
+      status: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING') : 'DOCUMENTS_APPROVED') : status === 'APPROVED' ? 'DOCUMENTS_UNDER_REVIEW' : 'CORRECTION_REQUESTED',
+      currentStep: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'validacao-facial' : 'revisao') : 'foto') : undefined,
+      progress: status === 'APPROVED' && remaining === 0 && badgePhoto ? { set: Math.max(faceVerificationEnabled ? 74 : 82, doc.admission.progress) } : undefined,
       lastActivityAt: new Date(),
     } })
   })
@@ -37,8 +40,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const title = allApproved ? 'Documentos aprovados' : status === 'APPROVED' ? 'Documento aprovado' : status === 'RESUBMISSION_REQUIRED' ? 'Reenvio de documento solicitado' : 'Documento reprovado'
   const message = allApproved
     ? hasBadgePhoto
-      ? 'Todos os documentos obrigatórios foram aprovados pelo RH. Você já pode continuar para a validação facial usando o mesmo link da admissão.'
-      : 'Todos os documentos obrigatórios foram aprovados pelo RH. Acesse o mesmo link da admissão, envie a foto do crachá e depois continue para a validação facial.'
+      ? faceVerificationEnabled
+        ? 'Todos os documentos obrigatórios foram aprovados pelo RH. Você já pode continuar para a validação facial usando o mesmo link da admissão.'
+        : 'Todos os documentos obrigatórios foram aprovados pelo RH. Você já pode continuar a admissão usando o mesmo link.'
+      : 'Todos os documentos obrigatórios foram aprovados pelo RH. Acesse o mesmo link da admissão e envie a foto do crachá para continuar.'
     : status === 'APPROVED' ? `O documento “${doc.type.name}” foi aprovado pelo RH.`
     : `O documento “${doc.type.name}” precisa de atenção. Motivo: ${parsed.data.reason}. Acesse o mesmo link da admissão para reenviar.`
   if (allApproved || status !== 'APPROVED') {

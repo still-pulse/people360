@@ -9,6 +9,7 @@ import { extractIp } from '@/lib/audit'
 import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { renderPdfFirstPageAsJpeg } from '@/lib/admission/pdfImage'
+import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
 const imageMimeTypes = new Set(['image/jpeg', 'image/png'])
 
@@ -21,6 +22,9 @@ function safeReason(error: unknown) {
 }
 
 export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  if (!isFaceVerificationEnabled()) {
+    return NextResponse.json({ error: 'A validação facial está desativada neste processo.' }, { status: 410 })
+  }
   const params = await props.params;
   const rateKey = `${extractIp(req.headers) || 'unknown'}:face:${params.token.slice(-8)}`
   if (!checkPublicDocLinkRateLimit(rateKey).allowed) {

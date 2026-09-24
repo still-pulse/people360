@@ -59,7 +59,7 @@ export function AdmissionList() {
   }
 
   async function deleteSelected(){
-    if(!selected.length||!window.confirm(`EXCLUIR DEFINITIVAMENTE ${selected.length} admissão(ões)?\n\nDados, documentos, fotos, validação facial, assinaturas e PDFs serão apagados e não poderão ser recuperados. Admissões já integradas ao ERPNext não serão excluídas.`))return
+    if(!selected.length||!window.confirm(`EXCLUIR DEFINITIVAMENTE ${selected.length} admissão(ões)?\n\nDados, documentos, fotos, assinaturas e PDFs serão apagados e não poderão ser recuperados. Admissões já integradas ao ERPNext não serão excluídas.`))return
     setLoading(true); setError('')
     try {
       const results=await Promise.all(selected.map(async id=>{const response=await fetch(`/api/admissao-digital/admissoes/${id}`,{method:'DELETE'});return response.ok?null:(await response.json().catch(()=>({}))).error||'Falha ao excluir.'}))

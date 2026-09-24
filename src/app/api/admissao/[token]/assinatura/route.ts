@@ -8,6 +8,7 @@ import { createSignedDocument } from '@/lib/admission/signedDocument'
 import { detectMime, savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
+import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
 function numberField(form: FormData, key: string) {
   const value = Number(form.get(key))
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   if (token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')) {
     return NextResponse.json({ error: 'Ainda existem documentos obrigatórios pendentes.' }, { status: 409 })
   }
-  if (token.admission.faceVerifications[0]?.status !== 'APPROVED') {
+  if (isFaceVerificationEnabled() && token.admission.faceVerifications[0]?.status !== 'APPROVED') {
     return NextResponse.json({ error: 'A validação facial precisa estar aprovada.' }, { status: 409 })
   }
 

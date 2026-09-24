@@ -1,20 +1,23 @@
 import { NextResponse } from 'next/server'
 import { getSessionOrUnauthorized } from '@/lib/apiHelpers'
+import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
 export async function GET() {
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   if (session!.user.role !== 'ADMIN') return NextResponse.json({ error: 'Sem permissão.' }, { status: 403 })
   const faceProvider = process.env.FACE_VERIFICATION_PROVIDER || 'mock'
+  const faceVerificationEnabled = isFaceVerificationEnabled()
   return NextResponse.json({
     providers: {
-      face: faceProvider,
+      face: faceVerificationEnabled ? faceProvider : 'disabled',
       signature: process.env.SIGNATURE_PROVIDER || 'mock',
       erpnext: process.env.ADMISSION_ERPNEXT_PROVIDER || 'mock',
       notifications: process.env.ADMISSION_NOTIFICATION_PROVIDER || 'mock',
     },
     faceVerification: {
-      configured: faceProvider === 'mock' || Boolean(process.env.COMPREFACE_URL && process.env.COMPREFACE_API_KEY),
+      enabled: faceVerificationEnabled,
+      configured: faceVerificationEnabled && (faceProvider === 'mock' || Boolean(process.env.COMPREFACE_URL && process.env.COMPREFACE_API_KEY)),
       autoApprove: process.env.COMPREFACE_AUTO_APPROVE === 'true',
       autoReject: process.env.COMPREFACE_AUTO_REJECT === 'true',
       approveThreshold: Number(process.env.COMPREFACE_APPROVE_THRESHOLD || 0.75),

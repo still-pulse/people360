@@ -71,16 +71,6 @@ export const admissionTours: AdmissionTour[] = [
       step('[data-admission-tour="review-actions"]', 'Decisão do revisor', 'Aprove ou informe um motivo obrigatório para reprovar ou solicitar reenvio.'),
     ],
   },
-  {
-    id: 'admission-face-policy', version: 1, name: 'Como funciona a pontuação facial',
-    description: 'Entenda as faixas automáticas, a revisão humana e os limites de segurança.', category: 'Configuração', estimatedTime: 60,
-    keywords: ['facial', 'compreface', 'pontuação', 'similaridade', 'automática'], route: '/admissao-digital/configuracoes', roles: ['ADMIN'],
-    steps: [
-      step('[data-admission-tour="settings-face-policy"]', 'Política por pontuação', 'A similaridade é comparada aos limites configurados no servidor. Credenciais nunca chegam ao navegador.'),
-      step('[data-admission-tour="settings-face-bands"]', 'Três faixas', 'Acima do limite: aprovação automática opcional. Faixa intermediária: revisão humana. Abaixo: nova captura opcional.'),
-      step('[data-admission-tour="settings-face-safety"]', 'Regra de segurança', 'Erro, rosto não detectado ou formato inadequado nunca é aprovado automaticamente. CompreFace não substitui prova de vida.'),
-    ],
-  },
 ]
 
 export function getAdmissionTour(id: string) {

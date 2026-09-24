@@ -4,7 +4,6 @@ import { detectMime } from './storage'
 import {
   mockAdmissionNotificationProvider,
   mockERPNextAdmissionProvider,
-  mockFaceProvider,
   mockSignatureProvider,
 } from './providers'
 import { generateAdmissionToken, hashToken } from './security'
@@ -31,14 +30,6 @@ describe('fluxo completo da admissão digital', () => {
     expect(detectMime(pdf)?.mime).toBe('application/pdf')
     expect(detectMime(jpeg)?.mime).toBe('image/jpeg')
 
-    const face = await mockFaceProvider.verify({
-      admissionId: 'admission-e2e',
-      selfie: { buffer: Buffer.from('selfie'), mimeType: 'image/jpeg', filename: 'selfie.jpg' },
-      reference: { buffer: Buffer.from('reference'), mimeType: 'image/jpeg', filename: 'reference.jpg' },
-    })
-    expect(face.decision).toBe('APPROVED')
-    expect(face.reference).toMatch(/^face_mock_/)
-
     const signature = await mockSignatureProvider.sign('envelope-e2e')
     expect(signature.transactionId).toMatch(/^sign_mock_/)
 
@@ -52,7 +43,6 @@ describe('fluxo completo da admissão digital', () => {
       'AWAITING_DOCUMENTS',
       'DOCUMENTS_UNDER_REVIEW',
       'DOCUMENTS_APPROVED',
-      'FACE_VALIDATION_PENDING',
       'CONTRACT_PENDING',
       'SIGNATURE_PENDING',
       'SIGNED',

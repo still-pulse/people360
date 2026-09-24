@@ -10,6 +10,7 @@ import { decryptAdmissionValue } from '@/lib/admission/security'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { updateEmployee } from '@/lib/erpnextClient'
 import { savePerfil } from '@/lib/dossie/perfil'
+import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -31,8 +32,9 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.actualRole ?? session!.user.role)
   const response = canViewSensitiveData ? {
     ...item,
+    features: { faceVerification: isFaceVerificationEnabled() },
     fields: item.fields.map((field) => ({ ...field, value: field.sensitive ? decryptAdmissionValue(field.value) : field.value })),
-  } : { ...item, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
+  } : { ...item, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
   return NextResponse.json(response)
 }
 
@@ -101,6 +103,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       await notifyAdmissionCandidate({ ...current, title: 'Reenvio da foto do crachá', message: `O RH solicitou uma nova foto para o crachá. Motivo: ${reason}. Acesse o mesmo link da admissão para reenviar.` })
       response = { requested: true }
     } else {
+    if (!isFaceVerificationEnabled()) return NextResponse.json({ error: 'A validação facial está desativada.' }, { status: 409 })
     const verification = await prisma.faceVerification.findFirst({ where: { admissionId: current.id }, orderBy: { createdAt: 'desc' } })
     if (!verification) return NextResponse.json({ error: 'Validação facial não encontrada.' }, { status: 404 })
     if (action === 'approve-face') {

@@ -27,7 +27,6 @@ export const ADMISSION_STEPS = [
   { key: 'vale-transporte', label: 'Vale-Transporte', progress: 38 },
   { key: 'documentos', label: 'Documentos', progress: 55 },
   { key: 'foto', label: 'Foto para crachá', progress: 66 },
-  { key: 'validacao-facial', label: 'Validação facial', progress: 74 },
   { key: 'revisao', label: 'Revisão', progress: 82 },
   { key: 'assinatura', label: 'Assinatura', progress: 94 },
   { key: 'conclusao', label: 'Conclusão', progress: 100 },

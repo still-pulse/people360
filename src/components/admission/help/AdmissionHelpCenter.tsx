@@ -25,7 +25,7 @@ export function AdmissionHelpCenter() {
       <AdmissionTitle title="Central de Ajuda" subtitle="Aprenda no seu ritmo e repita qualquer passo a passo quando precisar."/>
       <label className={styles.helpSearch} data-admission-tour="help-search">
         <Search size={18}/><span className="sr-only">Pesquisar ajuda</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por admissão, documento, facial..."/>
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por admissão, documento, assinatura..."/>
       </label>
       {!loading && !categories.length && <div className={`${styles.card} ${styles.empty}`}><strong>Nenhum tutorial encontrado</strong><p>Tente buscar por uma ação, como “revisar documento”.</p></div>}
       {categories.map(([category, categoryTours]) => <section className={styles.helpSection} key={category}>

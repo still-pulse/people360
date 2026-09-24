@@ -4,10 +4,10 @@ import { admissionTours } from './catalog'
 
 describe('guias da Admissão Digital', () => {
   it('filtra busca e permissões', () => {
-    expect(searchAdmissionTours(admissionTours, 'pontuação facial')).toHaveLength(1)
-    const face = admissionTours.find((tour) => tour.id === 'admission-face-policy')!
-    expect(canUseAdmissionTour(face, 'ADMIN')).toBe(true)
-    expect(canUseAdmissionTour(face, 'ANALYST')).toBe(false)
+    expect(searchAdmissionTours(admissionTours, 'revisar documentos')).toHaveLength(1)
+    const review = admissionTours.find((tour) => tour.id === 'admission-document-review')!
+    expect(canUseAdmissionTour(review, 'ADMIN')).toBe(true)
+    expect(canUseAdmissionTour(review, 'ANALYST')).toBe(true)
   })
 
   it('ignora seletores ausentes sem quebrar o tour', () => {
