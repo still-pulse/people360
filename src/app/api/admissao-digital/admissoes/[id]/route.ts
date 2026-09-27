@@ -9,7 +9,7 @@ import { deleteAdmissionStorage } from '@/lib/admission/storage'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { createAdditionalAdmissionToken } from '@/lib/admission/service'
-import { updateEmployee } from '@/lib/erpnextClient'
+import { ErpnextApiError, updateEmployee } from '@/lib/erpnextClient'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
@@ -89,7 +89,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       ])
       await notifyAdmissionCandidate({ ...current, title: 'Atualização cadastral aprovada', message: 'O RH conferiu e aprovou sua atualização cadastral.' })
       response = { updated: true, employeeId: process.collaborator.erpnextId }
-    } catch (caught) { return NextResponse.json({ error: caught instanceof Error ? caught.message : 'Não foi possível atualizar o ERPNext.' }, { status: 502 }) }
+    } catch (caught) {
+      console.error('[registration-update] Falha ao aplicar no ERPNext:', current.protocol, caught instanceof ErpnextApiError ? { status: caught.status, message: caught.message, body: caught.body } : caught)
+      // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.
+      return NextResponse.json({ error: `O ERPNext recusou a atualização: ${caught instanceof Error ? caught.message : 'erro desconhecido'}` }, { status: 422 })
+    }
   } else if (action === 'approve-badge') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para aprovar a foto.' }, { status: 403 })
     const photo = await prisma.badgePhoto.findFirst({ where: { admissionId: current.id, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' } })
