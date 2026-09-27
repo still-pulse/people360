@@ -340,6 +340,7 @@ model Unit {
   colaboradores                Colaborador[]
   admissions                   Admission[]
   admissionDocumentTypes       AdmissionDocumentType[]
+  positionSalaries             PositionSalary[]
 
   @@map("units")
 }
@@ -602,6 +603,8 @@ model Position {
   name          String   @unique
   codigoInterno String?
   categoria     String?
+  /// Departamento usado na admissão digital (ex.: Enfermagem)
+  departamento  String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
@@ -609,8 +612,26 @@ model Position {
   headcountEntries HeadcountEntry[]
   vagas            Vaga[]           @relation("VagaCargo")
   aliases          CargoAlias[]
+  salarios         PositionSalary[]
 
   @@map("positions")
+}
+
+/// Salário do cargo por unidade. unitId nulo = salário padrão para as demais unidades.
+model PositionSalary {
+  id         String   @id @default(cuid())
+  positionId String
+  unitId     String?
+  salario    Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  unit     Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([positionId, unitId])
+  @@index([unitId])
+  @@map("position_salaries")
 }
 
 model CargoAlias {

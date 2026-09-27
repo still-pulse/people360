@@ -161,10 +161,12 @@ export interface PositionData {
   name: string
   codigoInterno?: string | null
   categoria?: string | null
+  departamento?: string | null
   active: boolean
   createdAt: string
   updatedAt?: string
   aliases?: { id: string; alias: string }[]
+  salarios?: { id: string; unitId: string | null; salario: number; unit?: { name: string } | null }[]
   _count?: { vagas: number }
 }
 

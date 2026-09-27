@@ -1,22 +1,26 @@
-// Cargos, salários e horários FIXOS da contratação (definidos pelo RH, não digitados).
+// Horários e carga FIXOS da contratação (definidos pelo RH, não digitados).
+// Cargos, departamentos e salários vêm do cadastro de cargos (Administração → Cargos), com salário por unidade.
 // Módulo sem dependências: usado pelo formulário (cliente) e pela validação da API (servidor).
-// Para incluir um novo cargo, basta acrescentar uma linha em ADMISSION_POSITIONS.
 
-export const ADMISSION_POSITIONS = [
-  { cargo: 'Enfermeiro', departamento: 'Enfermagem', salario: 3886.36 },
-  { cargo: 'Técnico de Enfermagem', departamento: 'Enfermagem', salario: 2720.45 },
-] as const
-
-export const ADMISSION_DEPARTMENTS: string[] = Array.from(new Set(ADMISSION_POSITIONS.map((p) => p.departamento as string)))
 export const ADMISSION_SCHEDULES = ['07h00 às 19h00', '19h00 às 07h00'] as const
 export const ADMISSION_MONTHLY_HOURS = 180
 export const ADMISSION_DEFAULT_HAZARD_PAY = 20
 
-const normalize = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+export type AdmissionPosition = { id: string; name: string; departamento: string | null; salarios: { unitId: string | null; salario: number }[] }
 
-export function findPosition(cargo?: string | null) {
+export const normalizeCargo = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+
+export function findPosition<T extends { name: string }>(positions: T[], cargo?: string | null): T | null {
   if (!cargo) return null
-  return ADMISSION_POSITIONS.find((p) => normalize(p.cargo) === normalize(cargo)) ?? null
+  const key = normalizeCargo(cargo)
+  return positions.find((p) => normalizeCargo(p.name) === key) ?? null
+}
+
+/** Salário da unidade; se ela não tiver valor próprio, usa o padrão (unitId nulo). */
+export function salaryForUnit(position: Pick<AdmissionPosition, 'salarios'> | null | undefined, unitId?: string | null): number | null {
+  if (!position) return null
+  const own = unitId ? position.salarios.find((s) => s.unitId === unitId) : undefined
+  return (own ?? position.salarios.find((s) => s.unitId === null))?.salario ?? null
 }
 
 export function formatBRL(value: number) {

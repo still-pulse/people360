@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { log, extractIp } from '@/lib/audit'
+import { parseSalarios, positionInclude } from '@/lib/positionSalaries'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -15,9 +16,7 @@ export async function GET(req: NextRequest) {
   const positions = await prisma.position.findMany({
     where: all ? {} : { active: true },
     orderBy: { name: 'asc' },
-    include: withAliases
-      ? { aliases: { orderBy: { alias: 'asc' } }, _count: { select: { vagas: true } } }
-      : undefined,
+    include: withAliases ? positionInclude : undefined,
   })
   return NextResponse.json(positions)
 }
@@ -33,14 +32,19 @@ export async function POST(req: NextRequest) {
     where: { name: { equals: body.name.trim(), mode: 'insensitive' } },
   })
   if (existing) return NextResponse.json({ error: 'Já existe um cargo com este nome.' }, { status: 400 })
+  const { salarios, error: salarioError } = parseSalarios(body.salarios)
+  if (salarioError) return NextResponse.json({ error: salarioError }, { status: 400 })
+  if (salarios && session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Apenas administradores definem salários.' }, { status: 403 })
 
   const position = await prisma.position.create({
     data: {
       name: body.name.trim(),
       codigoInterno: body.codigoInterno || null,
       categoria: body.categoria || null,
+      departamento: body.departamento?.trim() || null,
+      ...(salarios?.length ? { salarios: { create: salarios } } : {}),
     },
-    include: { aliases: true, _count: { select: { vagas: true } } },
+    include: positionInclude,
   })
 
   await log({

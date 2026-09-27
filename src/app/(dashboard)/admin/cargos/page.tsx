@@ -29,6 +29,9 @@ export default function CargosPage() {
   const [name, setName] = useState('')
   const [codigoInterno, setCodigoInterno] = useState('')
   const [categoria, setCategoria] = useState('')
+  const [departamento, setDepartamento] = useState('')
+  const [salarios, setSalarios] = useState<SalaryRow[]>([])
+  const [units, setUnits] = useState<{ id: string; name: string }[]>([])
   const [newAlias, setNewAlias] = useState('')
   const [formError, setFormError] = useState('')
   const [aliasError, setAliasError] = useState('')
@@ -43,7 +46,10 @@ export default function CargosPage() {
     setIsLoading(false)
   }
 
-  useEffect(() => { loadPositions() }, [])
+  useEffect(() => {
+    loadPositions()
+    fetch('/api/units').then((r) => r.json()).then((d) => setUnits(Array.isArray(d) ? d : [])).catch(() => setUnits([]))
+  }, [])
 
   const filtered = useMemo(() => {
     return positions.filter((p) => {
@@ -63,6 +69,10 @@ export default function CargosPage() {
 
   async function handleSave() {
     if (!name.trim()) { setFormError('Nome é obrigatório.'); return }
+    const filled = salarios.filter((s) => s.salario.trim())
+    if (filled.some((s) => !(parseMoney(s.salario) > 0))) { setFormError('Informe salários válidos (ex.: 3.886,36).'); return }
+    const unitKeys = filled.map((s) => s.unitId || '*')
+    if (new Set(unitKeys).size !== unitKeys.length) { setFormError('Cada unidade só pode ter um salário.'); return }
     setFormError('')
     setIsSaving(true)
 
@@ -71,7 +81,11 @@ export default function CargosPage() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), codigoInterno: codigoInterno.trim() || null, categoria: categoria.trim() || null }),
+      body: JSON.stringify({
+        name: name.trim(), codigoInterno: codigoInterno.trim() || null, categoria: categoria.trim() || null,
+        departamento: departamento.trim() || null,
+        salarios: filled.map((s) => ({ unitId: s.unitId || null, salario: parseMoney(s.salario) })),
+      }),
     })
 
     setIsSaving(false)
@@ -81,6 +95,8 @@ export default function CargosPage() {
       setName('')
       setCodigoInterno('')
       setCategoria('')
+      setDepartamento('')
+      setSalarios([])
       loadPositions()
     } else {
       const data = await res.json()
@@ -145,6 +161,8 @@ export default function CargosPage() {
     setName('')
     setCodigoInterno('')
     setCategoria('')
+    setDepartamento('')
+    setSalarios([{ unitId: '', salario: '' }])
     setFormError('')
     setModalOpen(true)
   }
@@ -154,6 +172,10 @@ export default function CargosPage() {
     setName(pos.name)
     setCodigoInterno(pos.codigoInterno ?? '')
     setCategoria(pos.categoria ?? '')
+    setDepartamento(pos.departamento ?? '')
+    setSalarios((pos.salarios ?? [])
+      .slice().sort((a, b) => (a.unitId ? 1 : 0) - (b.unitId ? 1 : 0) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? ''))
+      .map((s) => ({ unitId: s.unitId ?? '', salario: formatMoney(s.salario) })))
     setFormError('')
     setModalOpen(true)
   }
@@ -207,57 +229,20 @@ export default function CargosPage() {
           ))}
         </div>
 
-        {/* Chips ativos */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-700">Cargos Ativos</h2>
-            <div className="flex gap-2">
-              <button onClick={loadPositions} className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
-                <RefreshCw className="w-4 h-4" />
-              </button>
-              <Button icon={<Plus className="w-4 h-4" />} onClick={openNew}>
-                Novo Cargo
-              </Button>
-            </div>
-          </div>
-
-          {!isLoading && (
-            <div className="flex flex-wrap gap-2 mb-5">
-              {positions.filter((p) => p.active).map((pos) => (
-                <div key={pos.id}
-                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-100 shadow-sm group hover:border-[#15AFA4]/30 hover:shadow transition-all">
-                  <div className="w-2 h-2 rounded-full bg-[#15AFA4]" />
-                  <span className="text-sm font-medium text-gray-800">{pos.name}</span>
-                  {pos.aliases && pos.aliases.length > 0 && (
-                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                      {pos.aliases.length} alias
-                    </span>
-                  )}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-                    <button onClick={() => openEdit(pos)}
-                      className="p-1 rounded-md text-gray-400 hover:text-[#15AFA4] hover:bg-[#15AFA4]/10 transition-colors">
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => openAliases(pos)}
-                      className="p-1 rounded-md text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors">
-                      <Tag className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button onClick={openNew}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#15AFA4] hover:bg-[#15AFA4]/5 transition-all group">
-                <Plus className="w-4 h-4 text-gray-400 group-hover:text-[#15AFA4]" />
-                <span className="text-sm text-gray-400 group-hover:text-[#15AFA4]">Novo cargo</span>
-              </button>
-            </div>
-          )}
-        </div>
-
         {/* Tabela completa */}
         <Card>
           <CardHeader>
-            <CardTitle>Todos os Cargos</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Todos os Cargos</CardTitle>
+              <div className="flex gap-2">
+                <button onClick={loadPositions} className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+                <Button icon={<Plus className="w-4 h-4" />} onClick={openNew}>
+                  Novo Cargo
+                </Button>
+              </div>
+            </div>
           </CardHeader>
 
           <div className="px-5 pb-4 flex gap-3 border-b border-gray-50">
@@ -287,14 +272,14 @@ export default function CargosPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-y border-gray-100">
                   <tr>
-                    {['#', 'Cargo', 'Código', 'Categoria', 'Aliases', 'Vagas', 'Status', 'Ações'].map((h) => (
+                    {['#', 'Cargo', 'Código', 'Categoria', 'Salário', 'Aliases', 'Vagas', 'Status', 'Ações'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filtered.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Nenhum cargo encontrado</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Nenhum cargo encontrado</td></tr>
                   )}
                   {filtered.map((pos, i) => (
                     <tr key={pos.id} className={`hover:bg-gray-50/50 ${!pos.active ? 'opacity-60' : ''}`}>
@@ -307,6 +292,11 @@ export default function CargosPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{pos.codigoInterno || '—'}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{pos.categoria || '—'}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <button onClick={() => openEdit(pos)} className="text-left hover:text-[#15AFA4] transition-colors">
+                          {salarySummary(pos)}
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
                         {pos.aliases && pos.aliases.length > 0 ? (
                           <button onClick={() => openAliases(pos)}
@@ -371,7 +361,7 @@ export default function CargosPage() {
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditPosition(null) }}
         title={editPosition ? `Editar — ${editPosition.name}` : 'Novo Cargo'}
-        size="sm"
+        size="md"
       >
         <div className="p-6 space-y-4">
           <Input
@@ -393,8 +383,61 @@ export default function CargosPage() {
             onChange={(e) => setCategoria(e.target.value)}
             placeholder="Ex: Assistencial, Administrativo... (opcional)"
           />
+          <Input
+            label="Departamento"
+            value={departamento}
+            onChange={(e) => setDepartamento(e.target.value)}
+            placeholder="Ex: Enfermagem (usado na admissão digital)"
+          />
+
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Salário por unidade</p>
+              <p className="text-xs text-gray-400">
+                A admissão digital usa o salário da unidade escolhida. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio.
+              </p>
+            </div>
+            {salarios.map((row, index) => (
+              <div key={index} className="flex gap-2 items-center">
+                <select
+                  value={row.unitId}
+                  onChange={(e) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, unitId: e.target.value } : item))}
+                  className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4] bg-white"
+                >
+                  <option value="">Todas as unidades (padrão)</option>
+                  {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+                <div className="relative w-36 shrink-0">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                  <input
+                    inputMode="decimal"
+                    value={row.salario}
+                    onChange={(e) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, salario: e.target.value } : item))}
+                    placeholder="0,00"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  aria-label="Remover salário"
+                  onClick={() => setSalarios((list) => list.filter((_, i) => i !== index))}
+                  className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setSalarios((list) => [...list, { unitId: units.find((u) => !list.some((s) => s.unitId === u.id))?.id ?? '', salario: '' }])}
+              className="flex items-center gap-1.5 text-xs font-medium text-[#15AFA4] hover:underline"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar unidade
+            </button>
+          </div>
+
           <p className="text-xs text-gray-400">
-            O nome oficial será exibido nos formulários de vaga e headcount. Use alias para mapear variações antigas.
+            O nome oficial será exibido nos formulários de vaga, headcount e admissão. Use alias para mapear variações antigas.
           </p>
           {formError && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">{formError}</div>
@@ -492,5 +535,31 @@ export default function CargosPage() {
         </div>
       </Modal>
     </>
+  )
+}
+
+type SalaryRow = { unitId: string; salario: string }
+
+// Aceita "3.886,36", "3886,36" ou "3886.36".
+function parseMoney(value: string) {
+  const clean = value.replace(/[^\d,.]/g, '')
+  return Number(clean.includes(',') ? clean.replace(/\./g, '').replace(',', '.') : clean)
+}
+
+function formatMoney(value: number) {
+  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function salarySummary(pos: PositionData) {
+  const salarios = pos.salarios ?? []
+  if (!salarios.length) return <span className="text-gray-300">+ salário</span>
+  const padrao = salarios.find((s) => !s.unitId)
+  const porUnidade = salarios.filter((s) => s.unitId)
+  return (
+    <span className="text-gray-600">
+      {padrao ? `R$ ${formatMoney(padrao.salario)}` : ''}
+      {padrao && porUnidade.length ? ' · ' : ''}
+      {porUnidade.length ? `${porUnidade.length} unidade${porUnidade.length > 1 ? 's' : ''}` : ''}
+    </span>
   )
 }

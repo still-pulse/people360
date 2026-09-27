@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { log, extractIp } from '@/lib/audit'
+import { parseSalarios, positionInclude, replaceSalarios } from '@/lib/positionSalaries'
 
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -11,7 +12,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 
   const position = await prisma.position.findUnique({
     where: { id: params.id },
-    include: { aliases: { orderBy: { alias: 'asc' } }, _count: { select: { vagas: true } } },
+    include: positionInclude,
   })
   if (!position) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(position)
@@ -33,6 +34,10 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     })
     if (duplicate) return NextResponse.json({ error: 'Já existe um cargo com este nome.' }, { status: 400 })
   }
+  const { salarios, error: salarioError } = parseSalarios(body.salarios)
+  if (salarioError) return NextResponse.json({ error: salarioError }, { status: 400 })
+  if (salarios && session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Apenas administradores definem salários.' }, { status: 403 })
+  if (salarios) await replaceSalarios(params.id, salarios)
 
   const position = await prisma.position.update({
     where: { id: params.id },
@@ -40,9 +45,10 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.codigoInterno !== undefined ? { codigoInterno: body.codigoInterno || null } : {}),
       ...(body.categoria !== undefined ? { categoria: body.categoria || null } : {}),
+      ...(body.departamento !== undefined ? { departamento: body.departamento?.trim() || null } : {}),
       ...(body.active !== undefined ? { active: body.active } : {}),
     },
-    include: { aliases: { orderBy: { alias: 'asc' } }, _count: { select: { vagas: true } } },
+    include: positionInclude,
   })
 
   // Se o nome mudou, sincroniza o campo cargo das vagas vinculadas

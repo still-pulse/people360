@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Calendar, KanbanSquare, Users, BarChart3,
   Building2, Settings, ChevronRight, FileBarChart, UserPlus, Headphones, FileCheck, ClipboardList,
-  ClipboardCheck, Brain, UserCheck, Contact,
+  ClipboardCheck, Brain, UserCheck, Contact, UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/components/providers/SettingsProvider'
@@ -93,6 +93,7 @@ const navItems: NavItem[] = [
       { href: '/admissao-digital/auditoria', label: 'Logs e Auditoria', allowedRoles: ['ADMIN', 'GERENTE'] },
     ],
   },
+  { href: '/atualizacao-cadastral', label: 'Atualização Cadastral', icon: UserCog, allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'] },
   { href: '/pareceres', label: 'Pareceres', icon: ClipboardCheck, allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'] },
   { href: '/testes', label: 'Testes', icon: Brain, allowedRoles: ['ADMIN', 'ANALYST'] },
   {
@@ -257,7 +258,7 @@ export function Sidebar() {
             )
           }
 
-          const isActive = pathname === item.href
+          const isActive = pathname === item.href || (item.href === '/atualizacao-cadastral' && pathname.startsWith(item.href + '/'))
           return (
             <Link
               key={item.href}

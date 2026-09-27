@@ -12,7 +12,7 @@ import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, maskCpf } from '@/lib/admission/security'
 import { SENSITIVE_FIELD_KEYS } from '@/lib/admission/constants'
 import { getPerfilView } from '@/lib/dossie/perfil'
-import { ADMISSION_DEPARTMENTS, ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition } from '@/lib/admission/positions'
+import { ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition, salaryForUnit } from '@/lib/admission/positions'
 
 const FIELD_LABELS: Record<string, string> = {
   collaboratorId: 'Colaborador', requestedSections: 'Seções para atualização',
@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
     if (digits.length === 11) where.OR.push({ fields: { some: { key: 'cpf', searchHash: hashSensitive(digits) } } })
   }
   if (p.get('status')) where.status = p.get('status')
+  if (p.get('processType') === 'ADMISSION' || p.get('processType') === 'REGISTRATION_UPDATE') where.processType = p.get('processType')
   if (p.get('ownerId')) where.ownerId = p.get('ownerId')
   if (p.get('from') || p.get('to')) where.createdAt = { ...(p.get('from') ? { gte: new Date(`${p.get('from')}T00:00:00`) } : {}), ...(p.get('to') ? { lte: new Date(`${p.get('to')}T23:59:59`) } : {}) }
   const allowedSort = ['candidateName', 'createdAt', 'lastActivityAt', 'hireDate', 'status']
@@ -119,14 +120,18 @@ export async function POST(req: NextRequest) {
     await logAdmissionEvent({ admissionId: created.admission.id, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: 'REGISTRATION_UPDATE_CREATED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { sections: parsed.data.requestedSections } })
     return NextResponse.json({ admission: created.admission, publicUrl, expiresAt: created.expiresAt }, { status: 201 })
   }
-  // Cargo, departamento, horário, salário e carga horária são definidos pelo RH (não digitados): validados e fixados aqui.
-  const position = findPosition(parsed.data.jobTitle)
+  // Cargo, departamento, horário, salário e carga horária vêm do cadastro de cargos (salário por unidade): validados e fixados aqui.
+  const positions = await prisma.position.findMany({ where: { active: true }, select: { id: true, name: true, departamento: true, salarios: { select: { unitId: true, salario: true } } } })
+  const position = findPosition(positions, parsed.data.jobTitle)
   if (!position) return NextResponse.json({ error: 'Selecione um cargo válido.' }, { status: 400 })
-  if (!ADMISSION_DEPARTMENTS.includes(parsed.data.department ?? '')) return NextResponse.json({ error: 'Selecione um departamento válido.' }, { status: 400 })
+  const salary = salaryForUnit(position, parsed.data.unitId)
+  if (salary === null) return NextResponse.json({ error: 'O cargo não tem salário cadastrado para esta unidade. Cadastre em Administração → Cargos.' }, { status: 400 })
+  const department = position.departamento || parsed.data.department?.trim()
+  if (!department) return NextResponse.json({ error: 'Informe o departamento.' }, { status: 400 })
   if (!(ADMISSION_SCHEDULES as readonly string[]).includes(parsed.data.workSchedule ?? '')) return NextResponse.json({ error: 'Selecione o horário de trabalho.' }, { status: 400 })
-  parsed.data.jobTitle = position.cargo
-  parsed.data.department = position.departamento
-  parsed.data.salary = position.salario
+  parsed.data.jobTitle = position.name
+  parsed.data.department = department
+  parsed.data.salary = salary
   parsed.data.weeklyHours = undefined
   const monthlyHours = ADMISSION_MONTHLY_HOURS
   if (!analystCanAccessUnit(session!, parsed.data.unitId)) return NextResponse.json({ error: 'Sem acesso a esta unidade.' }, { status: 403 })

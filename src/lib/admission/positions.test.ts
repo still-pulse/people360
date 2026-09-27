@@ -1,22 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { DOCUMENT_CATALOG } from './documentCatalog'
-import { ADMISSION_MONTHLY_HOURS, ADMISSION_POSITIONS, ADMISSION_SCHEDULES, findPosition } from './positions'
+import { ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition, salaryForUnit } from './positions'
 import { ADMISSION_TEMPLATE_DEFAULTS } from './templateDefaults'
 
-describe('cargos, salários e horários fixos', () => {
-  it('define o salário pelo cargo', () => {
-    expect(findPosition('Enfermeiro')?.salario).toBe(3886.36)
-    expect(findPosition('Técnico de Enfermagem')?.salario).toBe(2720.45)
+describe('cargos, salários por unidade e horários fixos', () => {
+  const enfermeiro = { id: 'p1', name: 'Enfermeiro', departamento: 'Enfermagem', salarios: [{ unitId: null, salario: 3886.36 }, { unitId: 'vg', salario: 4100 }] }
+  const tecnico = { id: 'p2', name: 'Técnico de Enfermagem', departamento: 'Enfermagem', salarios: [{ unitId: 'gru', salario: 2720.45 }] }
+  const positions = [enfermeiro, tecnico]
+  it('usa o salário da unidade e cai no padrão quando a unidade não tem valor próprio', () => {
+    expect(salaryForUnit(enfermeiro, 'vg')).toBe(4100)
+    expect(salaryForUnit(enfermeiro, 'gru')).toBe(3886.36)
+    expect(salaryForUnit(tecnico, 'gru')).toBe(2720.45)
+    expect(salaryForUnit(tecnico, 'vg')).toBeNull()
+    expect(salaryForUnit(null, 'vg')).toBeNull()
   })
-  it('reconhece o cargo ignorando acento, caixa e espaços; rejeita o que não está na lista', () => {
-    expect(findPosition('  tecnico de enfermagem ')?.cargo).toBe('Técnico de Enfermagem')
-    expect(findPosition('Médico')).toBeNull()
-    expect(findPosition('')).toBeNull()
+  it('reconhece o cargo ignorando acento, caixa e espaços; rejeita o que não está cadastrado', () => {
+    expect(findPosition(positions, '  tecnico de enfermagem ')?.name).toBe('Técnico de Enfermagem')
+    expect(findPosition(positions, 'Médico')).toBeNull()
+    expect(findPosition(positions, '')).toBeNull()
   })
   it('mantém os dois horários e a carga mensal de 180 horas', () => {
     expect([...ADMISSION_SCHEDULES]).toEqual(['07h00 às 19h00', '19h00 às 07h00'])
     expect(ADMISSION_MONTHLY_HOURS).toBe(180)
-    expect(ADMISSION_POSITIONS.every((p) => p.departamento === 'Enfermagem')).toBe(true)
   })
 })
 
