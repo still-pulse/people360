@@ -10,6 +10,7 @@ import { decryptAdmissionValue } from '@/lib/admission/security'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { createAdditionalAdmissionToken } from '@/lib/admission/service'
 import { ErpnextApiError, updateEmployee } from '@/lib/erpnextClient'
+import { toErpnextMunicipio } from '@/lib/admission/municipios'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
@@ -77,13 +78,14 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     const erpData: Record<string, unknown> = {}
     const erpMap: Record<string, string> = { name: 'employee_name', email: 'personal_email', phone: 'cell_number', birthDate: 'date_of_birth', gender: 'gender', cpf: 'custom_cpf', rg: 'custom_rg', ethnicity: 'custom_etnia', birthCity: 'custom_naturalidade_cidade' }
     for (const [field, target] of Object.entries(erpMap)) if (values[field] !== undefined && values[field] !== '') erpData[target] = values[field]
+    if (erpData.custom_naturalidade_cidade) erpData.custom_naturalidade_cidade = toErpnextMunicipio(String(erpData.custom_naturalidade_cidade))
     try {
       if (Object.keys(erpData).length) await updateEmployee(process.collaborator.erpnextId, erpData)
       const address = { cep: String(values.zipCode || ''), logradouro: String(values.street || ''), numero: String(values.number || ''), complemento: String(values.complement || ''), bairro: String(values.district || ''), cidade: String(values.city || ''), uf: String(values.state || '') }
       const banco = { banco: String(values.bank || ''), agencia: String(values.agency || ''), conta: String(values.account || ''), digito: String(values.accountDigit || ''), tipo: String(values.accountType || '') }
       await savePerfil(process.collaborator.id, { nomeMae: String(values.motherName || '') || undefined, nomePai: String(values.fatherName || '') || undefined, estadoCivil: String(values.maritalStatus || '') || undefined, escolaridade: String(values.education || '') || undefined, rgOrgao: String(values.rgIssuer || '') || undefined, rgEmissao: String(values.rgIssuedAt || '') || undefined, pis: String(values.pis || '') || undefined, ...(current.requestedSections.includes('address') ? { endereco: address } : {}), ...(current.requestedSections.includes('bank') ? { banco } : {}) }, { id: session!.user.id, name: session!.user.name || 'Usuário do RH' })
       await prisma.$transaction([
-        prisma.colaborador.update({ where: { id: process.collaborator.id }, data: { employeeName: String(values.name || process.collaborator.employeeName), personalEmail: String(values.email || '') || null, cellNumber: String(values.phone || '') || null, gender: String(values.gender || '') || null, cpf: String(values.cpf || '') || null, rg: String(values.rg || '') || null, etnia: String(values.ethnicity || '') || null, naturalidade: String(values.birthCity || '') || null, syncedAt: new Date() } }),
+        prisma.colaborador.update({ where: { id: process.collaborator.id }, data: { employeeName: String(values.name || process.collaborator.employeeName), personalEmail: String(values.email || '') || null, cellNumber: String(values.phone || '') || null, gender: String(values.gender || '') || null, cpf: String(values.cpf || '') || null, rg: String(values.rg || '') || null, etnia: String(values.ethnicity || '') || null, naturalidade: toErpnextMunicipio(String(values.birthCity || '')) || null, syncedAt: new Date() } }),
         prisma.admission.update({ where: { id: current.id }, data: { status: 'COMPLETED', completedAt: new Date(), lastActivityAt: new Date() } }),
         prisma.colaboradorHistorico.create({ data: { colaboradorId: process.collaborator.id, tipo: 'ATUALIZACAO_CADASTRAL', dataEvento: new Date(), titulo: `Atualização cadastral ${current.protocol} aprovada`, novo: current.requestedSections.join(', '), responsavelId: session!.user.id, responsavelNome: session!.user.name } }),
       ])

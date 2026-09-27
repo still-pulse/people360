@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { createEmployee, findEmployeeByCpf, listErpnextResourceNames } from '@/lib/erpnextClient'
 import { decryptAdmissionValue } from './security'
+import { toErpnextMunicipio } from './municipios'
 
 function text(value: unknown) {
   return value == null ? '' : String(value).trim()
@@ -95,7 +96,7 @@ export async function syncAdmissionToERPNext(admissionId: string) {
     custom_tipo_de_deficiencia: text(fields.disabilityDetails) || undefined,
     custom_etnia: text(fields.ethnicity) || undefined,
     custom_carga_horária_mensal: admission.monthlyHours || undefined,
-    custom_naturalidade_cidade: text(fields.birthCity) || undefined,
+    custom_naturalidade_cidade: toErpnextMunicipio(text(fields.birthCity)) || undefined,
   })
   return { employeeId: employee.name, employeeCode: employee.name }
 }
