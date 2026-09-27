@@ -78,9 +78,11 @@ export default function CargosPage() {
 
   async function handleSave() {
     if (!name.trim()) { setFormError('Nome é obrigatório.'); return }
-    const filled = salarios.filter((s) => s.salario.trim())
-    if (filled.some((s) => !(parseMoney(s.salario) > 0))) { setFormError('Informe salários válidos (ex.: 3.886,36).'); return }
-    const unitKeys = filled.map((s) => s.unitId || '*')
+    const used = salarios.filter((s) => s.salario.trim() || s.allUnits || s.unitIds.length)
+    if (used.some((s) => !(parseMoney(s.salario) > 0))) { setFormError('Informe salários válidos (ex.: 3.886,36).'); return }
+    if (used.some((s) => !s.allUnits && !s.unitIds.length)) { setFormError('Marque ao menos uma unidade para cada salário.'); return }
+    const entries = used.flatMap((s) => (s.allUnits ? [null] : s.unitIds).map((unitId) => ({ unitId, salario: parseMoney(s.salario) })))
+    const unitKeys = entries.map((s) => s.unitId ?? '*')
     if (new Set(unitKeys).size !== unitKeys.length) { setFormError('Cada unidade só pode ter um salário.'); return }
     setFormError('')
     setIsSaving(true)
@@ -93,7 +95,7 @@ export default function CargosPage() {
       body: JSON.stringify({
         name: name.trim(), categoria: categoria.trim() || null,
         departamento: departamento.trim() || null,
-        salarios: filled.map((s) => ({ unitId: s.unitId || null, salario: parseMoney(s.salario) })),
+        salarios: entries,
       }),
     })
 
@@ -169,7 +171,7 @@ export default function CargosPage() {
     setName('')
     setCategoria('')
     setDepartamento('')
-    setSalarios([{ unitId: '', salario: '' }])
+    setSalarios([emptySalaryRow()])
     setFormError('')
     setModalOpen(true)
   }
@@ -179,10 +181,16 @@ export default function CargosPage() {
     setName(pos.name)
     setCategoria(pos.categoria ?? '')
     setDepartamento(pos.departamento ?? '')
-    const current = (pos.salarios ?? [])
-      .slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? ''))
-      .map((s) => ({ unitId: s.unitId ?? '', salario: formatMoney(s.salario) }))
-    setSalarios(current.length ? current : [{ unitId: '', salario: '' }])
+    // Agrupa as unidades que têm o mesmo salário numa mesma faixa; o padrão fica numa faixa própria.
+    const groups = new Map<string, SalaryRow>()
+    for (const s of pos.salarios ?? []) {
+      const key = s.unitId ? `u:${s.salario}` : 'default'
+      const row = groups.get(key) ?? { salario: formatMoney(s.salario), allUnits: !s.unitId, unitIds: [] }
+      if (s.unitId) row.unitIds.push(s.unitId)
+      groups.set(key, row)
+    }
+    const current = Array.from(groups.values()).sort((a, b) => Number(a.allUnits) - Number(b.allUnits))
+    setSalarios(current.length ? current : [emptySalaryRow()])
     setFormError('')
     setModalOpen(true)
   }
@@ -389,45 +397,84 @@ export default function CargosPage() {
             <div>
               <p className="text-sm font-medium text-gray-700">Unidade e salário</p>
               <p className="text-xs text-gray-400">
-                Cadastre o salário do cargo em cada unidade. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio.
+                Informe o salário e marque as unidades que o recebem. Para outro valor em outras unidades, adicione outro salário. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio.
               </p>
             </div>
-            {salarios.map((row, index) => (
-              <div key={index} className="flex gap-2 items-center">
-                <select
-                  value={row.unitId}
-                  onChange={(e) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, unitId: e.target.value } : item))}
-                  className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4] bg-white"
-                >
-                  <option value="">Todas as unidades (padrão)</option>
-                  {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-                <div className="relative w-36 shrink-0">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
-                  <input
-                    inputMode="decimal"
-                    value={row.salario}
-                    onChange={(e) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, salario: e.target.value } : item))}
-                    placeholder="0,00"
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4]"
-                  />
+            {salarios.map((row, index) => {
+              const update = (patch: Partial<SalaryRow>) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, ...patch } : item))
+              const usedElsewhere = new Set(salarios.flatMap((item, i) => i === index ? [] : item.unitIds))
+              const defaultElsewhere = salarios.some((item, i) => i !== index && item.allUnits)
+              const available = units.filter((u) => !usedElsewhere.has(u.id))
+              return (
+                <div key={index} className="rounded-xl border border-gray-200 p-3 space-y-2.5">
+                  <div className="flex gap-2 items-center">
+                    <div className="relative w-40 shrink-0">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                      <input
+                        inputMode="decimal"
+                        aria-label="Salário"
+                        value={row.salario}
+                        onChange={(e) => update({ salario: e.target.value })}
+                        placeholder="0,00"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4]"
+                      />
+                    </div>
+                    <label className={`flex items-center gap-2 text-xs flex-1 min-w-0 ${defaultElsewhere ? 'text-gray-300' : 'text-gray-600 cursor-pointer'}`}>
+                      <input
+                        type="checkbox"
+                        checked={row.allUnits}
+                        disabled={defaultElsewhere}
+                        onChange={(e) => update({ allUnits: e.target.checked, unitIds: e.target.checked ? [] : row.unitIds })}
+                        className="accent-[#15AFA4]"
+                      />
+                      Todas as unidades (padrão)
+                    </label>
+                    <button
+                      type="button"
+                      aria-label="Remover salário"
+                      onClick={() => setSalarios((list) => list.filter((_, i) => i !== index))}
+                      className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {!row.allUnits && (
+                    <>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">{row.unitIds.length ? `${row.unitIds.length} unidade${row.unitIds.length > 1 ? 's' : ''} com este salário` : 'Marque as unidades com este salário'}</span>
+                        <div className="flex gap-3">
+                          <button type="button" className="text-[#15AFA4] hover:underline" onClick={() => update({ unitIds: available.map((u) => u.id) })}>Marcar todas</button>
+                          <button type="button" className="text-gray-400 hover:underline" onClick={() => update({ unitIds: [] })}>Limpar</button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 max-h-44 overflow-y-auto pr-1">
+                        {units.map((u) => {
+                          const taken = usedElsewhere.has(u.id)
+                          return (
+                            <label key={u.id} className={`flex items-center gap-2 py-1 text-xs ${taken ? 'text-gray-300' : 'text-gray-700 cursor-pointer'}`} title={taken ? 'Já tem salário em outra faixa' : undefined}>
+                              <input
+                                type="checkbox"
+                                disabled={taken}
+                                checked={row.unitIds.includes(u.id)}
+                                onChange={(e) => update({ unitIds: e.target.checked ? [...row.unitIds, u.id] : row.unitIds.filter((id) => id !== u.id) })}
+                                className="accent-[#15AFA4]"
+                              />
+                              <span className="truncate">{u.name}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  aria-label="Remover salário"
-                  onClick={() => setSalarios((list) => list.filter((_, i) => i !== index))}
-                  className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              )
+            })}
             <button
               type="button"
-              onClick={() => setSalarios((list) => [...list, { unitId: units.find((u) => !list.some((s) => s.unitId === u.id))?.id ?? '', salario: '' }])}
+              onClick={() => setSalarios((list) => [...list, emptySalaryRow()])}
               className="flex items-center gap-1.5 text-xs font-medium text-[#15AFA4] hover:underline"
             >
-              <Plus className="w-3.5 h-3.5" /> Adicionar outra unidade
+              <Plus className="w-3.5 h-3.5" /> Adicionar outro salário
             </button>
           </div>
           <Input
@@ -546,7 +593,12 @@ export default function CargosPage() {
   )
 }
 
-type SalaryRow = { unitId: string; salario: string }
+// Uma faixa salarial: um valor aplicado às unidades marcadas (ou a todas, como padrão).
+type SalaryRow = { salario: string; allUnits: boolean; unitIds: string[] }
+
+function emptySalaryRow(): SalaryRow {
+  return { salario: '', allUnits: false, unitIds: [] }
+}
 
 // Aceita "3.886,36", "3886,36" ou "3886.36".
 function parseMoney(value: string) {
