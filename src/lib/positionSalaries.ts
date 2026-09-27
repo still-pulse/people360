@@ -28,14 +28,9 @@ export function replaceSalarios(positionId: string, salarios: SalaryInput[]) {
   ])
 }
 
-/** Acrescenta (ou atualiza) salários de unidades em um cargo existente, sem mexer nas demais unidades. */
+/** Acrescenta salários de novas unidades a um cargo existente. Quem chama garante que essas unidades ainda não têm salário. */
 export function mergeSalarios(positionId: string, salarios: SalaryInput[]) {
-  return prisma.$transaction([
-    prisma.positionSalary.deleteMany({
-      where: { positionId, OR: salarios.map((s) => ({ unitId: s.unitId })) },
-    }),
-    prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, salario: s.salario })) }),
-  ])
+  return prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, salario: s.salario })) })
 }
 
 /** Vagas do cargo agrupadas por unidade ('' = vaga sem unidade), para a lista de cargos. */

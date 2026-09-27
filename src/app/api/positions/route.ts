@@ -40,6 +40,13 @@ export async function POST(req: NextRequest) {
   // Cargo já cadastrado: as unidades informadas são acrescentadas a ele (o nome continua único).
   if (existing) {
     if (!salarios?.length) return NextResponse.json({ error: 'Já existe um cargo com este nome. Marque as unidades e o salário para adicioná-las a ele.' }, { status: 400 })
+    // Nunca sobrescreve: unidade que já tem salário neste cargo só muda pelo "Editar".
+    const current = await prisma.positionSalary.findMany({ where: { positionId: existing.id }, select: { unitId: true, unit: { select: { name: true } } } })
+    const conflicts = current.filter((c) => salarios.some((s) => s.unitId === c.unitId))
+    if (conflicts.length) {
+      const nomes = conflicts.map((c) => c.unit?.name ?? 'Todas as unidades (padrão)').join(', ')
+      return NextResponse.json({ error: `O cargo ${existing.name} já tem salário em: ${nomes}. Desmarque essas unidades; para alterar o salário delas, use Editar.` }, { status: 409 })
+    }
     await mergeSalarios(existing.id, salarios)
     const position = await prisma.position.update({
       where: { id: existing.id },

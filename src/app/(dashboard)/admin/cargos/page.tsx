@@ -214,6 +214,8 @@ export default function CargosPage() {
   const existingMatch = !editPosition && name.trim()
     ? positions.find((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? null
     : null
+  // Unidades que o cargo existente já tem ficam bloqueadas: o salário delas só muda pelo "Editar".
+  const existingSalaries = new Map((existingMatch?.salarios ?? []).map((s) => [s.unitId, s.salario] as const))
 
   const stats = {
     total: positions.length,
@@ -408,8 +410,8 @@ export default function CargosPage() {
             {salarios.map((row, index) => {
               const update = (patch: Partial<SalaryRow>) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, ...patch } : item))
               const usedElsewhere = new Set(salarios.flatMap((item, i) => i === index ? [] : item.unitIds))
-              const defaultElsewhere = salarios.some((item, i) => i !== index && item.allUnits)
-              const available = units.filter((u) => !usedElsewhere.has(u.id))
+              const defaultElsewhere = salarios.some((item, i) => i !== index && item.allUnits) || existingSalaries.has(null)
+              const available = units.filter((u) => !usedElsewhere.has(u.id) && !existingSalaries.has(u.id))
               return (
                 <div key={index} className="rounded-xl border border-gray-200 p-3 space-y-2.5">
                   <div className="flex gap-2 items-center">
@@ -454,9 +456,10 @@ export default function CargosPage() {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 max-h-44 overflow-y-auto pr-1">
                         {units.map((u) => {
-                          const taken = usedElsewhere.has(u.id)
+                          const existingValue = existingSalaries.get(u.id)
+                          const taken = usedElsewhere.has(u.id) || existingValue !== undefined
                           return (
-                            <label key={u.id} className={`flex items-center gap-2 py-1 text-xs ${taken ? 'text-gray-300' : 'text-gray-700 cursor-pointer'}`} title={taken ? 'Já tem salário em outra faixa' : undefined}>
+                            <label key={u.id} className={`flex items-center gap-2 py-1 text-xs ${taken ? 'text-gray-300' : 'text-gray-700 cursor-pointer'}`} title={existingValue !== undefined ? `Já cadastrada neste cargo com R$ ${formatMoney(existingValue)} — altere pelo Editar` : taken ? 'Já tem salário em outra faixa' : undefined}>
                               <input
                                 type="checkbox"
                                 disabled={taken}
@@ -464,7 +467,7 @@ export default function CargosPage() {
                                 onChange={(e) => update({ unitIds: e.target.checked ? [...row.unitIds, u.id] : row.unitIds.filter((id) => id !== u.id) })}
                                 className="accent-[#15AFA4]"
                               />
-                              <span className="truncate">{u.name}</span>
+                              <span className="truncate">{u.name}{existingValue !== undefined ? ` · já tem R$ ${formatMoney(existingValue)}` : ''}</span>
                             </label>
                           )
                         })}
@@ -501,8 +504,8 @@ export default function CargosPage() {
           </p>
           {existingMatch && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800">
-              O cargo <strong>{existingMatch.name}</strong> já existe. Ao salvar, as unidades e salários marcados serão adicionados a ele;
-              unidades que ele já tem terão o salário atualizado e as demais continuam como estão.
+              O cargo <strong>{existingMatch.name}</strong> já existe. Ao salvar, as unidades marcadas serão adicionadas a ele com o salário informado.
+              As unidades que ele já tem aparecem bloqueadas e mantêm o salário atual; para alterar uma delas, use Editar.
             </div>
           )}
           {formError && (
