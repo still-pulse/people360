@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { log, extractIp } from '@/lib/audit'
-import { parseSalarios, positionInclude } from '@/lib/positionSalaries'
+import { mergeSalarios, parseSalarios, positionInclude, vagasPorUnidade } from '@/lib/positionSalaries'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -18,7 +18,9 @@ export async function GET(req: NextRequest) {
     orderBy: { name: 'asc' },
     include: withAliases ? positionInclude : undefined,
   })
-  return NextResponse.json(positions)
+  if (!withAliases) return NextResponse.json(positions)
+  const porUnidade = await vagasPorUnidade()
+  return NextResponse.json(positions.map((p) => ({ ...p, vagasPorUnidade: porUnidade.get(p.id) ?? {} })))
 }
 
 export async function POST(req: NextRequest) {
@@ -31,10 +33,30 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.position.findFirst({
     where: { name: { equals: body.name.trim(), mode: 'insensitive' } },
   })
-  if (existing) return NextResponse.json({ error: 'Já existe um cargo com este nome.' }, { status: 400 })
   const { salarios, error: salarioError } = parseSalarios(body.salarios)
   if (salarioError) return NextResponse.json({ error: salarioError }, { status: 400 })
   if (salarios && session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Apenas administradores definem salários.' }, { status: 403 })
+
+  // Cargo já cadastrado: as unidades informadas são acrescentadas a ele (o nome continua único).
+  if (existing) {
+    if (!salarios?.length) return NextResponse.json({ error: 'Já existe um cargo com este nome. Marque as unidades e o salário para adicioná-las a ele.' }, { status: 400 })
+    await mergeSalarios(existing.id, salarios)
+    const position = await prisma.position.update({
+      where: { id: existing.id },
+      data: {
+        ...(!existing.categoria && body.categoria ? { categoria: body.categoria } : {}),
+        ...(!existing.departamento && body.departamento?.trim() ? { departamento: body.departamento.trim() } : {}),
+      },
+      include: positionInclude,
+    })
+    await log({
+      userId: session.user.id, userName: session.user.name, userRole: session.user.role,
+      action: 'UPDATE', entity: 'Cargo', entityId: existing.id, entityName: existing.name,
+      details: { unidadesAdicionadas: salarios.map((s) => s.unitId ?? 'todas') },
+      ip: extractIp(req.headers),
+    })
+    return NextResponse.json({ ...position, merged: true })
+  }
 
   const position = await prisma.position.create({
     data: {

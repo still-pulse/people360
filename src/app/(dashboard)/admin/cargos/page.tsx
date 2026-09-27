@@ -210,6 +210,11 @@ export default function CargosPage() {
     }
   }, [positions])
 
+  // Criando um cargo com nome já cadastrado: o servidor soma as unidades ao cargo existente.
+  const existingMatch = !editPosition && name.trim()
+    ? positions.find((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? null
+    : null
+
   const stats = {
     total: positions.length,
     active: positions.filter((p) => p.active).length,
@@ -333,7 +338,7 @@ export default function CargosPage() {
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 text-xs font-medium">{pos._count?.vagas ?? 0}</td>
+                      <td className="px-4 py-3 text-gray-600 text-xs font-medium">{vagasDaLinha(pos, salario)}</td>
                       <td className="px-4 py-3">
                         <Badge variant={pos.active ? 'success' : 'secondary'}>
                           {pos.active ? 'Ativo' : 'Inativo'}
@@ -494,13 +499,19 @@ export default function CargosPage() {
           <p className="text-xs text-gray-400">
             O nome oficial será exibido nos formulários de vaga, headcount e admissão. Use alias para mapear variações antigas.
           </p>
+          {existingMatch && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800">
+              O cargo <strong>{existingMatch.name}</strong> já existe. Ao salvar, as unidades e salários marcados serão adicionados a ele;
+              unidades que ele já tem terão o salário atualizado e as demais continuam como estão.
+            </div>
+          )}
           {formError && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">{formError}</div>
           )}
           <div className="flex gap-2 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button className="flex-1" isLoading={isSaving} onClick={handleSave}>
-              {editPosition ? 'Salvar' : 'Criar Cargo'}
+              {editPosition ? 'Salvar' : existingMatch ? 'Adicionar ao cargo existente' : 'Criar Cargo'}
             </Button>
           </div>
         </div>
@@ -610,3 +621,12 @@ function formatMoney(value: number) {
   return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+
+// Vagas da linha: da unidade da linha; o salário padrão conta as unidades sem salário próprio; sem salário, o total do cargo.
+function vagasDaLinha(pos: PositionData, salario: NonNullable<PositionData['salarios']>[number] | null) {
+  const porUnidade = pos.vagasPorUnidade ?? {}
+  if (!salario) return pos._count?.vagas ?? 0
+  if (salario.unitId) return porUnidade[salario.unitId] ?? 0
+  const proprias = new Set((pos.salarios ?? []).map((s) => s.unitId).filter(Boolean))
+  return Object.entries(porUnidade).reduce((total, [unitId, count]) => proprias.has(unitId) ? total : total + count, 0)
+}

@@ -167,6 +167,8 @@ export interface PositionData {
   updatedAt?: string
   aliases?: { id: string; alias: string }[]
   salarios?: { id: string; unitId: string | null; salario: number; unit?: { name: string } | null }[]
+  /** Vagas do cargo por unidade ('' = vaga sem unidade) */
+  vagasPorUnidade?: Record<string, number>
   _count?: { vagas: number }
 }
 

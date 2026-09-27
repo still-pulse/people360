@@ -28,6 +28,28 @@ export function replaceSalarios(positionId: string, salarios: SalaryInput[]) {
   ])
 }
 
+/** Acrescenta (ou atualiza) salários de unidades em um cargo existente, sem mexer nas demais unidades. */
+export function mergeSalarios(positionId: string, salarios: SalaryInput[]) {
+  return prisma.$transaction([
+    prisma.positionSalary.deleteMany({
+      where: { positionId, OR: salarios.map((s) => ({ unitId: s.unitId })) },
+    }),
+    prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, salario: s.salario })) }),
+  ])
+}
+
+/** Vagas do cargo agrupadas por unidade ('' = vaga sem unidade), para a lista de cargos. */
+export async function vagasPorUnidade(): Promise<Map<string, Record<string, number>>> {
+  const grupos = await prisma.vaga.groupBy({ by: ['cargoId', 'unidadeId'], where: { cargoId: { not: null } }, _count: { _all: true } })
+  const result = new Map<string, Record<string, number>>()
+  for (const g of grupos) {
+    const porUnidade = result.get(g.cargoId!) ?? {}
+    porUnidade[g.unidadeId ?? ''] = g._count._all
+    result.set(g.cargoId!, porUnidade)
+  }
+  return result
+}
+
 export const positionInclude = {
   aliases: { orderBy: { alias: 'asc' as const } },
   salarios: { select: { id: true, unitId: true, salario: true, unit: { select: { name: true } } } },
