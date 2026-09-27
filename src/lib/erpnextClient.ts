@@ -395,3 +395,25 @@ export async function updateEmployee(name: string, data: Record<string, unknown>
   if (!res.data?.name) throw new ErpnextApiError('O ERPNext não confirmou a atualização do Employee.', 502, res)
   return res.data
 }
+
+// ─── Documento Colaborador (app rh_brasil) ───────────────────────────────────
+
+export interface EmployeeDocumentPayload {
+  employee: string
+  tipo_documento: string
+  id_externo: string
+  nome_arquivo: string
+  conteudo_base64: string
+  processo?: 'Admissão Digital' | 'Atualização Cadastral' | 'Outro'
+  protocolo?: string
+  aprovado_por?: string
+  versao?: number
+  data_envio?: string
+}
+
+/** Envia um documento ao DocType "Documento Colaborador" do rh_brasil. Idempotente por id_externo. */
+export async function sendEmployeeDocument(payload: EmployeeDocumentPayload): Promise<{ name: string; arquivo: string; duplicado: boolean }> {
+  const res = await request<{ message: { name: string; arquivo: string; duplicado: boolean } }>('POST', '/api/method/rh_brasil.documentos.receber_documento', payload)
+  if (!res.message?.name) throw new ErpnextApiError('O ERPNext não confirmou o recebimento do documento.', 502, res)
+  return res.message
+}

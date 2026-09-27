@@ -11,6 +11,7 @@ import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { createAdditionalAdmissionToken } from '@/lib/admission/service'
 import { ErpnextApiError, updateEmployee } from '@/lib/erpnextClient'
 import { toErpnextMunicipio } from '@/lib/admission/municipios'
+import { erpnextEmployeeForAdmission, pushAdmissionDocumentsToErpnext } from '@/lib/admission/erpnextDocuments'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
@@ -90,12 +91,17 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
         prisma.colaboradorHistorico.create({ data: { colaboradorId: process.collaborator.id, tipo: 'ATUALIZACAO_CADASTRAL', dataEvento: new Date(), titulo: `Atualização cadastral ${current.protocol} aprovada`, novo: current.requestedSections.join(', '), responsavelId: session!.user.id, responsavelNome: session!.user.name } }),
       ])
       await notifyAdmissionCandidate({ ...current, title: 'Atualização cadastral aprovada', message: 'O RH conferiu e aprovou sua atualização cadastral.' })
-      response = { updated: true, employeeId: process.collaborator.erpnextId }
+      const documents = await pushAdmissionDocumentsToErpnext(current.id, process.collaborator.erpnextId, { id: session!.user.id, name: session!.user.name })
+      response = { updated: true, employeeId: process.collaborator.erpnextId, documents }
     } catch (caught) {
       console.error('[registration-update] Falha ao aplicar no ERPNext:', current.protocol, caught instanceof ErpnextApiError ? { status: caught.status, message: caught.message, body: caught.body } : caught)
       // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.
       return NextResponse.json({ error: `O ERPNext recusou a atualização: ${caught instanceof Error ? caught.message : 'erro desconhecido'}` }, { status: 422 })
     }
+  } else if (action === 'push-erpnext-documents') {
+    const employeeId = await erpnextEmployeeForAdmission(current.id)
+    if (!employeeId) return NextResponse.json({ error: 'Este processo ainda não tem colaborador no ERPNext.' }, { status: 409 })
+    response = { documents: await pushAdmissionDocumentsToErpnext(current.id, employeeId, { id: session!.user.id, name: session!.user.name }) }
   } else if (action === 'approve-badge') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para aprovar a foto.' }, { status: 403 })
     const photo = await prisma.badgePhoto.findFirst({ where: { admissionId: current.id, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' } })
