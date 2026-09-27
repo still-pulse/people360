@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { analystCanAccessUnit, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
+import { canAccessAdmission, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const parsed = schema.safeParse(await req.json().catch(() => null));if (!parsed.success) return NextResponse.json({ error: 'O motivo é obrigatório para reprovar ou solicitar reenvio.' }, { status: 400 })
   const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: true, type: true } })
   if (!doc) return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 })
-  if (!analystCanAccessUnit(session!, doc.admission.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
+  if (!canAccessAdmission(session!, doc.admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const status = parsed.data.action === 'approve' ? 'APPROVED' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'
   const faceVerificationEnabled = isFaceVerificationEnabled()
   await prisma.$transaction(async (tx) => {

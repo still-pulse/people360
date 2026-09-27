@@ -20,7 +20,7 @@ export function forbidIfReadOnly(role: string | undefined | null) {
   return null
 }
 
-type SessionLike = { user: { role: string; unitId?: string | null; unitIds?: string[] } }
+type SessionLike = { user: { id?: string; role: string; unitId?: string | null; unitIds?: string[] } }
 
 /** Retorna as unidades que o analista gerencia (vazio = sem acesso). Admins recebem null. */
 export function getAnalystUnits(session: SessionLike): string[] | null {
@@ -39,6 +39,11 @@ export function analystCanAccessUnit(session: SessionLike, unitId: string | null
   if (!unitId) return false
   const units = getAnalystUnits(session)!
   return units.includes(unitId)
+}
+
+/** Acesso a uma admissão: pela unidade ou por ser a analista responsável (owner). */
+export function canAccessAdmission(session: SessionLike, admission: { unitId: string | null; ownerId?: string | null }): boolean {
+  return analystCanAccessUnit(session, admission.unitId) || (!!admission.ownerId && admission.ownerId === session.user.id)
 }
 
 /**

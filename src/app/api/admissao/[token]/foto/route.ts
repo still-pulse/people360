@@ -5,6 +5,7 @@ import { readPrivateAdmissionFile, savePrivateAdmissionFile } from '@/lib/admiss
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
+import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
 
 export async function GET(_: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params;
@@ -39,5 +40,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
     prisma.admission.update({ where: { id: token.admissionId }, data: { currentStep: nextStep, progress: { set: Math.max(requiredPending ? 66 : faceVerificationEnabled ? 74 : 82, token.admission.progress) }, status: requiredPending ? 'DOCUMENTS_UNDER_REVIEW' : faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING', lastActivityAt: new Date() } }),
   ])
   await logAdmissionEvent({ admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE', action: 'BADGE_PHOTO_CONFIRMED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { mimeType: saved.mimeType, sizeBytes: saved.sizeBytes } })
+  // Primeira foto confirmada com documentos pendentes = candidato concluiu o envio; avisa o RH uma única vez.
+  if (requiredPending && !token.admission.badgePhotos.some((photo) => photo.confirmedAt)) await notifyAdmissionOwnerDocumentsPending(token.admissionId)
   return NextResponse.json({ success: true, nextStep, canContinue: !requiredPending })
 }

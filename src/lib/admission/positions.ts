@@ -3,6 +3,8 @@
 // Módulo sem dependências: usado pelo formulário (cliente) e pela validação da API (servidor).
 
 export const ADMISSION_SCHEDULES = ['07h00 às 19h00', '19h00 às 07h00'] as const
+export const ADMISSION_BREAKS = ['12h00 às 13h00', '20h00 às 21h00'] as const
+export const ADMISSION_MONTHLY_HOURS_OPTIONS = [120, 150, 180, 200, 220] as const
 export const ADMISSION_MONTHLY_HOURS = 180
 export const ADMISSION_DEFAULT_HAZARD_PAY = 20
 

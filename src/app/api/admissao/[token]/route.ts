@@ -9,6 +9,7 @@ import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, isValidCpf
 import { PUBLIC_FIELD_SECTIONS, SENSITIVE_FIELD_KEYS } from '@/lib/admission/constants'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
+import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
 
 const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), fields: z.record(z.union([z.string().max(500), z.boolean(), z.number(), z.null()])), nextStep: z.string().max(40).optional(), validate: z.boolean().optional().default(false) })
 
@@ -53,6 +54,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ token: 
     if (missingDocuments.length) return NextResponse.json({ error: `Envie os ${missingDocuments.length} documento(s) solicitado(s) antes de concluir.` }, { status: 400 })
     await prisma.admission.update({ where: { id: result.admissionId }, data: { status: 'DOCUMENTS_UNDER_REVIEW', currentStep: 'conclusao', progress: 100, lastActivityAt: new Date() } })
     await logAdmissionEvent({ admissionId: result.admissionId, actorName: result.admission.candidateName, actorType: 'CANDIDATE', action: 'REGISTRATION_UPDATE_SUBMITTED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') })
+    await notifyAdmissionOwnerDocumentsPending(result.admissionId)
     return NextResponse.json({ success: true })
   }
   const parsed = saveSchema.safeParse(body);if (!parsed.success) return NextResponse.json({ error: 'Dados inválidos.', fields: parsed.error.flatten().fieldErrors }, { status: 400 })

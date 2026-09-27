@@ -12,7 +12,7 @@ import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, maskCpf } from '@/lib/admission/security'
 import { SENSITIVE_FIELD_KEYS } from '@/lib/admission/constants'
 import { getPerfilView } from '@/lib/dossie/perfil'
-import { ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition, salaryForUnit } from '@/lib/admission/positions'
+import { ADMISSION_BREAKS, ADMISSION_MONTHLY_HOURS, ADMISSION_MONTHLY_HOURS_OPTIONS, ADMISSION_SCHEDULES, findPosition, salaryForUnit } from '@/lib/admission/positions'
 
 const FIELD_LABELS: Record<string, string> = {
   collaboratorId: 'Colaborador', requestedSections: 'Seções para atualização',
@@ -29,7 +29,7 @@ const admissionSchema = z.object({
   ownerId: z.string().cuid().optional(), candidateName: z.string().min(3).max(160), candidateEmail: z.string().email().optional().or(z.literal('')),
   candidatePhone: z.string().max(30).optional(), jobTitle: z.string().min(2).max(120), department: z.string().max(120).optional(),
   hireDate: z.coerce.date(), salary: z.coerce.number().nonnegative().optional(), hazardPayPercentage: z.coerce.number().min(0).max(100).optional(),
-  workSchedule: z.string().max(120).optional(), breakSchedule: z.string().max(120).optional(), weeklyHours: z.coerce.number().int().min(1).max(80).optional(),
+  workSchedule: z.string().max(120).optional(), breakSchedule: z.string().max(120).optional(), monthlyHours: z.coerce.number().int().optional(), weeklyHours: z.coerce.number().int().min(1).max(80).optional(),
   contractType: z.string().min(2).max(80), experienceDays: z.coerce.number().int().min(0).max(365).optional(),
   contractEndDate: z.coerce.date().optional(), validityDays: z.coerce.number().int().min(1).max(30).default(7),
   documentTypeIds: z.array(z.string().min(1)).max(60).optional(),
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     let created: Awaited<ReturnType<typeof createAdmissionRecord>>
     try {
       created = await createAdmissionRecord({
-        unitId: collaborator.unitId, ownerId: parsed.data.ownerId, createdById: session!.user.id,
+        unitId: collaborator.unitId, ownerId: parsed.data.ownerId || session!.user.id, createdById: session!.user.id,
         candidateName: collaborator.employeeName, candidateEmail: collaborator.personalEmail || collaborator.companyEmail || undefined,
         candidatePhone: collaborator.cellNumber || undefined, jobTitle: collaborator.designation || 'Colaborador', department: collaborator.department || undefined,
         hireDate: collaborator.dateOfJoining || new Date(), contractType: collaborator.employmentType || 'Não informado',
@@ -133,7 +133,9 @@ export async function POST(req: NextRequest) {
   parsed.data.department = department
   parsed.data.salary = salary
   parsed.data.weeklyHours = undefined
-  const monthlyHours = ADMISSION_MONTHLY_HOURS
+  if (parsed.data.breakSchedule && !(ADMISSION_BREAKS as readonly string[]).includes(parsed.data.breakSchedule)) return NextResponse.json({ error: 'Selecione um intervalo válido.' }, { status: 400 })
+  const monthlyHours = parsed.data.monthlyHours ?? ADMISSION_MONTHLY_HOURS
+  if (!(ADMISSION_MONTHLY_HOURS_OPTIONS as readonly number[]).includes(monthlyHours)) return NextResponse.json({ error: 'Selecione uma carga horária mensal válida.' }, { status: 400 })
   if (!analystCanAccessUnit(session!, parsed.data.unitId)) return NextResponse.json({ error: 'Sem acesso a esta unidade.' }, { status: 403 })
   if (parsed.data.vacancyId) {
     const vacancy = await prisma.vaga.findUnique({ where: { id: parsed.data.vacancyId }, select: { unidadeId: true } })
@@ -146,7 +148,7 @@ export async function POST(req: NextRequest) {
     if (parsed.data.vacancyId && candidate.vagaId && candidate.vagaId !== parsed.data.vacancyId) return NextResponse.json({ error: 'A vaga selecionada não corresponde à vaga do candidato.' }, { status: 400 })
   }
   let created: Awaited<ReturnType<typeof createAdmissionRecord>>
-  try { created = await createAdmissionRecord({ ...parsed.data, monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
+  try { created = await createAdmissionRecord({ ...parsed.data, ownerId: parsed.data.ownerId || session!.user.id, monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Não foi possível criar a admissão.' }, { status: 400 }) }
   const base = process.env.NEXTAUTH_URL || req.nextUrl.origin
   const publicUrl = `${base}/admissao/${created.token}`

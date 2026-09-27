@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { analystCanAccessUnit, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
+import { canAccessAdmission, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { createAdmissionToken } from '@/lib/admission/service'
 import { assertTransition } from '@/lib/admission/stateMachine'
 import { logAdmissionEvent } from '@/lib/admission/audit'
@@ -28,7 +28,7 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   const { session, error } = await getSessionOrUnauthorized();if (error) return error
   const item = await prisma.admission.findUnique({ where: { id: params.id }, include })
   if (!item) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
-  if (!analystCanAccessUnit(session!, item.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
+  if (!canAccessAdmission(session!, item)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.actualRole ?? session!.user.role)
   const response = canViewSensitiveData ? {
     ...item,
@@ -45,7 +45,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const forbidden = forbidIfReadOnly(actualRole);if (forbidden) return forbidden
   const current = await prisma.admission.findUnique({ where: { id: params.id } })
   if (!current) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
-  if (!analystCanAccessUnit(session!, current.unitId)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
+  if (!canAccessAdmission(session!, current)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const body = await req.json().catch(() => ({}));const action = String(body.action || '')
   let response: Record<string, unknown> = {}
   if (action === 'renew-link' || action === 'resend-link') {

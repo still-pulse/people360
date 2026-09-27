@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DOCUMENT_CATALOG } from './documentCatalog'
-import { ADMISSION_MONTHLY_HOURS, ADMISSION_SCHEDULES, findPosition, salaryForUnit } from './positions'
+import { ADMISSION_BREAKS, ADMISSION_MONTHLY_HOURS, ADMISSION_MONTHLY_HOURS_OPTIONS, ADMISSION_SCHEDULES, findPosition, salaryForUnit } from './positions'
 import { ADMISSION_TEMPLATE_DEFAULTS } from './templateDefaults'
 
 describe('cargos, salários por unidade e horários fixos', () => {
@@ -19,8 +19,10 @@ describe('cargos, salários por unidade e horários fixos', () => {
     expect(findPosition(positions, 'Médico')).toBeNull()
     expect(findPosition(positions, '')).toBeNull()
   })
-  it('mantém os dois horários e a carga mensal de 180 horas', () => {
+  it('mantém os horários, intervalos e cargas mensais (padrão 180 horas)', () => {
     expect([...ADMISSION_SCHEDULES]).toEqual(['07h00 às 19h00', '19h00 às 07h00'])
+    expect([...ADMISSION_BREAKS]).toEqual(['12h00 às 13h00', '20h00 às 21h00'])
+    expect([...ADMISSION_MONTHLY_HOURS_OPTIONS]).toEqual([120, 150, 180, 200, 220])
     expect(ADMISSION_MONTHLY_HOURS).toBe(180)
   })
 })
