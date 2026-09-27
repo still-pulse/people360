@@ -27,7 +27,6 @@ export default function CargosPage() {
   const [toggleTarget, setToggleTarget] = useState<PositionData | null>(null)
 
   const [name, setName] = useState('')
-  const [codigoInterno, setCodigoInterno] = useState('')
   const [categoria, setCategoria] = useState('')
   const [departamento, setDepartamento] = useState('')
   const [salarios, setSalarios] = useState<SalaryRow[]>([])
@@ -38,6 +37,7 @@ export default function CargosPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterUnit, setFilterUnit] = useState('')
 
   async function loadPositions() {
     setIsLoading(true)
@@ -57,15 +57,24 @@ export default function CargosPage() {
         const q = search.toLowerCase()
         const matchName = p.name.toLowerCase().includes(q)
         const matchAlias = p.aliases?.some((a) => a.alias.toLowerCase().includes(q))
-        const matchCod = p.codigoInterno?.toLowerCase().includes(q)
         const matchCat = p.categoria?.toLowerCase().includes(q)
-        if (!matchName && !matchAlias && !matchCod && !matchCat) return false
+        const matchUnit = p.salarios?.some((s) => s.unit?.name.toLowerCase().includes(q))
+        if (!matchName && !matchAlias && !matchCat && !matchUnit) return false
       }
       if (filterStatus === 'active' && !p.active) return false
       if (filterStatus === 'inactive' && p.active) return false
+      if (filterUnit && !p.salarios?.some((s) => s.unitId === filterUnit || !s.unitId)) return false
       return true
     })
-  }, [positions, search, filterStatus])
+  }, [positions, search, filterStatus, filterUnit])
+
+  // Uma linha por cargo + unidade; cargo sem salário aparece uma vez, sem unidade.
+  const rows = useMemo(() => filtered.flatMap((pos): { pos: PositionData; salario: NonNullable<PositionData['salarios']>[number] | null }[] => {
+    const salarios = (pos.salarios ?? [])
+      .filter((s) => !filterUnit || s.unitId === filterUnit || !s.unitId)
+      .slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? ''))
+    return salarios.length ? salarios.map((salario) => ({ pos, salario })) : [{ pos, salario: null }]
+  }), [filtered, filterUnit])
 
   async function handleSave() {
     if (!name.trim()) { setFormError('Nome é obrigatório.'); return }
@@ -82,7 +91,7 @@ export default function CargosPage() {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: name.trim(), codigoInterno: codigoInterno.trim() || null, categoria: categoria.trim() || null,
+        name: name.trim(), categoria: categoria.trim() || null,
         departamento: departamento.trim() || null,
         salarios: filled.map((s) => ({ unitId: s.unitId || null, salario: parseMoney(s.salario) })),
       }),
@@ -93,7 +102,6 @@ export default function CargosPage() {
       setModalOpen(false)
       setEditPosition(null)
       setName('')
-      setCodigoInterno('')
       setCategoria('')
       setDepartamento('')
       setSalarios([])
@@ -159,7 +167,6 @@ export default function CargosPage() {
   function openNew() {
     setEditPosition(null)
     setName('')
-    setCodigoInterno('')
     setCategoria('')
     setDepartamento('')
     setSalarios([{ unitId: '', salario: '' }])
@@ -170,12 +177,12 @@ export default function CargosPage() {
   function openEdit(pos: PositionData) {
     setEditPosition(pos)
     setName(pos.name)
-    setCodigoInterno(pos.codigoInterno ?? '')
     setCategoria(pos.categoria ?? '')
     setDepartamento(pos.departamento ?? '')
-    setSalarios((pos.salarios ?? [])
-      .slice().sort((a, b) => (a.unitId ? 1 : 0) - (b.unitId ? 1 : 0) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? ''))
-      .map((s) => ({ unitId: s.unitId ?? '', salario: formatMoney(s.salario) })))
+    const current = (pos.salarios ?? [])
+      .slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? ''))
+      .map((s) => ({ unitId: s.unitId ?? '', salario: formatMoney(s.salario) }))
+    setSalarios(current.length ? current : [{ unitId: '', salario: '' }])
     setFormError('')
     setModalOpen(true)
   }
@@ -251,7 +258,7 @@ export default function CargosPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, alias ou categoria..."
+                placeholder="Buscar por cargo, unidade, alias ou categoria..."
                 className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4]"
               />
             </div>
@@ -260,6 +267,11 @@ export default function CargosPage() {
               <option value="">Todos os status</option>
               <option value="active">Ativos</option>
               <option value="inactive">Inativos</option>
+            </select>
+            <select value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)}
+              className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4] bg-white">
+              <option value="">Todas as unidades</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
 
@@ -272,17 +284,17 @@ export default function CargosPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-y border-gray-100">
                   <tr>
-                    {['#', 'Cargo', 'Código', 'Categoria', 'Salário', 'Aliases', 'Vagas', 'Status', 'Ações'].map((h) => (
+                    {['#', 'Cargo', 'Unidade', 'Salário', 'Categoria', 'Aliases', 'Vagas', 'Status', 'Ações'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filtered.length === 0 && (
+                  {rows.length === 0 && (
                     <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Nenhum cargo encontrado</td></tr>
                   )}
-                  {filtered.map((pos, i) => (
-                    <tr key={pos.id} className={`hover:bg-gray-50/50 ${!pos.active ? 'opacity-60' : ''}`}>
+                  {rows.map(({ pos, salario }, i) => (
+                    <tr key={salario?.id ?? pos.id} className={`hover:bg-gray-50/50 ${!pos.active ? 'opacity-60' : ''}`}>
                       <td className="px-4 py-3 text-gray-400 text-xs w-8">{i + 1}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -290,13 +302,15 @@ export default function CargosPage() {
                           <span className="font-medium text-gray-900">{pos.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{pos.codigoInterno || '—'}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{pos.categoria || '—'}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {salario ? <span className="text-gray-700">{salario.unit?.name ?? 'Todas as unidades'}</span> : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-xs">
                         <button onClick={() => openEdit(pos)} className="text-left hover:text-[#15AFA4] transition-colors">
-                          {salarySummary(pos)}
+                          {salario ? <span className="text-gray-700 font-medium">R$ {formatMoney(salario.salario)}</span> : <span className="text-gray-300">+ unidade e salário</span>}
                         </button>
                       </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{pos.categoria || '—'}</td>
                       <td className="px-4 py-3">
                         {pos.aliases && pos.aliases.length > 0 ? (
                           <button onClick={() => openAliases(pos)}
@@ -350,7 +364,7 @@ export default function CargosPage() {
 
           {filtered.length > 0 && (
             <div className="px-5 py-3 border-t border-gray-50 text-xs text-gray-400">
-              {filtered.length} cargo{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+              {filtered.length} cargo{filtered.length !== 1 ? 's' : ''} · {rows.length} linha{rows.length !== 1 ? 's' : ''} de unidade e salário
             </div>
           )}
         </Card>
@@ -371,30 +385,11 @@ export default function CargosPage() {
             placeholder="Ex: Técnico de Enfermagem"
             onKeyDown={(e) => e.key === 'Enter' && handleSave()}
           />
-          <Input
-            label="Código interno"
-            value={codigoInterno}
-            onChange={(e) => setCodigoInterno(e.target.value)}
-            placeholder="Ex: ENF-002 (opcional)"
-          />
-          <Input
-            label="Categoria"
-            value={categoria}
-            onChange={(e) => setCategoria(e.target.value)}
-            placeholder="Ex: Assistencial, Administrativo... (opcional)"
-          />
-          <Input
-            label="Departamento"
-            value={departamento}
-            onChange={(e) => setDepartamento(e.target.value)}
-            placeholder="Ex: Enfermagem (usado na admissão digital)"
-          />
-
           <div className="space-y-2">
             <div>
-              <p className="text-sm font-medium text-gray-700">Salário por unidade</p>
+              <p className="text-sm font-medium text-gray-700">Unidade e salário</p>
               <p className="text-xs text-gray-400">
-                A admissão digital usa o salário da unidade escolhida. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio.
+                Cadastre o salário do cargo em cada unidade. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio.
               </p>
             </div>
             {salarios.map((row, index) => (
@@ -432,9 +427,22 @@ export default function CargosPage() {
               onClick={() => setSalarios((list) => [...list, { unitId: units.find((u) => !list.some((s) => s.unitId === u.id))?.id ?? '', salario: '' }])}
               className="flex items-center gap-1.5 text-xs font-medium text-[#15AFA4] hover:underline"
             >
-              <Plus className="w-3.5 h-3.5" /> Adicionar unidade
+              <Plus className="w-3.5 h-3.5" /> Adicionar outra unidade
             </button>
           </div>
+          <Input
+            label="Categoria"
+            value={categoria}
+            onChange={(e) => setCategoria(e.target.value)}
+            placeholder="Ex: Assistencial, Administrativo... (opcional)"
+          />
+          <Input
+            label="Departamento"
+            value={departamento}
+            onChange={(e) => setDepartamento(e.target.value)}
+            placeholder="Ex: Enfermagem (usado na admissão digital)"
+          />
+
 
           <p className="text-xs text-gray-400">
             O nome oficial será exibido nos formulários de vaga, headcount e admissão. Use alias para mapear variações antigas.
@@ -550,16 +558,3 @@ function formatMoney(value: number) {
   return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function salarySummary(pos: PositionData) {
-  const salarios = pos.salarios ?? []
-  if (!salarios.length) return <span className="text-gray-300">+ salário</span>
-  const padrao = salarios.find((s) => !s.unitId)
-  const porUnidade = salarios.filter((s) => s.unitId)
-  return (
-    <span className="text-gray-600">
-      {padrao ? `R$ ${formatMoney(padrao.salario)}` : ''}
-      {padrao && porUnidade.length ? ' · ' : ''}
-      {porUnidade.length ? `${porUnidade.length} unidade${porUnidade.length > 1 ? 's' : ''}` : ''}
-    </span>
-  )
-}
