@@ -22,12 +22,19 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!canAccessAdmission(session!, doc.admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const status = parsed.data.action === 'approve' ? 'APPROVED' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'
   const faceVerificationEnabled = isFaceVerificationEnabled()
+  const isRegistrationUpdate = doc.admission.processType === 'REGISTRATION_UPDATE'
   await prisma.$transaction(async (tx) => {
     await tx.admissionDocument.update({ where: { id: doc.id }, data: { status, rejectionReason: parsed.data.action === 'approve' ? null : parsed.data.reason, reviewedById: session!.user.id, reviewedAt: new Date() } })
     const remaining = await tx.admissionDocument.count({ where: { admissionId: doc.admissionId, type: { required: true }, status: { not: 'APPROVED' } } })
     // Considera só a foto mais recente: uma nova foto enviada precisa de nova aprovação.
     const latestConfirmed = remaining === 0 ? await tx.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, select: { id: true, approvedAt: true } }) : null
     const badgePhoto = latestConfirmed?.approvedAt ? latestConfirmed : null
+    // Atualização cadastral não tem as etapas da admissão (foto, contrato): aprovar não muda o status,
+    // senão a admissão sai de DOCUMENTS_UNDER_REVIEW e o RH não consegue confirmar no ERPNext.
+    if (isRegistrationUpdate) {
+      await tx.admission.update({ where: { id: doc.admissionId }, data: { status: status === 'APPROVED' ? undefined : 'CORRECTION_REQUESTED', lastActivityAt: new Date() } })
+      return
+    }
     await tx.admission.update({ where: { id: doc.admissionId }, data: {
       status: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING') : 'DOCUMENTS_APPROVED') : status === 'APPROVED' ? 'DOCUMENTS_UNDER_REVIEW' : 'CORRECTION_REQUESTED',
       currentStep: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'validacao-facial' : 'revisao') : 'foto') : undefined,
@@ -52,7 +59,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       : 'Todos os documentos obrigatórios foram aprovados pelo RH. Acesse o mesmo link da admissão e envie a foto do crachá para continuar.'
     : status === 'APPROVED' ? `O documento “${doc.type.name}” foi aprovado pelo RH.`
     : `O documento “${doc.type.name}” precisa de atenção. Motivo: ${parsed.data.reason}. Acesse o mesmo link da admissão para reenviar.`
-  if (allApproved || status !== 'APPROVED') {
+  // Na atualização cadastral o colaborador só é avisado de reprovação/reenvio; a aprovação final vem ao confirmar no ERPNext.
+  if (isRegistrationUpdate ? status !== 'APPROVED' : allApproved || status !== 'APPROVED') {
     const access = allApproved && !photoUnderReview ? await createAdditionalAdmissionToken(doc.admissionId) : null
     const portalUrl = access ? `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${access.token}` : undefined
     await notifyAdmissionCandidate({ ...doc.admission, title, message, portalUrl }).catch((notificationError) => console.error('[admission-notification]', notificationError))

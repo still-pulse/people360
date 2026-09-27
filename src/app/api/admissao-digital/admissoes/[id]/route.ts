@@ -70,7 +70,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     ])
   } else if (action === 'apply-registration-update') {
     if (current.processType !== 'REGISTRATION_UPDATE' || !current.collaboratorId) return NextResponse.json({ error: 'Este processo não é uma atualização cadastral.' }, { status: 409 })
-    if (current.status !== 'DOCUMENTS_UNDER_REVIEW') return NextResponse.json({ error: 'A atualização ainda não foi enviada para revisão.' }, { status: 409 })
+    // DOCUMENTS_APPROVED: atualizações travadas pela regra antiga de aprovação (antes de v1.12.1).
+    if (!['DOCUMENTS_UNDER_REVIEW', 'DOCUMENTS_APPROVED'].includes(current.status)) return NextResponse.json({ error: 'A atualização ainda não foi enviada para revisão.' }, { status: 409 })
     const process = await prisma.admission.findUnique({ where: { id: current.id }, include: { fields: true, documents: true, collaborator: true } })
     if (!process?.collaborator) return NextResponse.json({ error: 'Colaborador vinculado não encontrado.' }, { status: 404 })
     const pendingDocuments = process.documents.filter(document => document.status !== 'APPROVED')
