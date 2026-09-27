@@ -34,13 +34,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   if (!saved.mimeType.startsWith('image/')) return NextResponse.json({ error: 'Envie uma imagem JPG ou PNG.' }, { status: 400 })
   const requiredPending = token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')
   const faceVerificationEnabled = isFaceVerificationEnabled()
-  const nextStep = requiredPending ? 'foto' : faceVerificationEnabled ? 'validacao-facial' : 'revisao'
+  // Na admissão a foto do crachá passa pela aprovação do RH antes de o candidato seguir.
+  const isAdmission = token.admission.processType !== 'REGISTRATION_UPDATE'
+  const awaitingReview = requiredPending || isAdmission
+  const nextStep = awaitingReview ? 'foto' : faceVerificationEnabled ? 'validacao-facial' : 'revisao'
   await prisma.$transaction([
     prisma.badgePhoto.create({ data: { admissionId: token.admissionId, originalPath: saved.storagePath, mimeType: saved.mimeType, sizeBytes: saved.sizeBytes, confirmedAt: new Date() } }),
-    prisma.admission.update({ where: { id: token.admissionId }, data: { currentStep: nextStep, progress: { set: Math.max(requiredPending ? 66 : faceVerificationEnabled ? 74 : 82, token.admission.progress) }, status: requiredPending ? 'DOCUMENTS_UNDER_REVIEW' : faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING', lastActivityAt: new Date() } }),
+    prisma.admission.update({ where: { id: token.admissionId }, data: { currentStep: nextStep, progress: { set: Math.max(awaitingReview ? 66 : faceVerificationEnabled ? 74 : 82, token.admission.progress) }, status: awaitingReview ? 'DOCUMENTS_UNDER_REVIEW' : faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING', lastActivityAt: new Date() } }),
   ])
   await logAdmissionEvent({ admissionId: token.admissionId, actorName: token.admission.candidateName, actorType: 'CANDIDATE', action: 'BADGE_PHOTO_CONFIRMED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { mimeType: saved.mimeType, sizeBytes: saved.sizeBytes } })
-  // Primeira foto confirmada com documentos pendentes = candidato concluiu o envio; avisa o RH uma única vez.
-  if (requiredPending && !token.admission.badgePhotos.some((photo) => photo.confirmedAt)) await notifyAdmissionOwnerDocumentsPending(token.admissionId)
-  return NextResponse.json({ success: true, nextStep, canContinue: !requiredPending })
+  // Foto confirmada pela primeira vez (ou reenviada após reprovação) = candidato concluiu o envio; avisa o RH.
+  if (isAdmission && !token.admission.badgePhotos.some((photo) => photo.confirmedAt)) await notifyAdmissionOwnerDocumentsPending(token.admissionId)
+  return NextResponse.json({ success: true, nextStep, canContinue: !awaitingReview })
 }

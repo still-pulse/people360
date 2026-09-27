@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
     : a.signatureEnvelopes.some((envelope) => envelope.status === 'SIGNED') ? 'conclusao'
     : a.generatedDocuments.length ? 'assinatura'
     : faceVerificationEnabled && a.faceVerifications[0]?.status === 'APPROVED' ? 'revisao'
-    : a.badgePhotos[0]?.confirmedAt ? (requiredPending ? 'foto' : faceVerificationEnabled ? 'validacao-facial' : 'revisao')
+    : a.badgePhotos[0]?.confirmedAt ? (requiredPending || !a.badgePhotos[0].approvedAt ? 'foto' : faceVerificationEnabled ? 'validacao-facial' : 'revisao')
     : ['presentation', 'inicio'].includes(a.currentStep) ? 'inicio' : a.currentStep
   await logAdmissionEvent({ admissionId: a.id, actorName: a.candidateName, actorType: 'CANDIDATE', action: 'LINK_OPENED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') }).catch(() => {})
   return NextResponse.json({
@@ -36,7 +36,8 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
     locked: { jobTitle: a.jobTitle, department: a.department, unit: a.unit.name, hireDate: a.hireDate, contractType: a.contractType, workSchedule: a.workSchedule },
     fields: Object.fromEntries(a.fields.map((f) => [f.key, f.sensitive ? decryptAdmissionValue(f.value) : f.value])), dependents: a.dependents, transport: a.transport,
     documents: a.documents.map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),
-    badgePhoto: a.badgePhotos[0]?.confirmedAt ? { confirmedAt: a.badgePhotos[0].confirmedAt } : null,
+    badgePhoto: a.badgePhotos[0]?.confirmedAt ? { confirmedAt: a.badgePhotos[0].confirmedAt, approvedAt: a.badgePhotos[0].approvedAt } : null,
+    badgeRejection: !a.badgePhotos[0]?.confirmedAt ? a.badgePhotos[0]?.rejectionReason ?? null : null,
     faceVerification: a.faceVerifications[0] ? { status: a.faceVerifications[0].status, attempts: a.faceVerifications[0].attempts } : null,
     generatedDocuments: a.generatedDocuments.map((d) => ({ id: d.id, name: d.template.name, status: d.status, version: d.templateVersion })),
     signatures: a.signatureEnvelopes.map((e) => ({ id: e.id, status: e.status, signedAt: e.signedAt })), expiresAt: result.expiresAt,

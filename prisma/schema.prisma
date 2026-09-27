@@ -1438,8 +1438,11 @@ model BadgePhoto {
   processedPath String?
   mimeType      String
   sizeBytes     Int
-  confirmedAt   DateTime?
-  createdAt     DateTime  @default(now())
+  confirmedAt     DateTime?
+  approvedAt      DateTime?
+  approvedById    String?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
 
   admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
 

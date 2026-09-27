@@ -25,7 +25,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   await prisma.$transaction(async (tx) => {
     await tx.admissionDocument.update({ where: { id: doc.id }, data: { status, rejectionReason: parsed.data.action === 'approve' ? null : parsed.data.reason, reviewedById: session!.user.id, reviewedAt: new Date() } })
     const remaining = await tx.admissionDocument.count({ where: { admissionId: doc.admissionId, type: { required: true }, status: { not: 'APPROVED' } } })
-    const badgePhoto = remaining === 0 ? await tx.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, select: { id: true } }) : null
+    // Considera só a foto mais recente: uma nova foto enviada precisa de nova aprovação.
+    const latestConfirmed = remaining === 0 ? await tx.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, select: { id: true, approvedAt: true } }) : null
+    const badgePhoto = latestConfirmed?.approvedAt ? latestConfirmed : null
     await tx.admission.update({ where: { id: doc.admissionId }, data: {
       status: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING') : 'DOCUMENTS_APPROVED') : status === 'APPROVED' ? 'DOCUMENTS_UNDER_REVIEW' : 'CORRECTION_REQUESTED',
       currentStep: status === 'APPROVED' && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'validacao-facial' : 'revisao') : 'foto') : undefined,
@@ -36,9 +38,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   await logAdmissionEvent({ admissionId: doc.admissionId, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: `DOCUMENT_${status}`, resource: 'AdmissionDocument', resourceId: doc.id, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { documentType: doc.type.name, reason: parsed.data.reason } })
   const requiredRemaining = await prisma.admissionDocument.count({ where: { admissionId: doc.admissionId, type: { required: true }, status: { not: 'APPROVED' } } })
   const allApproved = status === 'APPROVED' && doc.status !== 'APPROVED' && doc.type.required && requiredRemaining === 0
-  const hasBadgePhoto = allApproved && Boolean(await prisma.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, select: { id: true } }))
+  const latestPhoto = allApproved ? await prisma.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, select: { approvedAt: true } }) : null
+  const hasBadgePhoto = Boolean(latestPhoto?.approvedAt)
+  const photoUnderReview = Boolean(latestPhoto && !latestPhoto.approvedAt)
   const title = allApproved ? 'Documentos aprovados' : status === 'APPROVED' ? 'Documento aprovado' : status === 'RESUBMISSION_REQUIRED' ? 'Reenvio de documento solicitado' : 'Documento reprovado'
-  const message = allApproved
+  const message = allApproved && photoUnderReview
+    ? 'Todos os documentos obrigatórios foram aprovados pelo RH. Sua foto do crachá ainda está em análise; avisaremos assim que você puder continuar.'
+    : allApproved
     ? hasBadgePhoto
       ? faceVerificationEnabled
         ? 'Todos os documentos obrigatórios foram aprovados pelo RH. Você já pode continuar para a validação facial usando o mesmo link da admissão.'
@@ -47,7 +53,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     : status === 'APPROVED' ? `O documento “${doc.type.name}” foi aprovado pelo RH.`
     : `O documento “${doc.type.name}” precisa de atenção. Motivo: ${parsed.data.reason}. Acesse o mesmo link da admissão para reenviar.`
   if (allApproved || status !== 'APPROVED') {
-    const access = allApproved ? await createAdditionalAdmissionToken(doc.admissionId) : null
+    const access = allApproved && !photoUnderReview ? await createAdditionalAdmissionToken(doc.admissionId) : null
     const portalUrl = access ? `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${access.token}` : undefined
     await notifyAdmissionCandidate({ ...doc.admission, title, message, portalUrl }).catch((notificationError) => console.error('[admission-notification]', notificationError))
   }

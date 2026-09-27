@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { analystCanAccessUnit, getSessionOrUnauthorized } from '@/lib/apiHelpers'
+import { canAccessAdmission, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { readPrivateAdmissionFile } from '@/lib/admission/storage'
 
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -13,10 +13,10 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   const photo = await prisma.badgePhoto.findFirst({
     where: { admissionId: params.id },
     orderBy: { createdAt: 'desc' },
-    include: { admission: { select: { unitId: true } } },
+    include: { admission: { select: { unitId: true, ownerId: true } } },
   })
   if (!photo) return NextResponse.json({ error: 'Foto não encontrada.' }, { status: 404 })
-  if (!analystCanAccessUnit(session!, photo.admission.unitId)) {
+  if (!canAccessAdmission(session!, photo.admission)) {
     return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   }
   const file = await readPrivateAdmissionFile(photo.processedPath || photo.originalPath)

@@ -8,6 +8,7 @@ import { extractIp, log } from '@/lib/audit'
 import { deleteAdmissionStorage } from '@/lib/admission/storage'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
+import { createAdditionalAdmissionToken } from '@/lib/admission/service'
 import { updateEmployee } from '@/lib/erpnextClient'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
@@ -16,7 +17,7 @@ const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
   owner: { select: { id: true, name: true } }, tokens: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { expiresAt: true, revokedAt: true, tokenHint: true } },
   fields: true, dependents: true, transport: { include: { routes: true } }, documents: { include: { type: true, reviewedBy: { select: { name: true } } }, orderBy: { type: { position: 'asc' as const } } },
-  badgePhotos: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, confirmedAt: true, createdAt: true } },
+  badgePhotos: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, confirmedAt: true, approvedAt: true, rejectionReason: true, createdAt: true } },
   faceVerifications: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, provider: true, status: true, attempts: true, resultMetadata: true, completedAt: true, capturedAt: true, createdAt: true, updatedAt: true } },
   generatedDocuments: { select: { id: true, status: true, templateVersion: true, generatedAt: true, signedAt: true, validationCode: true, originalHash: true, finalHash: true, template: { select: { key: true, name: true } } } },
   signatureEnvelopes: { select: { id: true, documentId: true, provider: true, signerName: true, signerEmail: true, status: true, transactionId: true, signedAt: true, signedIp: true, signedUserAgent: true, latitude: true, longitude: true, locationAccuracy: true, events: { orderBy: { createdAt: 'desc' as const }, select: { id: true, type: true, ip: true, userAgent: true, hash: true, metadata: true, createdAt: true } } } },
@@ -89,6 +90,22 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       await notifyAdmissionCandidate({ ...current, title: 'Atualização cadastral aprovada', message: 'O RH conferiu e aprovou sua atualização cadastral.' })
       response = { updated: true, employeeId: process.collaborator.erpnextId }
     } catch (caught) { return NextResponse.json({ error: caught instanceof Error ? caught.message : 'Não foi possível atualizar o ERPNext.' }, { status: 502 }) }
+  } else if (action === 'approve-badge') {
+    if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para aprovar a foto.' }, { status: 403 })
+    const photo = await prisma.badgePhoto.findFirst({ where: { admissionId: current.id, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' } })
+    if (!photo) return NextResponse.json({ error: 'Nenhuma foto do crachá enviada.' }, { status: 404 })
+    const requiredPending = await prisma.admissionDocument.count({ where: { admissionId: current.id, type: { required: true }, status: { not: 'APPROVED' } } })
+    const faceVerificationEnabled = isFaceVerificationEnabled()
+    const advance = current.processType === 'ADMISSION' && current.currentStep === 'foto' && requiredPending === 0
+    await prisma.$transaction([
+      prisma.badgePhoto.update({ where: { id: photo.id }, data: { approvedAt: new Date(), approvedById: session!.user.id, rejectionReason: null } }),
+      ...(advance ? [prisma.admission.update({ where: { id: current.id }, data: { status: faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING', currentStep: faceVerificationEnabled ? 'validacao-facial' : 'revisao', progress: { set: Math.max(faceVerificationEnabled ? 74 : 82, current.progress) }, lastActivityAt: new Date() } })] : []),
+    ])
+    if (advance) {
+      const access = await createAdditionalAdmissionToken(current.id)
+      await notifyAdmissionCandidate({ ...current, title: 'Documentos e foto aprovados', message: 'O RH aprovou seus documentos e a foto do crachá. Você já pode continuar a admissão pelo link abaixo.', portalUrl: `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${access.token}` })
+    }
+    response = { approved: true, advanced: advance }
   } else if (action === 'approve-face' || action === 'request-face-retry' || action === 'request-badge-retry') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) {
       return NextResponse.json({ error: 'Sem permissão para revisar biometria.' }, { status: 403 })
@@ -97,7 +114,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       const reason = String(body.reason || '').trim()
       if (!reason) return NextResponse.json({ error: 'Informe o motivo para solicitar uma nova foto.' }, { status: 400 })
       await prisma.$transaction([
-        prisma.badgePhoto.updateMany({ where: { admissionId: current.id, confirmedAt: { not: null } }, data: { confirmedAt: null } }),
+        prisma.badgePhoto.updateMany({ where: { admissionId: current.id, confirmedAt: { not: null } }, data: { confirmedAt: null, approvedAt: null, rejectionReason: reason } }),
         prisma.admission.update({ where: { id: current.id }, data: { currentStep: 'foto', status: 'CORRECTION_REQUESTED', lastActivityAt: new Date() } }),
       ])
       await notifyAdmissionCandidate({ ...current, title: 'Reenvio da foto do crachá', message: `O RH solicitou uma nova foto para o crachá. Motivo: ${reason}. Acesse o mesmo link da admissão para reenviar.` })

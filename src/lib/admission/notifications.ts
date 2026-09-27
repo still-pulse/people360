@@ -34,13 +34,15 @@ export async function notifyAdmissionOwnerDocumentsPending(admissionId: string) 
       id: true, protocol: true, candidateName: true, jobTitle: true, processType: true,
       unit: { select: { name: true } }, owner: { select: { email: true, active: true } }, createdBy: { select: { email: true, active: true } },
       documents: { where: { status: { not: 'APPROVED' } }, select: { type: { select: { name: true } } } },
+      badgePhotos: { where: { confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, take: 1, select: { approvedAt: true } },
     } })
     if (!admission) return
     const recipient = admission.owner?.active ? admission.owner.email : admission.createdBy?.active ? admission.createdBy.email : null
     if (!recipient) return
     const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
     const kind = admission.processType === 'REGISTRATION_UPDATE' ? 'da atualização cadastral' : 'da admissão'
-    const pending = admission.documents.map((document) => `• ${document.type.name}`).join('\n') || '—'
+    const photoPending = admission.processType !== 'REGISTRATION_UPDATE' && admission.badgePhotos[0] && !admission.badgePhotos[0].approvedAt
+    const pending = [...admission.documents.map((document) => `• ${document.type.name}`), ...(photoPending ? ['• Foto do crachá'] : [])].join('\n') || '—'
     await sendEmail({
       to: recipient,
       subject: `Documentos pendentes de aprovação — ${admission.candidateName} (${admission.protocol})`,
