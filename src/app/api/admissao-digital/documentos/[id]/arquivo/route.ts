@@ -6,7 +6,7 @@ import { readPrivateAdmissionFile } from '@/lib/admission/storage'
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized();if (error) return error
-  const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: { select: { unitId: true, ownerId: true } } } })
+  const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: { select: { unitId: true, ownerId: true, analysts: { select: { id: true } } } } } })
   if (!doc?.storagePath) return NextResponse.json({ error: 'Arquivo não encontrado.' }, { status: 404 })
   if (!canAccessAdmission(session!, doc.admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const file = await readPrivateAdmissionFile(doc.storagePath);if (!file) return NextResponse.json({ error: 'Arquivo indisponível.' }, { status: 404 })

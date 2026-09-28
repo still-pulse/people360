@@ -295,6 +295,8 @@ model User {
   pareceresElaborados        Parecer[]                  @relation("ParecerElaborador")
   testeConvitesCriados       TesteConvite[]             @relation("TesteConviteCreatedBy")
   admissionsOwned            Admission[]                @relation("AdmissionOwner")
+  /// Admissões em que é analista responsável adicional (além do principal).
+  admissionsAssisted         Admission[]                @relation("AdmissionAnalysts")
   admissionsCreated          Admission[]                @relation("AdmissionCreatedBy")
   admissionDocumentsReviewed AdmissionDocument[]        @relation("AdmissionDocumentReviewer")
   admissionAuditLogs         AdmissionAuditLog[]
@@ -1248,6 +1250,8 @@ model Admission {
   vacancy            Vaga?                @relation(fields: [vacancyId], references: [id], onDelete: SetNull)
   unit               Unit                 @relation(fields: [unitId], references: [id])
   owner              User?                @relation("AdmissionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  /// Outros analistas responsáveis (mesmo acesso e avisos do responsável principal).
+  analysts           User[]               @relation("AdmissionAnalysts")
   createdBy          User                 @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
   collaborator       Colaborador?         @relation("RegistrationUpdateEmployee", fields: [collaboratorId], references: [id], onDelete: SetNull)
   tokens             AdmissionToken[]

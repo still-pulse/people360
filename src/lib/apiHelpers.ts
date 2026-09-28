@@ -41,9 +41,11 @@ export function analystCanAccessUnit(session: SessionLike, unitId: string | null
   return units.includes(unitId)
 }
 
-/** Acesso a uma admissão: pela unidade ou por ser a analista responsável (owner). */
-export function canAccessAdmission(session: SessionLike, admission: { unitId: string | null; ownerId?: string | null }): boolean {
-  return analystCanAccessUnit(session, admission.unitId) || (!!admission.ownerId && admission.ownerId === session.user.id)
+/** Acesso a uma admissão: pela unidade ou por ser analista responsável (principal ou adicional). */
+export function canAccessAdmission(session: SessionLike, admission: { unitId: string | null; ownerId?: string | null; analysts?: { id: string }[] }): boolean {
+  return analystCanAccessUnit(session, admission.unitId)
+    || (!!admission.ownerId && admission.ownerId === session.user.id)
+    || !!admission.analysts?.some((analyst) => analyst.id === session.user.id)
 }
 
 /**

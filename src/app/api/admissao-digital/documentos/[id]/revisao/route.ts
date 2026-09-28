@@ -17,7 +17,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const { session, error } = await getSessionOrUnauthorized();if (error) return error
   const forbidden = forbidIfReadOnly(session!.user.role);if (forbidden) return forbidden
   const parsed = schema.safeParse(await req.json().catch(() => null));if (!parsed.success) return NextResponse.json({ error: 'O motivo é obrigatório para reprovar ou solicitar reenvio.' }, { status: 400 })
-  const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: true, type: true } })
+  const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: { include: { analysts: { select: { id: true } } } }, type: true } })
   if (!doc) return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 })
   if (!canAccessAdmission(session!, doc.admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const status = parsed.data.action === 'approve' ? 'APPROVED' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'

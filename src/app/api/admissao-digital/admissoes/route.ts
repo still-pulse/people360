@@ -27,7 +27,7 @@ const admissionSchema = z.object({
   collaboratorId: z.string().cuid().optional(),
   requestedSections: z.array(z.enum(['personal', 'address', 'bank', 'dependents', 'transport', 'documents', 'photo'])).max(7).optional(),
   candidateId: z.string().cuid().optional(), vacancyId: z.string().cuid().optional(), unitId: z.string().min(1),
-  ownerId: z.string().cuid().optional(), candidateName: z.string().min(3).max(160), candidateEmail: z.string().email().optional().or(z.literal('')),
+  ownerId: z.string().cuid().optional(), analystIds: z.array(z.string().cuid()).max(10).optional(), candidateName: z.string().min(3).max(160), candidateEmail: z.string().email().optional().or(z.literal('')),
   candidatePhone: z.string().max(30).optional(), jobTitle: z.string().min(2).max(120), department: z.string().max(120).optional(),
   hireDate: z.coerce.date(), salary: z.coerce.number().nonnegative().optional(), hazardPayPercentage: z.coerce.number().min(0).max(100).optional(),
   workSchedule: z.string().max(120).optional(), breakSchedule: z.string().max(120).optional(), monthlyHours: z.coerce.number().int().optional(), weeklyHours: z.coerce.number().int().min(1).max(80).optional(),
@@ -40,10 +40,18 @@ const registrationSchema = z.object({
   processType: z.literal('REGISTRATION_UPDATE'),
   collaboratorId: z.string().cuid(),
   requestedSections: z.array(z.enum(['personal', 'address', 'bank', 'dependents', 'transport', 'documents', 'photo'])).max(7),
-  ownerId: z.string().cuid().optional(),
+  ownerId: z.string().cuid().optional(), analystIds: z.array(z.string().cuid()).max(10).optional(),
   validityDays: z.coerce.number().int().min(1).max(30).default(7),
   documentTypeIds: z.array(z.string().min(1)).max(60).optional(),
 })
+
+/** Analistas adicionais válidos: usuários ativos, sem repetir o responsável principal. */
+async function validAnalystIds(ids: string[] | undefined, ownerId: string) {
+  const unique = Array.from(new Set((ids ?? []).filter((id) => id !== ownerId)))
+  if (!unique.length) return []
+  const users = await prisma.user.findMany({ where: { id: { in: unique }, active: true }, select: { id: true } })
+  return users.map((user) => user.id)
+}
 
 export async function GET(req: NextRequest) {
   const { session, error } = await getSessionOrUnauthorized(); if (error) return error
@@ -59,7 +67,7 @@ export async function GET(req: NextRequest) {
   }
   if (p.get('status')) where.status = p.get('status')
   if (p.get('processType') === 'ADMISSION' || p.get('processType') === 'REGISTRATION_UPDATE') where.processType = p.get('processType')
-  if (p.get('ownerId')) where.ownerId = p.get('ownerId')
+  if (p.get('ownerId')) where.AND = [{ OR: [{ ownerId: p.get('ownerId') }, { analysts: { some: { id: p.get('ownerId') } } }] }]
   if (p.get('from') || p.get('to')) where.createdAt = { ...(p.get('from') ? { gte: new Date(`${p.get('from')}T00:00:00`) } : {}), ...(p.get('to') ? { lte: new Date(`${p.get('to')}T23:59:59`) } : {}) }
   const allowedSort = ['candidateName', 'createdAt', 'lastActivityAt', 'hireDate', 'status']
   const sort = allowedSort.includes(p.get('sort') || '') ? p.get('sort')! : 'lastActivityAt'
@@ -103,7 +111,7 @@ export async function POST(req: NextRequest) {
     let created: Awaited<ReturnType<typeof createAdmissionRecord>>
     try {
       created = await createAdmissionRecord({
-        unitId: collaborator.unitId, ownerId: parsed.data.ownerId || session!.user.id, createdById: session!.user.id,
+        unitId: collaborator.unitId, ownerId: parsed.data.ownerId || session!.user.id, analystIds: await validAnalystIds(parsed.data.analystIds, parsed.data.ownerId || session!.user.id), createdById: session!.user.id,
         candidateName: collaborator.employeeName, candidateEmail: collaborator.personalEmail || collaborator.companyEmail || undefined,
         candidatePhone: collaborator.cellNumber || undefined, jobTitle: collaborator.designation || 'Colaborador', department: collaborator.department || undefined,
         hireDate: collaborator.dateOfJoining || new Date(), contractType: collaborator.employmentType || 'Não informado',
@@ -149,7 +157,7 @@ export async function POST(req: NextRequest) {
     if (parsed.data.vacancyId && candidate.vagaId && candidate.vagaId !== parsed.data.vacancyId) return NextResponse.json({ error: 'A vaga selecionada não corresponde à vaga do candidato.' }, { status: 400 })
   }
   let created: Awaited<ReturnType<typeof createAdmissionRecord>>
-  try { created = await createAdmissionRecord({ ...parsed.data, ownerId: parsed.data.ownerId || session!.user.id, monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
+  try { created = await createAdmissionRecord({ ...parsed.data, ownerId: parsed.data.ownerId || session!.user.id, analystIds: await validAnalystIds(parsed.data.analystIds, parsed.data.ownerId || session!.user.id), monthlyHours, candidateEmail: parsed.data.candidateEmail || undefined, createdById: session!.user.id }) }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Não foi possível criar a admissão.' }, { status: 400 }) }
   const base = process.env.NEXTAUTH_URL || req.nextUrl.origin
   const publicUrl = `${base}/admissao/${created.token}`

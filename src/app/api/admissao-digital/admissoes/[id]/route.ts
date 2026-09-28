@@ -19,7 +19,7 @@ import { collaboratorForAdmission, linkAdmissionCollaborator } from '@/lib/admis
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
-  owner: { select: { id: true, name: true } }, tokens: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { expiresAt: true, revokedAt: true, tokenHint: true } },
+  owner: { select: { id: true, name: true } }, analysts: { select: { id: true, name: true }, orderBy: { name: 'asc' as const } }, tokens: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { expiresAt: true, revokedAt: true, tokenHint: true } },
   fields: true, dependents: true, transport: { include: { routes: true } }, documents: { include: { type: true, reviewedBy: { select: { name: true } } }, orderBy: { type: { position: 'asc' as const } } },
   badgePhotos: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, confirmedAt: true, approvedAt: true, rejectionReason: true, createdAt: true } },
   faceVerifications: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, provider: true, status: true, attempts: true, resultMetadata: true, completedAt: true, capturedAt: true, createdAt: true, updatedAt: true } },
@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const { session, error } = await getSessionOrUnauthorized();if (error) return error
   const actualRole = session!.user.actualRole ?? session!.user.role
   const forbidden = forbidIfReadOnly(actualRole);if (forbidden) return forbidden
-  const current = await prisma.admission.findUnique({ where: { id: params.id } })
+  const current = await prisma.admission.findUnique({ where: { id: params.id }, include: { analysts: { select: { id: true } } } })
   if (!current) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!canAccessAdmission(session!, current)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const body = await req.json().catch(() => ({}));const action = String(body.action || '')
@@ -104,6 +104,17 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.
       return NextResponse.json({ error: `O ERPNext recusou a atualização: ${caught instanceof Error ? caught.message : 'erro desconhecido'}` }, { status: 422 })
     }
+  } else if (action === 'set-analysts') {
+    // Responsável principal + outros analistas responsáveis (mesmo acesso e avisos).
+    const ownerId = typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : current.ownerId
+    const requested = Array.isArray(body.analystIds) ? body.analystIds.filter((value: unknown): value is string => typeof value === 'string').slice(0, 10) : []
+    const ids = Array.from(new Set([ownerId, ...requested].filter((value): value is string => !!value)))
+    const users = await prisma.user.findMany({ where: { id: { in: ids }, active: true }, select: { id: true } })
+    const valid = new Set(users.map((user) => user.id))
+    if (ownerId && !valid.has(ownerId)) return NextResponse.json({ error: 'Analista responsável inválido.' }, { status: 400 })
+    await prisma.admission.update({ where: { id: current.id }, data: {
+      ownerId, analysts: { set: requested.filter((id: string) => id !== ownerId && valid.has(id)).map((id: string) => ({ id })) },
+    } })
   } else if (action === 'link-collaborator') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para criar o colaborador.' }, { status: 403 })
     if (current.processType !== 'ADMISSION') return NextResponse.json({ error: 'Disponível somente para admissões.' }, { status: 409 })

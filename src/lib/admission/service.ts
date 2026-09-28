@@ -57,6 +57,8 @@ export async function getMutableAdmissionByPublicToken(rawToken: string, touch =
 
 export async function createAdmissionRecord(input: {
   candidateId?: string; vacancyId?: string; unitId: string; ownerId?: string; createdById: string
+  /** Outros analistas responsáveis (além do principal). */
+  analystIds?: string[]
   candidateName: string; candidateEmail?: string; candidatePhone?: string; jobTitle: string; department?: string
   hireDate: Date; salary?: number; hazardPayPercentage?: number; workSchedule?: string; breakSchedule?: string
   weeklyHours?: number; monthlyHours?: number; contractType: string; experienceDays?: number; contractEndDate?: Date; validityDays?: number
@@ -75,6 +77,7 @@ export async function createAdmissionRecord(input: {
   const admission = await prisma.admission.create({ data: {
     protocol: makeProtocol(), candidateId: input.candidateId, vacancyId: input.vacancyId, unitId: input.unitId,
     ownerId: input.ownerId, createdById: input.createdById, candidateName: input.candidateName,
+    ...(input.analystIds?.length ? { analysts: { connect: input.analystIds.map((id) => ({ id })) } } : {}),
     candidateEmail: input.candidateEmail, candidatePhone: input.candidatePhone, jobTitle: input.jobTitle,
     department: input.department, hireDate: input.hireDate, salary: input.salary,
     hazardPayPercentage: input.hazardPayPercentage, workSchedule: input.workSchedule,

@@ -13,7 +13,7 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   const photo = await prisma.badgePhoto.findFirst({
     where: { admissionId: params.id },
     orderBy: { createdAt: 'desc' },
-    include: { admission: { select: { unitId: true, ownerId: true } } },
+    include: { admission: { select: { unitId: true, ownerId: true, analysts: { select: { id: true } } } } },
   })
   if (!photo) return NextResponse.json({ error: 'Foto não encontrada.' }, { status: 404 })
   if (!canAccessAdmission(session!, photo.admission)) {

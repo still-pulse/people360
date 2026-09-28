@@ -33,12 +33,15 @@ export async function notifyAdmissionOwnerDocumentsPending(admissionId: string) 
     const admission = await prisma.admission.findUnique({ where: { id: admissionId }, select: {
       id: true, protocol: true, candidateName: true, jobTitle: true, processType: true,
       unit: { select: { name: true } }, owner: { select: { email: true, active: true } }, createdBy: { select: { email: true, active: true } },
+      analysts: { where: { active: true }, select: { email: true } },
       documents: { where: { status: { not: 'APPROVED' } }, select: { type: { select: { name: true } } } },
       badgePhotos: { where: { confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, take: 1, select: { approvedAt: true } },
     } })
     if (!admission) return
-    const recipient = admission.owner?.active ? admission.owner.email : admission.createdBy?.active ? admission.createdBy.email : null
-    if (!recipient) return
+    const main = admission.owner?.active ? admission.owner.email : admission.createdBy?.active ? admission.createdBy.email : null
+    const recipients = Array.from(new Set([main, ...admission.analysts.map((analyst) => analyst.email)].filter((email): email is string => !!email)))
+    if (!recipients.length) return
+    const recipient = recipients
     const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
     const kind = admission.processType === 'REGISTRATION_UPDATE' ? 'da atualização cadastral' : 'da admissão'
     const photoPending = admission.processType !== 'REGISTRATION_UPDATE' && admission.badgePhotos[0] && !admission.badgePhotos[0].approvedAt

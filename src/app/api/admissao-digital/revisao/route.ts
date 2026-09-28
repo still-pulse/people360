@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const { session, error } = await getSessionOrUnauthorized(); if (error) return error
   const units = getAnalystUnits(session!)
   const processType = parseProcessType(req.nextUrl.searchParams.get('processType'))
-  const admissionScope = units ? { OR: [{ unitId: { in: units } }, { ownerId: session!.user.id }] } : {}
+  const admissionScope = units ? { OR: [{ unitId: { in: units } }, { ownerId: session!.user.id }, { analysts: { some: { id: session!.user.id } } }] } : {}
   const [documents, photos] = await Promise.all([
     prisma.admissionDocument.findMany({ where: {
       status: { in: ['UPLOADED', 'UNDER_REVIEW', 'RESUBMISSION_REQUIRED'] },
