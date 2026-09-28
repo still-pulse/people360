@@ -9,8 +9,8 @@ const units: SheetUnit[] = [
   { id: 'u2', name: 'VG - PA Luiz Gonzaga', color: '#EC4899', active: true },
 ]
 const positions: SheetPosition[] = [
-  { id: 'p1', name: 'Enfermeiro', categoria: 'Assistencial', departamento: 'Enfermagem', codigoInterno: null, active: true, aliases: ['Enf.'], salarios: [{ id: 's1', unitId: 'u1', cargaHorariaMensal: null, salario: 3886.36 }, { id: 's2', unitId: null, cargaHorariaMensal: null, salario: 3800 }, { id: 's3', unitId: 'u1', cargaHorariaMensal: 200, salario: 4300 }] },
-  { id: 'p2', name: 'Técnico de Enfermagem', categoria: null, departamento: null, codigoInterno: null, active: false, aliases: [], salarios: [] },
+  { id: 'p1', name: 'Enfermeiro', categoria: 'Assistencial', departamento: 'Enfermagem', cbo: '223505', codigoInterno: null, active: true, aliases: ['Enf.'], salarios: [{ id: 's1', unitId: 'u1', cargaHorariaMensal: null, salario: 3886.36 }, { id: 's2', unitId: null, cargaHorariaMensal: null, salario: 3800 }, { id: 's3', unitId: 'u1', cargaHorariaMensal: 200, salario: 4300 }] },
+  { id: 'p2', name: 'Técnico de Enfermagem', categoria: null, departamento: null, cbo: null, codigoInterno: null, active: false, aliases: [], salarios: [] },
 ]
 const logoBuffer = readFileSync(path.join(__dirname, '../../public/bhcl-admissao-logo.png'))
 const meta = { companyName: 'BHCL', userName: 'Teste', logo: { buffer: logoBuffer, ...imageSize(logoBuffer)! } }
@@ -19,7 +19,7 @@ async function toBuffer(workbook: ExcelJS.Workbook) {
   return (await workbook.xlsx.writeBuffer()) as ArrayBuffer
 }
 
-const row = (patch: Partial<SheetRow>): SheetRow => ({ line: 11, cargo: '', unidade: '', cargaHoraria: null, salario: null, categoria: '', departamento: '', codigoInterno: '', aliases: [], status: null, ...patch })
+const row = (patch: Partial<SheetRow>): SheetRow => ({ line: 11, cargo: '', unidade: '', cargaHoraria: null, salario: null, categoria: '', departamento: '', cbo: '', codigoInterno: '', aliases: [], status: null, ...patch })
 
 describe('planilha de cargos', () => {
   it('lê as dimensões do logo PNG', () => {

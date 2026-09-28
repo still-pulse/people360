@@ -1,3 +1,4 @@
+import { missingPcdAnswers } from '@/lib/admission/pcd'
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
@@ -72,6 +73,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ token: 
   if (parsed.data.validate && parsed.data.fields.disability === 'Sim' && !String(parsed.data.fields.disabilityDetails || '').trim()) {
     return NextResponse.json({ error: 'Especifique a deficiência.', fields: { disabilityDetails: ['Especifique a deficiência.'] } }, { status: 400 })
   }
+  // O Termo de Autodeclaração PCD sai preenchido com estas respostas.
+  const pcdMissing = parsed.data.validate && parsed.data.section === 'personal' ? missingPcdAnswers(parsed.data.fields) : []
+  if (pcdMissing.length) return NextResponse.json({ error: `Responda as perguntas do Termo de Autodeclaração PCD: ${pcdMissing.join('; ')}.` }, { status: 400 })
   await prisma.$transaction([
     ...entries.map(([key, value]) => { const sensitive = SENSITIVE_FIELD_KEYS.has(key); const stored = sensitive ? encryptAdmissionValue(value) : value; const searchHash = key === 'cpf' && typeof value === 'string' && value.replace(/\D/g, '').length === 11 ? hashSensitive(value) : null; return prisma.admissionField.upsert({ where: { admissionId_key: { admissionId: result.admissionId, key } }, create: { admissionId: result.admissionId, section: parsed.data.section, key, value: stored as Prisma.InputJsonValue, sensitive, searchHash }, update: { section: parsed.data.section, value: stored as Prisma.InputJsonValue, sensitive, searchHash } }) }),
     prisma.admission.update({ where: { id: result.admissionId }, data: { status: result.admission.status === 'LINK_SENT' ? 'IN_PROGRESS' : undefined, currentStep: parsed.data.nextStep || result.admission.currentStep, progress: Math.max(result.admission.progress, parsed.data.section === 'personal' ? 18 : parsed.data.section === 'address' ? 24 : 28), lastActivityAt: new Date() } }),

@@ -6,6 +6,10 @@ import { decryptAdmissionValue, hashToken } from './security'
 import { ensureAdmissionTemplates } from './ensureTemplates'
 import { formatCpf } from './fieldFormatters'
 import { savePrivateAdmissionFile } from './storage'
+import { StandardFonts } from 'pdf-lib'
+import { layoutByKey } from './forms'
+import { buildFormContext } from './forms/context'
+import { stampValidation } from './forms/pdfText'
 
 export function interpolate(content: string, values: Record<string, string>) {
   return content.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key) => values[key] ?? '—')
@@ -110,15 +114,36 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
     transportRefusalReason: transportRequested ? '—' : valueText(transport?.refusalReason), transportRoutesTable, transportDailyTotal,
   }
 
+  // Contrato e termos oficiais: formulário original preenchido com os dados do colaborador.
+  const position = await prisma.position.findFirst({ where: { name: { equals: admission.jobTitle, mode: 'insensitive' } }, select: { cbo: true } })
+  const formContext = buildFormContext(admission, fields, { cbo: position?.cbo })
+
+  // Documento ainda não assinado de uma versão substituída (ex.: contrato em texto → formulário oficial) é
+  // cancelado, para o candidato não assinar duas versões. Documentos assinados nunca são alterados.
+  await prisma.generatedDocument.updateMany({
+    where: { admissionId, status: { in: ['GENERATED', 'SENT'] }, templateId: { notIn: templates.map((template) => template.id) } },
+    data: { status: 'CANCELLED' },
+  })
+
   const results = []
   for (const template of templates) {
+    const layout = layoutByKey(template.key)
+    if (layout?.appliesTo && !layout.appliesTo(formContext)) continue
     const existing = await prisma.generatedDocument.findFirst({ where: { admissionId, templateId: template.id, status: { in: ['GENERATED', 'SENT', 'SIGNED'] } } })
     if (existing) { results.push(existing); continue }
     const validationToken = randomBytes(24).toString('base64url'), validationCode = randomBytes(4).toString('hex').toUpperCase()
     const validationUrl = `${origin}/validar-documento/${validationToken}`
-    const qr = await QRCode.toDataURL(validationUrl, { margin: 1, width: 180 })
-    const pdf = createPdf(template.name, interpolate(template.content, values), admission.protocol, template.version, validationCode, qr)
-    const buffer = Buffer.from(pdf.output('arraybuffer')), hash = createHash('sha256').update(buffer).digest('hex')
+    let buffer: Buffer<ArrayBuffer>
+    if (layout) {
+      const pdf = await layout.render(formContext)
+      stampValidation(pdf, await pdf.embedFont(StandardFonts.Helvetica), `People360 · Protocolo ${admission.protocol} · Código de validação ${validationCode} · ${validationUrl}`)
+      const bytes = await pdf.save()
+      buffer = Buffer.from(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength)
+    } else {
+      const qr = await QRCode.toDataURL(validationUrl, { margin: 1, width: 180 })
+      buffer = Buffer.from(createPdf(template.name, interpolate(template.content, values), admission.protocol, template.version, validationCode, qr).output('arraybuffer'))
+    }
+    const hash = createHash('sha256').update(buffer).digest('hex')
     const saved = await savePrivateAdmissionFile(admissionId, `generated-${template.key}`, new File([buffer], `${template.key}.pdf`, { type: 'application/pdf' }))
     const created = await prisma.generatedDocument.create({ data: { admissionId, templateId: template.id, templateVersion: template.version, status: 'GENERATED', storagePath: saved.storagePath, originalHash: hash, validationTokenHash: hashToken(validationToken), validationCode, generatedAt: new Date() } })
     results.push({ ...created, validationUrl })

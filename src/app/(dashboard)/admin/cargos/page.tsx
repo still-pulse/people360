@@ -31,6 +31,7 @@ export default function CargosPage() {
   const [name, setName] = useState('')
   const [categoria, setCategoria] = useState('')
   const [departamento, setDepartamento] = useState('')
+  const [cbo, setCbo] = useState('')
   const [salarios, setSalarios] = useState<SalaryRow[]>([])
   const [units, setUnits] = useState<{ id: string; name: string }[]>([])
   const [newAlias, setNewAlias] = useState('')
@@ -99,6 +100,7 @@ export default function CargosPage() {
       body: JSON.stringify({
         name: name.trim(), categoria: categoria.trim() || null,
         departamento: departamento.trim() || null,
+        cbo: cbo.trim() || null,
         salarios: entries,
       }),
     })
@@ -110,6 +112,7 @@ export default function CargosPage() {
       setName('')
       setCategoria('')
       setDepartamento('')
+      setCbo('')
       setSalarios([])
       loadPositions()
     } else {
@@ -188,6 +191,7 @@ export default function CargosPage() {
     setName('')
     setCategoria('')
     setDepartamento('')
+    setCbo('')
     setSalarios([emptySalaryRow()])
     setFormError('')
     setModalOpen(true)
@@ -198,6 +202,7 @@ export default function CargosPage() {
     setName(pos.name)
     setCategoria(pos.categoria ?? '')
     setDepartamento(pos.departamento ?? '')
+    setCbo(pos.cbo ?? '')
     // Agrupa as unidades com o mesmo salário e a mesma carga horária numa faixa; o padrão fica numa faixa própria por carga.
     const groups = new Map<string, SalaryRow>()
     for (const s of pos.salarios ?? []) {
@@ -539,6 +544,12 @@ export default function CargosPage() {
             onChange={(e) => setDepartamento(e.target.value)}
             placeholder="Ex: Enfermagem (usado na admissão digital)"
           />
+          <Input
+            label="CBO"
+            value={cbo}
+            onChange={(e) => setCbo(e.target.value)}
+            placeholder="Ex: 322205 (sai no Registro de Empregado do contrato)"
+          />
 
 
           <p className="text-xs text-gray-400">
@@ -698,7 +709,7 @@ type ImportPreview = {
   error?: string
 }
 
-const FIELD_LABEL: Record<string, string> = { categoria: 'categoria', departamento: 'departamento', codigoInterno: 'código interno', active: 'status' }
+const FIELD_LABEL: Record<string, string> = { categoria: 'categoria', departamento: 'departamento', cbo: 'CBO', codigoInterno: 'código interno', active: 'status' }
 
 // Importação em duas etapas: o servidor valida e devolve a prévia; só grava após a confirmação.
 function ImportModal({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {

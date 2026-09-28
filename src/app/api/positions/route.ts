@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
       data: {
         ...(!existing.categoria && body.categoria ? { categoria: body.categoria } : {}),
         ...(!existing.departamento && body.departamento?.trim() ? { departamento: body.departamento.trim() } : {}),
+        ...(!existing.cbo && body.cbo?.trim() ? { cbo: body.cbo.trim() } : {}),
       },
       include: positionInclude,
     })
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
       codigoInterno: body.codigoInterno || null,
       categoria: body.categoria || null,
       departamento: body.departamento?.trim() || null,
+      cbo: body.cbo?.trim() || null,
       ...(salarios?.length ? { salarios: { create: salarios } } : {}),
     },
     include: positionInclude,

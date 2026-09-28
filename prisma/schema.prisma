@@ -605,6 +605,8 @@ model Position {
   categoria     String?
   /// Departamento usado na admissão digital (ex.: Enfermagem)
   departamento  String?
+  /// Código CBO do cargo (sai no Registro de Empregado do contrato)
+  cbo           String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt

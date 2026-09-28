@@ -1,4 +1,5 @@
 import type { AdmissionStatus } from '@prisma/client'
+import { PCD_KEYS } from './pcd'
 
 export const ADMISSION_STATUS_LABEL: Record<AdmissionStatus, string> = {
   DRAFT: 'Rascunho',
@@ -34,11 +35,11 @@ export const ADMISSION_STEPS = [
 
 export const SENSITIVE_FIELD_KEYS = new Set([
   'cpf', 'rg', 'pis', 'bank', 'agency', 'account', 'accountDigit', 'accountType',
-  'motherName', 'fatherName', 'disability', 'disabilityDetails',
+  'motherName', 'fatherName', 'disability', 'disabilityDetails', 'voterTitle', ...PCD_KEYS,
 ])
 
 export const PUBLIC_FIELD_SECTIONS = {
-  personal: ['name', 'birthDate', 'gender', 'phone', 'messagePhone', 'email', 'rg', 'rgIssuedAt', 'rgIssuer', 'cpf', 'pis', 'birthCity', 'ethnicity', 'disability', 'disabilityDetails', 'fatherName', 'motherName', 'education', 'maritalStatus'],
+  personal: ['name', 'birthDate', 'gender', 'phone', 'messagePhone', 'email', 'rg', 'rgIssuedAt', 'rgIssuer', 'cpf', 'pis', 'birthCity', 'nationality', 'voterTitle', 'voterZone', 'voterSection', 'ethnicity', 'disability', 'disabilityDetails', ...PCD_KEYS, 'fatherName', 'motherName', 'education', 'maritalStatus'],
   address: ['zipCode', 'street', 'number', 'complement', 'district', 'city', 'state'],
   bank: ['bank', 'agency', 'account', 'accountDigit', 'accountType'],
 } as const

@@ -13,7 +13,7 @@ export async function loadSheetData(): Promise<{ positions: SheetPosition[]; uni
   ])
   return {
     positions: positions.map((position) => ({
-      id: position.id, name: position.name, categoria: position.categoria, departamento: position.departamento,
+      id: position.id, name: position.name, categoria: position.categoria, departamento: position.departamento, cbo: position.cbo,
       codigoInterno: position.codigoInterno, active: position.active,
       aliases: position.aliases.map((alias) => alias.alias), salarios: position.salarios,
     })),

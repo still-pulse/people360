@@ -46,6 +46,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       ...(body.codigoInterno !== undefined ? { codigoInterno: body.codigoInterno || null } : {}),
       ...(body.categoria !== undefined ? { categoria: body.categoria || null } : {}),
       ...(body.departamento !== undefined ? { departamento: body.departamento?.trim() || null } : {}),
+      ...(body.cbo !== undefined ? { cbo: body.cbo?.trim() || null } : {}),
       ...(body.active !== undefined ? { active: body.active } : {}),
     },
     include: positionInclude,

@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
           await tx.position.create({
             data: {
               name: position.name.trim(),
-              categoria: position.data.categoria ?? null, departamento: position.data.departamento ?? null,
+              categoria: position.data.categoria ?? null, departamento: position.data.departamento ?? null, cbo: position.data.cbo ?? null,
               codigoInterno: position.data.codigoInterno ?? null, active: position.data.active ?? true,
               salarios: { create: position.salaries.map((salary) => ({ unitId: salary.unitId, cargaHorariaMensal: salary.cargaHorariaMensal, salario: salary.salario })) },
               aliases: { create: position.aliases.map((alias) => ({ alias })) },

@@ -34,7 +34,7 @@ export async function getAdmissionByPublicToken(rawToken: string, touch = false)
       documents: { include: { type: true }, orderBy: { type: { position: 'asc' } } },
       badgePhotos: { orderBy: { createdAt: 'desc' }, take: 1 },
       faceVerifications: { orderBy: { createdAt: 'desc' }, take: 1 },
-      generatedDocuments: { include: { template: true }, orderBy: { createdAt: 'asc' } },
+      generatedDocuments: { where: { status: { not: 'CANCELLED' } }, include: { template: true }, orderBy: { createdAt: 'asc' } },
       signatureEnvelopes: { orderBy: { createdAt: 'desc' } },
     } } },
   })

@@ -26,6 +26,7 @@ export const COLUMNS = [
   { key: 'salario', header: 'Salário (R$)', width: 17 },
   { key: 'categoria', header: 'Categoria', width: 20 },
   { key: 'departamento', header: 'Departamento', width: 22 },
+  { key: 'cbo', header: 'CBO', width: 11 },
   { key: 'codigoInterno', header: 'Código interno', width: 16 },
   { key: 'aliases', header: 'Aliases', width: 38 },
   { key: 'status', header: 'Status', width: 12 },
@@ -39,7 +40,7 @@ export const MONTHLY_HOURS_OPTIONS = ADMISSION_MONTHLY_HOURS_OPTIONS
 export const ANY_HOURS_LABEL = 'Qualquer'
 
 export type SheetPosition = {
-  id: string; name: string; categoria: string | null; departamento: string | null; codigoInterno: string | null; active: boolean
+  id: string; name: string; categoria: string | null; departamento: string | null; cbo: string | null; codigoInterno: string | null; active: boolean
   aliases: string[]; salarios: { id: string; unitId: string | null; cargaHorariaMensal: number | null; salario: number }[]
 }
 export type SheetUnit = { id: string; name: string; color: string; active: boolean }
@@ -219,7 +220,7 @@ export async function buildExportWorkbook(positions: SheetPosition[], units: She
 
   const lines = positions.flatMap((position) => {
     const salarios = position.salarios.slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (unitName.get(a.unitId ?? '') ?? '').localeCompare(unitName.get(b.unitId ?? '') ?? '', 'pt-BR') || (a.cargaHorariaMensal ?? 0) - (b.cargaHorariaMensal ?? 0))
-    const base = { cargo: position.name, categoria: position.categoria ?? '', departamento: position.departamento ?? '', codigoInterno: position.codigoInterno ?? '', aliases: position.aliases.join('; '), status: position.active ? 'Ativo' : 'Inativo' }
+    const base = { cargo: position.name, categoria: position.categoria ?? '', departamento: position.departamento ?? '', cbo: position.cbo ?? '', codigoInterno: position.codigoInterno ?? '', aliases: position.aliases.join('; '), status: position.active ? 'Ativo' : 'Inativo' }
     return salarios.length
       ? salarios.map((salario) => ({ ...base, unidade: salario.unitId ? unitName.get(salario.unitId) ?? '' : ALL_UNITS_LABEL, cargaHoraria: (salario.cargaHorariaMensal ?? ANY_HOURS_LABEL) as number | string, salario: salario.salario as number | null }))
       : [{ ...base, unidade: '', cargaHoraria: '' as number | string, salario: null as number | null }]
@@ -307,12 +308,12 @@ export async function buildTemplateWorkbook(units: SheetUnit[], meta: Meta) {
   tableHeader(example, HEADER_ROW, COLUMNS.map((column) => column.key === 'cargo' ? 'Cargo *' : column.header))
   const [first, second] = [units[0]?.name ?? 'UPA Exemplo', units[1]?.name ?? 'PA Exemplo']
   const samples = [
-    ['Enfermeiro', first, ANY_HOURS_LABEL, 3886.36, 'Assistencial', 'Enfermagem', 'ENF-01', 'Enf.; Enfermeira', 'Ativo'],
-    ['Enfermeiro', second, ANY_HOURS_LABEL, 3950, 'Assistencial', 'Enfermagem', 'ENF-01', '', 'Ativo'],
-    ['Técnico de Enfermagem', ALL_UNITS_LABEL, ANY_HOURS_LABEL, 2720.45, 'Assistencial', 'Enfermagem', '', 'Tec. Enfermagem', 'Ativo'],
-    ['Auxiliar Administrativo', first, 180, 2100, 'Administrativo', 'Administrativo', '', '', 'Ativo'],
-    ['Auxiliar Administrativo', first, 200, 2333.33, 'Administrativo', 'Administrativo', '', '', 'Ativo'],
-    ['Recepcionista', '', '', null, 'Administrativo', '', '', '', 'Inativo'],
+    ['Enfermeiro', first, ANY_HOURS_LABEL, 3886.36, 'Assistencial', 'Enfermagem', '223505', 'ENF-01', 'Enf.; Enfermeira', 'Ativo'],
+    ['Enfermeiro', second, ANY_HOURS_LABEL, 3950, 'Assistencial', 'Enfermagem', '223505', 'ENF-01', '', 'Ativo'],
+    ['Técnico de Enfermagem', ALL_UNITS_LABEL, ANY_HOURS_LABEL, 2720.45, 'Assistencial', 'Enfermagem', '322205', '', 'Tec. Enfermagem', 'Ativo'],
+    ['Auxiliar Administrativo', first, 180, 2100, 'Administrativo', 'Administrativo', '411005', '', '', 'Ativo'],
+    ['Auxiliar Administrativo', first, 200, 2333.33, 'Administrativo', 'Administrativo', '411005', '', '', 'Ativo'],
+    ['Recepcionista', '', '', null, 'Administrativo', '', '', '', '', 'Inativo'],
   ]
   samples.forEach((values, index) => {
     const row = example.getRow(HEADER_ROW + 1 + index)
@@ -351,7 +352,7 @@ function buildInstructionsSheet(workbook: ExcelJS.Workbook, meta: Meta, template
     ['Unidade', 'Use o nome exato da unidade (a célula tem lista). Vazia ou "Todas as unidades" = salário padrão para as unidades sem valor próprio. Unidades não são criadas pela importação.'],
     ['Carga horária mensal', `${MONTHLY_HOURS_OPTIONS.join(', ')} ou "${ANY_HOURS_LABEL}" (vazia = ${ANY_HOURS_LABEL}). Use quando o mesmo cargo tem salários diferentes conforme a carga (ex.: 180h e 200h). "${ANY_HOURS_LABEL}" vale quando não há salário para a carga escolhida na admissão.`],
     ['Salário (R$)', 'Obrigatório quando a unidade ou a carga horária é informada. Aceita 3886,36 ou 3.886,36. Se a unidade já tiver salário para essa carga neste cargo, o valor é substituído.'],
-    ['Categoria, Departamento, Código', 'Opcionais. Em branco mantêm o valor atual. Nas linhas do mesmo cargo, use sempre o mesmo valor.'],
+    ['Categoria, Departamento, CBO, Código', 'Opcionais. Em branco mantêm o valor atual. Nas linhas do mesmo cargo, use sempre o mesmo valor.'],
     ['Aliases', 'Opcionais, separados por ponto e vírgula (;). Apenas acrescenta: nenhum alias existente é removido.'],
     ['Status', 'Ativo ou Inativo. Em branco mantém o status atual (cargos novos entram como Ativo).'],
     ['O que NÃO acontece', 'A importação nunca exclui cargos, salários, aliases ou unidades. Para remover algo, use a tela de Cargos.'],
@@ -372,7 +373,7 @@ function buildInstructionsSheet(workbook: ExcelJS.Workbook, meta: Meta, template
 
 export type SheetRow = {
   line: number; cargo: string; unidade: string; cargaHoraria: number | null; salario: number | null
-  categoria: string; departamento: string; codigoInterno: string; aliases: string[]; status: boolean | null
+  categoria: string; departamento: string; cbo: string; codigoInterno: string; aliases: string[]; status: boolean | null
 }
 export type RowError = { line: number; message: string }
 
@@ -383,6 +384,7 @@ const HEADER_ALIASES: Record<ColumnKey, string[]> = {
   salario: ['salario (r$)', 'salario'],
   categoria: ['categoria'],
   departamento: ['departamento'],
+  cbo: ['cbo', 'c.b.o.'],
   codigoInterno: ['codigo interno', 'codigo'],
   aliases: ['aliases', 'alias'],
   status: ['status'],
@@ -438,7 +440,7 @@ export async function readSheet(buffer: ArrayBuffer): Promise<{ rows: SheetRow[]
     rows.push({
       line: rowNumber, cargo: text('cargo'), unidade: text('unidade'), cargaHoraria,
       salario: salario === null ? null : Math.round(salario * 100) / 100,
-      categoria: text('categoria'), departamento: text('departamento'), codigoInterno: text('codigoInterno'),
+      categoria: text('categoria'), departamento: text('departamento'), cbo: text('cbo'), codigoInterno: text('codigoInterno'),
       aliases: text('aliases').split(/[;\n]/).map((alias) => alias.trim()).filter(Boolean),
       status: status ?? null,
     })
@@ -450,7 +452,7 @@ export async function readSheet(buffer: ArrayBuffer): Promise<{ rows: SheetRow[]
 
 export type PlannedPosition = {
   key: string; existingId: string | null; name: string
-  data: { categoria?: string; departamento?: string; codigoInterno?: string; active?: boolean }
+  data: { categoria?: string; departamento?: string; cbo?: string; codigoInterno?: string; active?: boolean }
   salaries: { unitId: string | null; cargaHorariaMensal: number | null; salario: number; existingSalaryId: string | null; previous: number | null }[]
   aliases: string[]
 }
@@ -489,7 +491,7 @@ export function planImport(rows: SheetRow[], positions: SheetPosition[], units: 
     if ((unitText || row.cargaHoraria !== null) && row.salario === null) { errors.push({ line: row.line, message: `Informe o salário do cargo${unitText ? ` em ${row.unidade}` : ''}${row.cargaHoraria !== null ? ` para ${row.cargaHoraria}h` : ''}.` }); continue }
 
     const fields: [keyof PlannedPosition['data'], string | boolean | null][] = [
-      ['categoria', row.categoria || null], ['departamento', row.departamento || null], ['codigoInterno', row.codigoInterno || null], ['active', row.status],
+      ['categoria', row.categoria || null], ['departamento', row.departamento || null], ['cbo', row.cbo || null], ['codigoInterno', row.codigoInterno || null], ['active', row.status],
     ]
     let conflict = false
     for (const [field, value] of fields) {
@@ -553,7 +555,7 @@ export function planImport(rows: SheetRow[], positions: SheetPosition[], units: 
 }
 
 function fieldLabel(field: string) {
-  return ({ categoria: 'Categoria', departamento: 'Departamento', codigoInterno: 'Código interno', active: 'Status' } as Record<string, string>)[field] ?? field
+  return ({ categoria: 'Categoria', departamento: 'Departamento', cbo: 'CBO', codigoInterno: 'Código interno', active: 'Status' } as Record<string, string>)[field] ?? field
 }
 
 // ─── Logo ──────────────────────────────────────────────────────────
