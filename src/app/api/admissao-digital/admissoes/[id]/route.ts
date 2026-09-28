@@ -15,6 +15,7 @@ import { erpnextEmployeeForAdmission, pushAdmissionDocumentsToErpnext } from '@/
 import { sendDossierToErpnext } from '@/lib/dossie/erpnextDossie'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
+import { collaboratorForAdmission, linkAdmissionCollaborator } from '@/lib/admission/collaboratorLink'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -34,11 +35,13 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   if (!item) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!canAccessAdmission(session!, item)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.actualRole ?? session!.user.role)
+  // Colaborador do People360 criado a partir desta admissão (para o link do dossiê).
+  const collaborator = item.processType === 'ADMISSION' ? await collaboratorForAdmission(item.id) : null
   const response = canViewSensitiveData ? {
-    ...item,
+    ...item, collaborator,
     features: { faceVerification: isFaceVerificationEnabled() },
     fields: item.fields.map((field) => ({ ...field, value: field.sensitive ? decryptAdmissionValue(field.value) : field.value })),
-  } : { ...item, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
+  } : { ...item, collaborator, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
   return NextResponse.json(response)
 }
 
@@ -101,6 +104,12 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.
       return NextResponse.json({ error: `O ERPNext recusou a atualização: ${caught instanceof Error ? caught.message : 'erro desconhecido'}` }, { status: 422 })
     }
+  } else if (action === 'link-collaborator') {
+    if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para criar o colaborador.' }, { status: 403 })
+    if (current.processType !== 'ADMISSION') return NextResponse.json({ error: 'Disponível somente para admissões.' }, { status: 409 })
+    const result = await linkAdmissionCollaborator(current.id, { id: session!.user.id, name: session!.user.name || 'Usuário do RH' }, extractIp(req.headers))
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 422 })
+    response = result
   } else if (action === 'push-erpnext-documents') {
     const employeeId = await erpnextEmployeeForAdmission(current.id)
     if (!employeeId) return NextResponse.json({ error: 'Este processo ainda não tem colaborador no ERPNext.' }, { status: 409 })

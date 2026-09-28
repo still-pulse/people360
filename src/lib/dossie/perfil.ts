@@ -107,13 +107,14 @@ const SENSITIVE_IMPORT_LABELS: Record<string, string> = {
  */
 export async function findLinkedAdmissionId(colaborador: { erpnextId: string; cpf: string | null }): Promise<string | null> {
   const bySync = await prisma.eRPNextSync.findFirst({
-    where: { employeeId: colaborador.erpnextId }, orderBy: { createdAt: 'desc' }, select: { admissionId: true },
+    where: { employeeId: colaborador.erpnextId, admission: { processType: 'ADMISSION' } }, orderBy: { createdAt: 'desc' }, select: { admissionId: true },
   })
   if (bySync) return bySync.admissionId
   const digits = (colaborador.cpf ?? '').replace(/\D/g, '')
   if (digits.length !== 11) return null
   const byCpf = await prisma.admissionField.findFirst({
-    where: { key: 'cpf', searchHash: hashSensitive(digits), admission: { status: { in: ['SIGNED', 'READY_FOR_ERPNEXT', 'SYNCING', 'SYNCED', 'ERPNEXT_ERROR', 'COMPLETED'] } } },
+    // Só admissões: a atualização cadastral do mesmo CPF não é a origem do dossiê.
+    where: { key: 'cpf', searchHash: hashSensitive(digits), admission: { processType: 'ADMISSION', status: { in: ['SIGNED', 'READY_FOR_ERPNEXT', 'SYNCING', 'SYNCED', 'ERPNEXT_ERROR', 'COMPLETED'] } } },
     orderBy: { updatedAt: 'desc' }, select: { admissionId: true },
   })
   return byCpf?.admissionId ?? null
