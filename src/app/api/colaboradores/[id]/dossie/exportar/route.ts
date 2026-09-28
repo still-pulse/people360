@@ -3,6 +3,7 @@ import { buildDossierPdf } from '@/lib/dossie/dossier'
 import { DossieError } from '@/lib/dossie/documentos'
 import { auditDossie } from '@/lib/dossie/history'
 import { allowRequest, dossieRoute, pdfResponse, readJson } from '@/lib/dossie/http'
+import { compressPdf } from '@/lib/pdfCompress'
 
 /** Gera o dossiê completo (PDF único) com os itens selecionados. `preview: true` abre inline. */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       throw error instanceof Error && !(error instanceof DossieError) && /Selecione|encontrado/.test(error.message) ? new DossieError(error.message, 422) : error
     })
     await auditDossie({ actor, action: 'VIEW_FILE', entity: 'Dossie', colaboradorId: colaborador.id, ip, details: { modo: preview ? 'preview' : 'download', itens: selecao.length, paginas: result.pages } })
-    return pdfResponse(result.buffer, result.fileName, preview)
+    const buffer = preview ? result.buffer : (await compressPdf(result.buffer)).buffer
+    return pdfResponse(buffer, result.fileName, preview)
   });
 }

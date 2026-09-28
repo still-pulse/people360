@@ -404,7 +404,7 @@ export interface EmployeeDocumentPayload {
   id_externo: string
   nome_arquivo: string
   conteudo_base64: string
-  processo?: 'Admissão Digital' | 'Atualização Cadastral' | 'Outro'
+  processo?: 'Admissão Digital' | 'Atualização Cadastral' | 'Dossiê' | 'Outro'
   protocolo?: string
   aprovado_por?: string
   versao?: number
@@ -416,4 +416,22 @@ export async function sendEmployeeDocument(payload: EmployeeDocumentPayload): Pr
   const res = await request<{ message: { name: string; arquivo: string; duplicado: boolean } }>('POST', '/api/method/rh_brasil.documentos.receber_documento', payload)
   if (!res.message?.name) throw new ErpnextApiError('O ERPNext não confirmou o recebimento do documento.', 502, res)
   return res.message
+}
+
+/** Mesmo endpoint, com o arquivo em multipart (sem o acréscimo de ~33% do base64) — usado para o dossiê. */
+export async function sendEmployeeDocumentFile(meta: Omit<EmployeeDocumentPayload, 'conteudo_base64'>, file: Buffer, mimeType = 'application/pdf'): Promise<{ name: string; arquivo: string; duplicado: boolean }> {
+  if (!erpnextConfigured()) throw new ErpnextApiError('ERPNext não configurado (ERPNEXT_BASE_URL / API_KEY / API_SECRET)', 503)
+  const form = new FormData()
+  for (const [key, value] of Object.entries(meta)) if (value !== undefined && value !== null) form.append(key, String(value))
+  form.append('arquivo', new Blob([new Uint8Array(file)], { type: mimeType }), meta.nome_arquivo)
+  const res = await fetch(`${BASE}/api/method/rh_brasil.documentos.receber_documento`, {
+    method: 'POST', headers: { Authorization: authHeader(), Accept: 'application/json' }, body: form, cache: 'no-store',
+    signal: AbortSignal.timeout(180000),
+  })
+  const text = await res.text()
+  let data: any = null
+  try { data = text ? JSON.parse(text) : null } catch { data = { raw: text.slice(0, 500) } }
+  if (!res.ok) throw new ErpnextApiError(data?.exc_type || data?._error_message || data?.message || `ERPNext HTTP ${res.status}`, res.status, data)
+  if (!data?.message?.name) throw new ErpnextApiError('O ERPNext não confirmou o recebimento do documento.', 502, data)
+  return data.message
 }

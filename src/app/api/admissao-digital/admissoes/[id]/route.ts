@@ -12,6 +12,7 @@ import { createAdditionalAdmissionToken } from '@/lib/admission/service'
 import { ErpnextApiError, updateEmployee } from '@/lib/erpnextClient'
 import { toErpnextMunicipio } from '@/lib/admission/municipios'
 import { erpnextEmployeeForAdmission, pushAdmissionDocumentsToErpnext } from '@/lib/admission/erpnextDocuments'
+import { sendDossierToErpnext } from '@/lib/dossie/erpnextDossie'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 
@@ -93,7 +94,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       ])
       await notifyAdmissionCandidate({ ...current, title: 'Atualização cadastral aprovada', message: 'O RH conferiu e aprovou sua atualização cadastral.' })
       const documents = await pushAdmissionDocumentsToErpnext(current.id, process.collaborator.erpnextId, { id: session!.user.id, name: session!.user.name })
-      response = { updated: true, employeeId: process.collaborator.erpnextId, documents }
+      const dossie = await sendDossierToErpnext(process.collaborator.id, `Atualização cadastral ${current.protocol}`, { id: session!.user.id, name: session!.user.name })
+      response = { updated: true, employeeId: process.collaborator.erpnextId, documents, dossie }
     } catch (caught) {
       console.error('[registration-update] Falha ao aplicar no ERPNext:', current.protocol, caught instanceof ErpnextApiError ? { status: caught.status, message: caught.message, body: caught.body } : caught)
       // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.

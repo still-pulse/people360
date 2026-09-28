@@ -2,6 +2,7 @@ import path from 'node:path'
 import { prisma } from '@/lib/prisma'
 import { erpnextConfigured, ErpnextApiError, sendEmployeeDocument } from '@/lib/erpnextClient'
 import { readPrivateAdmissionFile } from './storage'
+import { compressPdf } from '@/lib/pdfCompress'
 import { logAdmissionEvent } from './audit'
 
 export type ErpnextDocumentsResult = { sent: number; alreadySent: number; failed: { name: string; error: string }[]; skipped?: string }
@@ -34,8 +35,9 @@ export async function pushAdmissionDocumentsToErpnext(admissionId: string, emplo
   ]
   for (const item of items) {
     try {
-      const content = await readPrivateAdmissionFile(item.storagePath)
-      if (!content) throw new Error('Arquivo não encontrado no armazenamento do People360.')
+      const stored = await readPrivateAdmissionFile(item.storagePath)
+      if (!stored) throw new Error('Arquivo não encontrado no armazenamento do People360.')
+      const content = item.mimeType === 'application/pdf' ? (await compressPdf(stored)).buffer : stored
       const response = await sendEmployeeDocument({
         employee: employeeId, tipo_documento: item.label, id_externo: item.id,
         nome_arquivo: fileName(admission.protocol, item.label, item.originalName, item.mimeType),

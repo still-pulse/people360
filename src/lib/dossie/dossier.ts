@@ -14,6 +14,7 @@ import { toRender } from './avaliacoes'
 import { buildSnapshot, unpackSnapshot } from './snapshot'
 import { loadTimeline, TIMELINE_GROUPS, type TimelineRow } from './timeline'
 import { readDossieFile } from './storage'
+import { employeeDocumentHistory } from './documentHistory'
 import type { Snapshot } from './types'
 
 /** Itens do modal "Gerar Dossiê do Colaborador". */
@@ -41,37 +42,64 @@ export const SELECAO = [
 export const SELECAO_IDS: string[] = SELECAO.map((s) => s.id)
 
 type IndexEntry = { numero: string; titulo: string; page: number; sub: { titulo: string; page: number }[] }
-type Attachment = { row: ColaboradorDocumento; kind: 'pdf' | 'image' | 'error'; pdf?: PDFDocument; bytes?: Buffer; pages: number }
+type AttachmentSource = { titulo: string; categoria: string; data: Date; situacao: string; mime: string; read: () => Promise<Buffer | null> }
+type Attachment = { src: AttachmentSource; kind: 'pdf' | 'image' | 'error' | 'skipped'; pdf?: PDFDocument; bytes?: Buffer; pages: number }
 type Item = { key: number; kind: 'doc'; row: ColaboradorDocumento; titulo: string } | { key: number; kind: 'aval'; row: ColaboradorAvaliacao; titulo: string }
 
 const docDate = (row: ColaboradorDocumento) => (row.vigenciaInicio ?? row.geradoEm ?? row.createdAt).getTime()
 const A4 = { w: 595.28, h: 841.89 }
 
-async function loadAttachments(rows: ColaboradorDocumento[]): Promise<Attachment[]> {
+const ANEXO_MAX_BYTES = 50 * 1024 * 1024
+const ANEXO_MAX_PAGES = 500
+
+/** Anexos que passam do limite entram como página de aviso — o dossiê nunca deixa de ser gerado por excesso. */
+async function loadAttachments(sources: AttachmentSource[]): Promise<Attachment[]> {
   const out: Attachment[] = []
-  const maxBytes = 50 * 1024 * 1024
-  const declaredBytes = rows.reduce((total, row) => total + (row.arquivoTamanho ?? 0), 0)
-  if (declaredBytes > maxBytes) throw new DossieError('Os anexos selecionados excedem o limite de 50 MB por exportação.', 413)
   let loadedBytes = 0
   let pages = 0
-  for (const row of rows) {
-    const bytes = row.arquivoPath ? await readDossieFile(row.arquivoPath) : null
-    if (!bytes) { out.push({ row, kind: 'error', pages: 1 }); continue }
-    loadedBytes += bytes.length
-    if (loadedBytes > maxBytes) throw new DossieError('Os anexos selecionados excedem o limite de 50 MB por exportação.', 413)
+  for (const src of sources) {
+    const bytes = await src.read().catch(() => null)
+    if (!bytes) { out.push({ src, kind: 'error', pages: 1 }); pages += 1; continue }
+    if (loadedBytes + bytes.length > ANEXO_MAX_BYTES || pages >= ANEXO_MAX_PAGES) { out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue }
     try {
-      if (row.arquivoMime === 'application/pdf') {
-        const pdf = await PDFDocument.load(bytes)
-        const count = Math.max(1, pdf.getPageCount()); pages += count
-        out.push({ row, kind: 'pdf', pdf, pages: count })
-      } else { pages += 1; out.push({ row, kind: 'image', bytes, pages: 1 }) }
-      if (pages > 500) throw new DossieError('Os anexos selecionados excedem o limite de 500 páginas por exportação.', 413)
-    } catch (error) {
-      if (error instanceof DossieError) throw error
-      out.push({ row, kind: 'error', pages: 1 })
+      if (src.mime === 'application/pdf') {
+        const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+        const count = Math.max(1, pdf.getPageCount())
+        if (pages + count > ANEXO_MAX_PAGES) { out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue }
+        pages += count; loadedBytes += bytes.length
+        out.push({ src, kind: 'pdf', pdf, pages: count })
+      } else { pages += 1; loadedBytes += bytes.length; out.push({ src, kind: 'image', bytes, pages: 1 }) }
+    } catch {
+      out.push({ src, kind: 'error', pages: 1 }); pages += 1
     }
   }
   return out
+}
+
+const SITUACAO: Record<string, string> = {
+  APPROVED: 'Aprovado', REJECTED: 'Reprovado', RESUBMISSION_REQUIRED: 'Reenvio solicitado', UPLOADED: 'Em análise', UNDER_REVIEW: 'Em análise',
+  PROCESSING: 'Em análise', SIGNED: 'Assinado', GENERATED: 'Gerado', VIGENTE: 'Vigente', ASSINADO: 'Assinado',
+}
+
+/**
+ * Todos os documentos enviados na plataforma (admissões e atualizações cadastrais, com as versões anteriores),
+ * contratos assinados e anexos do dossiê. Cópias importadas da admissão ficam de fora para não duplicar.
+ */
+async function platformAttachments(colaborador: { id: string; erpnextId: string; cpf: string | null }, documents: ColaboradorDocumento[]): Promise<AttachmentSource[]> {
+  const history = await employeeDocumentHistory(colaborador)
+  const signed = new Set(history.filter((f) => f.id.startsWith('signed-')).map((f) => f.id.slice('signed-'.length)))
+  const fromPlatform = history
+    .filter((f) => f.id.startsWith('upload-') || f.id.startsWith('revision-') || f.id.startsWith('signed-') || (f.id.startsWith('generated-') && !signed.has(f.id.slice('generated-'.length))))
+    .map((f): AttachmentSource => ({
+      titulo: `${f.title}${f.previous ? ` — versão ${f.version} (anterior)` : f.version > 1 ? ` — versão ${f.version}` : ''}`,
+      categoria: `${f.origin}${f.protocol ? ` ${f.protocol}` : ''}`,
+      data: new Date(f.date), situacao: SITUACAO[f.status] ?? f.status, mime: f.mimeType, read: f.read,
+    }))
+  const anexos = documents.filter((d) => d.origem === 'ANEXADO' && !d.admissaoOrigemId).map((d): AttachmentSource => ({
+    titulo: d.titulo, categoria: d.categoria, data: d.createdAt, situacao: d.criadoPorNome ? `Enviado por ${d.criadoPorNome}` : '—',
+    mime: d.arquivoMime || 'application/pdf', read: async () => (d.arquivoPath ? readDossieFile(d.arquivoPath) : null),
+  }))
+  return [...fromPlatform, ...anexos].sort((a, b) => a.data.getTime() - b.data.getTime())
 }
 
 function initials(name: string) {
@@ -208,7 +236,7 @@ async function appendAttachments(main: Buffer, attachments: Attachment[], totalP
   const teal = rgb(15 / 255, 155 / 255, 142 / 255)
   const tag = (page: ReturnType<typeof out.addPage>, att: Attachment, first: boolean, note?: string) => {
     if (!first) return
-    const label = pdfSafe(`Anexo — ${att.row.titulo} (${att.row.categoria})`).slice(0, 110)
+    const label = pdfSafe(`Anexo — ${att.src.titulo} (${att.src.categoria})`).slice(0, 110)
     page.drawText(label, { x: 28, y: page.getHeight() - 22, size: 8, font: bold, color: teal })
     if (note) page.drawText(pdfSafe(note), { x: 28, y: page.getHeight() - 36, size: 8, font, color: rgb(0.36, 0.43, 0.44) })
   }
@@ -218,7 +246,7 @@ async function appendAttachments(main: Buffer, attachments: Attachment[], totalP
       copied.forEach((page, index) => { out.addPage(page); tag(page, att, index === 0) })
     } else if (att.kind === 'image' && att.bytes) {
       const page = out.addPage([A4.w, A4.h])
-      const image = att.row.arquivoMime === 'image/png' ? await out.embedPng(att.bytes) : await out.embedJpg(att.bytes)
+      const image = att.src.mime === 'image/png' ? await out.embedPng(att.bytes) : await out.embedJpg(att.bytes)
       const maxW = A4.w - 56, maxH = A4.h - 110
       const scale = Math.min(maxW / image.width, maxH / image.height, 1.5)
       const w = image.width * scale, h = image.height * scale
@@ -226,7 +254,9 @@ async function appendAttachments(main: Buffer, attachments: Attachment[], totalP
       tag(page, att, true)
     } else {
       const page = out.addPage([A4.w, A4.h])
-      tag(page, att, true, 'Não foi possível incorporar este arquivo ao dossiê (ausente ou corrompido).')
+      tag(page, att, true, att.kind === 'skipped'
+        ? 'Arquivo não incorporado: o dossiê atingiu o limite de 50 MB / 500 páginas de anexos. Consulte o arquivo original no People360.'
+        : 'Não foi possível incorporar este arquivo ao dossiê (ausente ou corrompido).')
     }
   }
   // Rodapé com paginação nas páginas de anexos (as demais já receberam o rodapé institucional).
@@ -273,7 +303,7 @@ export async function buildDossierPdf(params: { colaboradorId: string; selecao: 
   ].sort((a, b) => a.key - b.key)
   const docItems = (secoes: string[]): Item[] => secoes.flatMap((s) => bySecao.get(s) ?? []).sort((a, b) => docDate(a) - docDate(b)).map((row): Item => ({ key: docDate(row), kind: 'doc', row, titulo: row.titulo }))
   const aditivoItems = docItems(['aditivos']), acordoItems = docItems(['acordos']), termoItems = docItems(['termos', 'normas_ponto'])
-  const attachments = valid.has('documentos_anexados') ? await loadAttachments(documents.filter((d) => d.origem === 'ANEXADO')) : []
+  const attachments = valid.has('documentos_anexados') ? await loadAttachments(await platformAttachments({ id: params.colaboradorId, erpnextId: colaborador.erpnextId, cpf: colaborador.cpf }, documents)) : []
   const attachmentPages = attachments.reduce((sum, a) => sum + a.pages, 0)
 
   // Seções previstas (para reservar as páginas do índice antes de renderizar).
@@ -357,8 +387,8 @@ export async function buildDossierPdf(params: { colaboradorId: string; selecao: 
     pdf.title('DOCUMENTOS COMPLEMENTARES')
     let page = pdf.page + 1
     pdf.table({
-      head: ['Documento', 'Categoria', 'Data', 'Enviado por', 'Página'], widths: [58, 28, 22, 40, 14], empty: 'Nenhum documento anexado.',
-      rows: attachments.map((a) => { const row = [a.row.titulo, a.row.categoria, fmtDate(a.row.createdAt), a.row.criadoPorNome || '—', String(page)]; entry.sub.push({ titulo: a.row.titulo, page }); page += a.pages; return row }),
+      head: ['Documento', 'Origem', 'Data', 'Situação', 'Página'], widths: [58, 34, 20, 34, 14], empty: 'Nenhum documento enviado.',
+      rows: attachments.map((a) => { const row = [a.src.titulo, a.src.categoria, fmtDate(a.src.data), a.src.situacao, String(page)]; entry.sub.push({ titulo: a.src.titulo, page }); page += a.pages; return row }),
     })
   }
 

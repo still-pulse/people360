@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
-import { fetchPdf, saveBlob, errorMessage } from '../api'
+import { api, fetchPdf, saveBlob, errorMessage } from '../api'
 import { useDossie } from '../context'
 import { Notice } from '../parts'
 
@@ -34,6 +34,7 @@ export function ExportModal({ open, onClose }: { open: boolean; onClose: () => v
   const { id, overview, previewPdf, toast } = useDossie()
   const [selected, setSelected] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => { if (open) { setSelected(overview.selecaoDossie.map((s) => s.id)); setError('') } }, [open, overview.selecaoDossie])
   const url = `/api/colaboradores/${id}/dossie/exportar`
@@ -46,6 +47,14 @@ export function ExportModal({ open, onClose }: { open: boolean; onClose: () => v
     } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
 
+  async function sendToErpnext() {
+    setSending(true); setError('')
+    try {
+      const result = await api<{ pages: number }>(`/api/colaboradores/${id}/dossie/erpnext`, { method: 'POST' })
+      toast('success', `Dossiê completo (${result.pages} páginas) enviado ao ERPNext.`); onClose()
+    } catch (e) { setError(errorMessage(e)) } finally { setSending(false) }
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="Gerar Dossiê do Colaborador" size="lg">
       <div className="p-5 space-y-4">
@@ -55,7 +64,8 @@ export function ExportModal({ open, onClose }: { open: boolean; onClose: () => v
         <div className="flex flex-wrap justify-end gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
           <Button variant="outline" size="sm" disabled={!selected.length || busy} onClick={() => { onClose(); previewPdf('Pré-visualização do dossiê', () => fetchPdf(url, { selecao: selected, preview: true }, 'Dossie_Funcional.pdf')) }}>Visualizar PDF</Button>
-          <Button size="sm" isLoading={busy} disabled={!selected.length} onClick={download}>Gerar PDF</Button>
+          <Button variant="outline" size="sm" isLoading={sending} disabled={busy} onClick={sendToErpnext} title="Gera o dossiê completo (todos os itens e documentos) e envia ao ERPNext">Enviar completo ao ERPNext</Button>
+          <Button size="sm" isLoading={busy} disabled={!selected.length || sending} onClick={download}>Gerar PDF</Button>
         </div>
       </div>
     </Modal>
