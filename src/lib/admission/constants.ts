@@ -50,3 +50,11 @@ export const ADMISSION_THEME = {
   surface: '#FFFFFF', border: '#E2E8E7', borderSoft: '#EEF3F2',
   success: '#1E8E5A', warning: '#C77B0A', danger: '#C0392B', info: '#2563A8',
 } as const
+
+export type AdmissionProcessType = 'ADMISSION' | 'REGISTRATION_UPDATE'
+
+// Admissões e atualizações cadastrais compartilham a tabela; filas e indicadores
+// devem sempre separar os dois tipos (padrão: admissão).
+export function parseProcessType(value: string | null | undefined): AdmissionProcessType {
+  return value === 'REGISTRATION_UPDATE' ? 'REGISTRATION_UPDATE' : 'ADMISSION'
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { enforceUnitFilter, getSessionOrUnauthorized } from '@/lib/apiHelpers'
+import { parseProcessType } from '@/lib/admission/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams
   const days = Math.min(365, Math.max(1, Number(params.get('days') || 30)))
   const since = new Date(Date.now() - days * 86400000)
-  const where: Record<string, unknown> = { createdAt: { gte: since } }
+  const where: Record<string, unknown> = { createdAt: { gte: since }, processType: parseProcessType(params.get('processType')) }
   enforceUnitFilter(where, session!, params.get('unitId'), 'unitId')
 
   const [total, grouped, units, attention, recent] = await Promise.all([

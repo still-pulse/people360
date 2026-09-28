@@ -93,7 +93,17 @@ const navItems: NavItem[] = [
       { href: '/admissao-digital/auditoria', label: 'Logs e Auditoria', allowedRoles: ['ADMIN', 'GERENTE'] },
     ],
   },
-  { href: '/atualizacao-cadastral', label: 'Atualização Cadastral', icon: UserCog, allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'] },
+  {
+    href: '/atualizacao-cadastral',
+    label: 'Atualização Cadastral',
+    icon: UserCog,
+    allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'],
+    children: [
+      { href: '/atualizacao-cadastral', label: 'Solicitações' },
+      { href: '/atualizacao-cadastral/pendencias', label: 'Pendências' },
+      { href: '/atualizacao-cadastral/revisao', label: 'Revisão de Documentos' },
+    ],
+  },
   { href: '/pareceres', label: 'Pareceres', icon: ClipboardCheck, allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'] },
   { href: '/testes', label: 'Testes', icon: Brain, allowedRoles: ['ADMIN', 'ANALYST'] },
   {
@@ -258,7 +268,7 @@ export function Sidebar() {
             )
           }
 
-          const isActive = pathname === item.href || (item.href === '/atualizacao-cadastral' && pathname.startsWith(item.href + '/'))
+          const isActive = pathname === item.href
           return (
             <Link
               key={item.href}
