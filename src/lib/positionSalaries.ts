@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/prisma'
+import { ADMISSION_MONTHLY_HOURS_OPTIONS } from '@/lib/admission/positions'
 
-export type SalaryInput = { unitId: string | null; salario: number }
+export type SalaryInput = { unitId: string | null; cargaHorariaMensal: number | null; salario: number }
+
+/** Chave de unicidade do salário: unidade + carga horária (nulos = padrão / qualquer carga). */
+export const salaryKey = (s: { unitId: string | null; cargaHorariaMensal?: number | null }) => `${s.unitId ?? '*'}|${s.cargaHorariaMensal ?? '*'}`
 
 /** Valida a lista de salários enviada pelo formulário de cargos. unitId nulo = padrão para todas as unidades. */
 export function parseSalarios(value: unknown): { salarios?: SalaryInput[]; error?: string } {
@@ -12,10 +16,12 @@ export function parseSalarios(value: unknown): { salarios?: SalaryInput[]; error
     const unitId = item?.unitId ? String(item.unitId) : null
     const salario = Number(item?.salario)
     if (!Number.isFinite(salario) || salario <= 0) return { error: 'Informe um salário maior que zero.' }
-    const key = unitId ?? '*'
-    if (seen.has(key)) return { error: unitId ? 'A mesma unidade aparece mais de uma vez.' : 'Só pode haver um salário padrão.' }
+    const hours = item?.cargaHorariaMensal === null || item?.cargaHorariaMensal === undefined || item?.cargaHorariaMensal === '' ? null : Number(item.cargaHorariaMensal)
+    if (hours !== null && !(ADMISSION_MONTHLY_HOURS_OPTIONS as readonly number[]).includes(hours)) return { error: `Carga horária mensal inválida. Use ${ADMISSION_MONTHLY_HOURS_OPTIONS.join(', ')} horas.` }
+    const key = salaryKey({ unitId, cargaHorariaMensal: hours })
+    if (seen.has(key)) return { error: unitId ? 'A mesma unidade aparece mais de uma vez com a mesma carga horária.' : 'Só pode haver um salário padrão por carga horária.' }
     seen.add(key)
-    salarios.push({ unitId, salario: Math.round(salario * 100) / 100 })
+    salarios.push({ unitId, cargaHorariaMensal: hours, salario: Math.round(salario * 100) / 100 })
   }
   return { salarios }
 }
@@ -24,13 +30,13 @@ export function parseSalarios(value: unknown): { salarios?: SalaryInput[]; error
 export function replaceSalarios(positionId: string, salarios: SalaryInput[]) {
   return prisma.$transaction([
     prisma.positionSalary.deleteMany({ where: { positionId } }),
-    prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, salario: s.salario })) }),
+    prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, cargaHorariaMensal: s.cargaHorariaMensal, salario: s.salario })) }),
   ])
 }
 
 /** Acrescenta salários de novas unidades a um cargo existente. Quem chama garante que essas unidades ainda não têm salário. */
 export function mergeSalarios(positionId: string, salarios: SalaryInput[]) {
-  return prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, salario: s.salario })) })
+  return prisma.positionSalary.createMany({ data: salarios.map((s) => ({ positionId, unitId: s.unitId, cargaHorariaMensal: s.cargaHorariaMensal, salario: s.salario })) })
 }
 
 /** Vagas do cargo agrupadas por unidade ('' = vaga sem unidade), para a lista de cargos. */
@@ -47,6 +53,6 @@ export async function vagasPorUnidade(): Promise<Map<string, Record<string, numb
 
 export const positionInclude = {
   aliases: { orderBy: { alias: 'asc' as const } },
-  salarios: { select: { id: true, unitId: true, salario: true, unit: { select: { name: true } } } },
+  salarios: { select: { id: true, unitId: true, cargaHorariaMensal: true, salario: true, unit: { select: { name: true } } } },
   _count: { select: { vagas: true } },
 }

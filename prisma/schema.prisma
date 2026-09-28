@@ -384,13 +384,13 @@ model Colaborador {
 
   unit Unit? @relation(fields: [unitId], references: [id])
 
-  perfil      ColaboradorPerfil?
-  documentos  ColaboradorDocumento[]
-  aditivos    ColaboradorAditivo[]
-  dependentes ColaboradorDependente[]
-  avaliacoes  ColaboradorAvaliacao[]
-  historico   ColaboradorHistorico[]
-  registrationUpdates Admission[] @relation("RegistrationUpdateEmployee")
+  perfil              ColaboradorPerfil?
+  documentos          ColaboradorDocumento[]
+  aditivos            ColaboradorAditivo[]
+  dependentes         ColaboradorDependente[]
+  avaliacoes          ColaboradorAvaliacao[]
+  historico           ColaboradorHistorico[]
+  registrationUpdates Admission[]             @relation("RegistrationUpdateEmployee")
 
   @@index([status])
   @@index([company])
@@ -617,19 +617,21 @@ model Position {
   @@map("positions")
 }
 
-/// Salário do cargo por unidade. unitId nulo = salário padrão para as demais unidades.
+/// Salário do cargo por unidade e carga horária mensal. unitId nulo = salário padrão para as demais unidades.
 model PositionSalary {
-  id         String   @id @default(cuid())
-  positionId String
-  unitId     String?
-  salario    Float
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  positionId         String
+  unitId             String?
+  /// Carga horária mensal (ex.: 180, 200). Nulo = vale para qualquer carga.
+  cargaHorariaMensal Int?     @map("carga_horaria_mensal")
+  salario            Float
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
   unit     Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
-  @@unique([positionId, unitId])
+  @@unique([positionId, unitId, cargaHorariaMensal])
   @@index([unitId])
   @@map("position_salaries")
 }
@@ -1414,16 +1416,16 @@ model AdmissionDocument {
 }
 
 model AdmissionDocumentRevision {
-  id              String                  @id @default(cuid())
-  documentId      String
-  version         Int
-  storagePath     String
-  originalName    String?
-  mimeType        String?
-  sizeBytes       Int?
-  status          AdmissionDocumentStatus
-  uploadedAt      DateTime?
-  archivedAt      DateTime                @default(now())
+  id           String                  @id @default(cuid())
+  documentId   String
+  version      Int
+  storagePath  String
+  originalName String?
+  mimeType     String?
+  sizeBytes    Int?
+  status       AdmissionDocumentStatus
+  uploadedAt   DateTime?
+  archivedAt   DateTime                @default(now())
 
   document AdmissionDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -1432,12 +1434,12 @@ model AdmissionDocumentRevision {
 }
 
 model BadgePhoto {
-  id            String    @id @default(cuid())
-  admissionId   String
-  originalPath  String
-  processedPath String?
-  mimeType      String
-  sizeBytes     Int
+  id              String    @id @default(cuid())
+  admissionId     String
+  originalPath    String
+  processedPath   String?
+  mimeType        String
+  sizeBytes       Int
   confirmedAt     DateTime?
   approvedAt      DateTime?
   approvedById    String?
@@ -1541,8 +1543,8 @@ model SignatureEnvelope {
   document  GeneratedDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
   events    SignatureEvent[]
 
-  @@index([admissionId, status])
   @@unique([documentId])
+  @@index([admissionId, status])
   @@map("signature_envelopes")
 }
 
@@ -1895,8 +1897,8 @@ model ColaboradorAditivo {
   colaborador Colaborador           @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   documento   ColaboradorDocumento? @relation(fields: [documentoId], references: [id])
 
-  @@index([colaboradorId, vigencia])
   @@unique([colaboradorId, numero])
+  @@index([colaboradorId, vigencia])
   @@map("colaborador_aditivos")
 }
 

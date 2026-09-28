@@ -13,6 +13,7 @@ import {
   Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import type { PositionData } from '@/types'
+import { ADMISSION_MONTHLY_HOURS_OPTIONS } from '@/lib/admission/positions'
 
 export default function CargosPage() {
   const { data: session } = useSession()
@@ -75,7 +76,7 @@ export default function CargosPage() {
   const rows = useMemo(() => filtered.flatMap((pos): { pos: PositionData; salario: NonNullable<PositionData['salarios']>[number] | null }[] => {
     const salarios = (pos.salarios ?? [])
       .filter((s) => !filterUnit || s.unitId === filterUnit || !s.unitId)
-      .slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? ''))
+      .slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (a.unit?.name ?? '').localeCompare(b.unit?.name ?? '') || (a.cargaHorariaMensal ?? 0) - (b.cargaHorariaMensal ?? 0))
     return salarios.length ? salarios.map((salario) => ({ pos, salario })) : [{ pos, salario: null }]
   }), [filtered, filterUnit])
 
@@ -84,9 +85,9 @@ export default function CargosPage() {
     const used = salarios.filter((s) => s.salario.trim() || s.allUnits || s.unitIds.length)
     if (used.some((s) => !(parseMoney(s.salario) > 0))) { setFormError('Informe salários válidos (ex.: 3.886,36).'); return }
     if (used.some((s) => !s.allUnits && !s.unitIds.length)) { setFormError('Marque ao menos uma unidade para cada salário.'); return }
-    const entries = used.flatMap((s) => (s.allUnits ? [null] : s.unitIds).map((unitId) => ({ unitId, salario: parseMoney(s.salario) })))
-    const unitKeys = entries.map((s) => s.unitId ?? '*')
-    if (new Set(unitKeys).size !== unitKeys.length) { setFormError('Cada unidade só pode ter um salário.'); return }
+    const entries = used.flatMap((s) => (s.allUnits ? [null] : s.unitIds).map((unitId) => ({ unitId, cargaHorariaMensal: s.cargaHoraria ? Number(s.cargaHoraria) : null, salario: parseMoney(s.salario) })))
+    const unitKeys = entries.map((s) => `${s.unitId ?? '*'}|${s.cargaHorariaMensal ?? '*'}`)
+    if (new Set(unitKeys).size !== unitKeys.length) { setFormError('Cada unidade só pode ter um salário por carga horária.'); return }
     setFormError('')
     setIsSaving(true)
 
@@ -197,11 +198,12 @@ export default function CargosPage() {
     setName(pos.name)
     setCategoria(pos.categoria ?? '')
     setDepartamento(pos.departamento ?? '')
-    // Agrupa as unidades que têm o mesmo salário numa mesma faixa; o padrão fica numa faixa própria.
+    // Agrupa as unidades com o mesmo salário e a mesma carga horária numa faixa; o padrão fica numa faixa própria por carga.
     const groups = new Map<string, SalaryRow>()
     for (const s of pos.salarios ?? []) {
-      const key = s.unitId ? `u:${s.salario}` : 'default'
-      const row = groups.get(key) ?? { salario: formatMoney(s.salario), allUnits: !s.unitId, unitIds: [] }
+      const hours = s.cargaHorariaMensal ? String(s.cargaHorariaMensal) : ''
+      const key = s.unitId ? `u:${s.salario}:${hours}` : `default:${hours}`
+      const row = groups.get(key) ?? { salario: formatMoney(s.salario), cargaHoraria: hours, allUnits: !s.unitId, unitIds: [] }
       if (s.unitId) row.unitIds.push(s.unitId)
       groups.set(key, row)
     }
@@ -231,7 +233,7 @@ export default function CargosPage() {
     ? positions.find((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? null
     : null
   // Unidades que o cargo existente já tem ficam bloqueadas: o salário delas só muda pelo "Editar".
-  const existingSalaries = new Map((existingMatch?.salarios ?? []).map((s) => [s.unitId, s.salario] as const))
+  const existingSalaries = new Map((existingMatch?.salarios ?? []).map((s) => [slotKey(s.unitId, s.cargaHorariaMensal ? String(s.cargaHorariaMensal) : ''), s.salario] as const))
 
   const stats = {
     total: positions.length,
@@ -323,14 +325,14 @@ export default function CargosPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-y border-gray-100">
                   <tr>
-                    {['#', 'Cargo', 'Unidade', 'Salário', 'Categoria', 'Aliases', 'Vagas', 'Status', 'Ações'].map((h) => (
+                    {['#', 'Cargo', 'Unidade', 'Carga horária', 'Salário', 'Categoria', 'Aliases', 'Vagas', 'Status', 'Ações'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {rows.length === 0 && (
-                    <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Nenhum cargo encontrado</td></tr>
+                    <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">Nenhum cargo encontrado</td></tr>
                   )}
                   {rows.map(({ pos, salario }, i) => (
                     <tr key={salario?.id ?? pos.id} className={`hover:bg-gray-50/50 ${!pos.active ? 'opacity-60' : ''}`}>
@@ -343,6 +345,9 @@ export default function CargosPage() {
                       </td>
                       <td className="px-4 py-3 text-xs">
                         {salario ? <span className="text-gray-700">{salario.unit?.name ?? 'Todas as unidades'}</span> : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {salario?.cargaHorariaMensal ? <span className="text-gray-700">{salario.cargaHorariaMensal}h</span> : salario ? <span className="text-gray-400">Qualquer</span> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         <button onClick={() => openEdit(pos)} className="text-left hover:text-[#15AFA4] transition-colors">
@@ -414,7 +419,7 @@ export default function CargosPage() {
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditPosition(null) }}
         title={editPosition ? `Editar — ${editPosition.name}` : 'Novo Cargo'}
-        size="md"
+        size="lg"
       >
         <div className="p-6 space-y-4">
           <Input
@@ -428,14 +433,17 @@ export default function CargosPage() {
             <div>
               <p className="text-sm font-medium text-gray-700">Unidade e salário</p>
               <p className="text-xs text-gray-400">
-                Informe o salário e marque as unidades que o recebem. Para outro valor em outras unidades, adicione outro salário. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio.
+                Informe o salário, a carga horária mensal e marque as unidades que o recebem. Para outro valor (outra unidade ou outra carga, ex.: 180h e 200h), adicione outro salário. &quot;Todas as unidades&quot; vale para as unidades sem valor próprio; &quot;Qualquer carga&quot; vale quando não há valor para a carga escolhida na admissão.
               </p>
             </div>
             {salarios.map((row, index) => {
               const update = (patch: Partial<SalaryRow>) => setSalarios((list) => list.map((item, i) => i === index ? { ...item, ...patch } : item))
-              const usedElsewhere = new Set(salarios.flatMap((item, i) => i === index ? [] : item.unitIds))
-              const defaultElsewhere = salarios.some((item, i) => i !== index && item.allUnits) || existingSalaries.has(null)
-              const available = units.filter((u) => !usedElsewhere.has(u.id) && !existingSalaries.has(u.id))
+              // Uma unidade só fica bloqueada se já tiver salário com a MESMA carga horária desta faixa.
+              const sameHours = (item: SalaryRow) => item.cargaHoraria === row.cargaHoraria
+              const usedElsewhere = new Set(salarios.flatMap((item, i) => i === index || !sameHours(item) ? [] : item.unitIds))
+              const defaultElsewhere = salarios.some((item, i) => i !== index && item.allUnits && sameHours(item)) || existingSalaries.has(slotKey(null, row.cargaHoraria))
+              const existingFor = (unitId: string) => existingSalaries.get(slotKey(unitId, row.cargaHoraria))
+              const available = units.filter((u) => !usedElsewhere.has(u.id) && existingFor(u.id) === undefined)
               return (
                 <div key={index} className="rounded-xl border border-gray-200 p-3 space-y-2.5">
                   <div className="flex gap-2 items-center">
@@ -450,6 +458,16 @@ export default function CargosPage() {
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4]"
                       />
                     </div>
+                    <select
+                      aria-label="Carga horária mensal"
+                      title="Carga horária mensal"
+                      value={row.cargaHoraria}
+                      onChange={(e) => update({ cargaHoraria: e.target.value, unitIds: [], allUnits: false })}
+                      className="w-32 shrink-0 px-2.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#15AFA4] bg-white"
+                    >
+                      <option value="">Qualquer carga</option>
+                      {ADMISSION_MONTHLY_HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h}h mensais</option>)}
+                    </select>
                     <label className={`flex items-center gap-2 text-xs flex-1 min-w-0 ${defaultElsewhere ? 'text-gray-300' : 'text-gray-600 cursor-pointer'}`}>
                       <input
                         type="checkbox"
@@ -480,7 +498,7 @@ export default function CargosPage() {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 max-h-44 overflow-y-auto pr-1">
                         {units.map((u) => {
-                          const existingValue = existingSalaries.get(u.id)
+                          const existingValue = existingFor(u.id)
                           const taken = usedElsewhere.has(u.id) || existingValue !== undefined
                           return (
                             <label key={u.id} className={`flex items-center gap-2 py-1 text-xs ${taken ? 'text-gray-300' : 'text-gray-700 cursor-pointer'}`} title={existingValue !== undefined ? `Já cadastrada neste cargo com R$ ${formatMoney(existingValue)} — altere pelo Editar` : taken ? 'Já tem salário em outra faixa' : undefined}>
@@ -633,12 +651,14 @@ export default function CargosPage() {
   )
 }
 
-// Uma faixa salarial: um valor aplicado às unidades marcadas (ou a todas, como padrão).
-type SalaryRow = { salario: string; allUnits: boolean; unitIds: string[] }
+// Uma faixa salarial: um valor para uma carga horária ('' = qualquer), aplicado às unidades marcadas (ou a todas, como padrão).
+type SalaryRow = { salario: string; cargaHoraria: string; allUnits: boolean; unitIds: string[] }
 
 function emptySalaryRow(): SalaryRow {
-  return { salario: '', allUnits: false, unitIds: [] }
+  return { salario: '', cargaHoraria: '', allUnits: false, unitIds: [] }
 }
+
+const slotKey = (unitId: string | null, cargaHoraria: string) => `${unitId ?? '*'}|${cargaHoraria || '*'}`
 
 // Aceita "3.886,36", "3886,36" ou "3886.36".
 function parseMoney(value: string) {

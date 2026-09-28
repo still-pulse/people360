@@ -9,7 +9,7 @@ const units: SheetUnit[] = [
   { id: 'u2', name: 'VG - PA Luiz Gonzaga', color: '#EC4899', active: true },
 ]
 const positions: SheetPosition[] = [
-  { id: 'p1', name: 'Enfermeiro', categoria: 'Assistencial', departamento: 'Enfermagem', codigoInterno: null, active: true, aliases: ['Enf.'], salarios: [{ id: 's1', unitId: 'u1', salario: 3886.36 }, { id: 's2', unitId: null, salario: 3800 }] },
+  { id: 'p1', name: 'Enfermeiro', categoria: 'Assistencial', departamento: 'Enfermagem', codigoInterno: null, active: true, aliases: ['Enf.'], salarios: [{ id: 's1', unitId: 'u1', cargaHorariaMensal: null, salario: 3886.36 }, { id: 's2', unitId: null, cargaHorariaMensal: null, salario: 3800 }, { id: 's3', unitId: 'u1', cargaHorariaMensal: 200, salario: 4300 }] },
   { id: 'p2', name: 'Técnico de Enfermagem', categoria: null, departamento: null, codigoInterno: null, active: false, aliases: [], salarios: [] },
 ]
 const logoBuffer = readFileSync(path.join(__dirname, '../../public/bhcl-admissao-logo.png'))
@@ -19,7 +19,7 @@ async function toBuffer(workbook: ExcelJS.Workbook) {
   return (await workbook.xlsx.writeBuffer()) as ArrayBuffer
 }
 
-const row = (patch: Partial<SheetRow>): SheetRow => ({ line: 11, cargo: '', unidade: '', salario: null, categoria: '', departamento: '', codigoInterno: '', aliases: [], status: null, ...patch })
+const row = (patch: Partial<SheetRow>): SheetRow => ({ line: 11, cargo: '', unidade: '', cargaHoraria: null, salario: null, categoria: '', departamento: '', codigoInterno: '', aliases: [], status: null, ...patch })
 
 describe('planilha de cargos', () => {
   it('lê as dimensões do logo PNG', () => {
@@ -38,7 +38,7 @@ describe('planilha de cargos', () => {
     const buffer = await toBuffer(await buildExportWorkbook(positions, units, meta))
     const sheet = await readSheet(buffer)
     expect(sheet.errors).toEqual([])
-    expect(sheet.rows).toHaveLength(3)
+    expect(sheet.rows).toHaveLength(4)
     const plan = planImport(sheet.rows, positions, units)
     expect(plan.errors).toEqual([])
     expect(plan.positions).toEqual([])
@@ -62,8 +62,8 @@ describe('planilha de cargos', () => {
     expect(plan.summary).toMatchObject({ cargosNovos: 1, cargosAtualizados: 1, salariosNovos: 2, salariosAtualizados: 1 })
     const enfermeiro = plan.positions.find((position) => position.existingId === 'p1')!
     expect(enfermeiro.salaries).toEqual([
-      { unitId: 'u1', salario: 4000, existingSalaryId: 's1', previous: 3886.36 },
-      { unitId: 'u2', salario: 3950, existingSalaryId: null, previous: null },
+      { unitId: 'u1', cargaHorariaMensal: null, salario: 4000, existingSalaryId: 's1', previous: 3886.36 },
+      { unitId: 'u2', cargaHorariaMensal: null, salario: 3950, existingSalaryId: null, previous: null },
     ])
   })
 
@@ -83,6 +83,31 @@ describe('planilha de cargos', () => {
       row({ line: 17, cargo: 'Recepcionista', aliases: ['Enf.'] }),
     ], positions, units)
     expect(plan.errors.map((error) => error.line)).toEqual([11, 12, 14, 16, 17])
+  })
+
+  it('separa salários do mesmo cargo e unidade pela carga horária mensal', () => {
+    const plan = planImport([
+      row({ line: 11, cargo: 'Enfermeiro', unidade: 'GRU - UPA São João', cargaHoraria: 200, salario: 4400 }),
+      row({ line: 12, cargo: 'Enfermeiro', unidade: 'GRU - UPA São João', cargaHoraria: 180, salario: 3900 }),
+      row({ line: 13, cargo: 'Enfermeiro', unidade: 'GRU - UPA São João', cargaHoraria: 180, salario: 3950 }),
+    ], positions, units)
+    expect(plan.errors.map((error) => error.line)).toEqual([13])
+    expect(plan.positions[0].salaries).toEqual([
+      { unitId: 'u1', cargaHorariaMensal: 200, salario: 4400, existingSalaryId: 's3', previous: 4300 },
+      { unitId: 'u1', cargaHorariaMensal: 180, salario: 3900, existingSalaryId: null, previous: null },
+    ])
+  })
+
+  it('lê a carga horária como número, "200h" ou "Qualquer" e rejeita valores fora da lista', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Importar')
+    sheet.addRow(['Cargo', 'Unidade', 'Carga horária mensal', 'Salário (R$)'])
+    sheet.addRow(['Enfermeiro', 'GRU - UPA São João', '200h', 4400])
+    sheet.addRow(['Enfermeiro', 'VG - PA Luiz Gonzaga', 'Qualquer', 3950])
+    sheet.addRow(['Enfermeiro', 'VG - PA Luiz Gonzaga', 175, 3950])
+    const read = await readSheet(await toBuffer(workbook))
+    expect(read.rows.map((item) => item.cargaHoraria)).toEqual([200, null])
+    expect(read.errors.map((error) => error.line)).toEqual([4])
   })
 
   it('reativa cargo inativo pelo status', () => {

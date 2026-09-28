@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     changes: plan.positions.map((position) => ({
       name: position.name, isNew: !position.existingId, fields: Object.keys(position.data), aliases: position.aliases,
       salaries: position.salaries.map((salary) => ({
-        unit: salary.unitId ? unitName.get(salary.unitId) ?? '' : 'Todas as unidades', salario: salary.salario, previous: salary.previous,
+        unit: `${salary.unitId ? unitName.get(salary.unitId) ?? '' : 'Todas as unidades'}${salary.cargaHorariaMensal ? ` · ${salary.cargaHorariaMensal}h` : ''}`, salario: salary.salario, previous: salary.previous,
       })),
     })),
   }
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
               name: position.name.trim(),
               categoria: position.data.categoria ?? null, departamento: position.data.departamento ?? null,
               codigoInterno: position.data.codigoInterno ?? null, active: position.data.active ?? true,
-              salarios: { create: position.salaries.map((salary) => ({ unitId: salary.unitId, salario: salary.salario })) },
+              salarios: { create: position.salaries.map((salary) => ({ unitId: salary.unitId, cargaHorariaMensal: salary.cargaHorariaMensal, salario: salary.salario })) },
               aliases: { create: position.aliases.map((alias) => ({ alias })) },
             },
           })
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         if (Object.keys(position.data).length) await tx.position.update({ where: { id: positionId }, data: position.data })
         for (const salary of position.salaries) {
           if (salary.existingSalaryId) await tx.positionSalary.update({ where: { id: salary.existingSalaryId }, data: { salario: salary.salario } })
-          else await tx.positionSalary.create({ data: { positionId, unitId: salary.unitId, salario: salary.salario } })
+          else await tx.positionSalary.create({ data: { positionId, unitId: salary.unitId, cargaHorariaMensal: salary.cargaHorariaMensal, salario: salary.salario } })
         }
         if (position.aliases.length) await tx.cargoAlias.createMany({ data: position.aliases.map((alias) => ({ positionId, alias })) })
       }

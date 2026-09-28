@@ -7,7 +7,7 @@ export async function loadSheetData(): Promise<{ positions: SheetPosition[]; uni
   const [positions, units] = await Promise.all([
     prisma.position.findMany({
       orderBy: { name: 'asc' },
-      include: { aliases: { orderBy: { alias: 'asc' } }, salarios: { select: { id: true, unitId: true, salario: true } } },
+      include: { aliases: { orderBy: { alias: 'asc' } }, salarios: { select: { id: true, unitId: true, cargaHorariaMensal: true, salario: true } } },
     }),
     prisma.unit.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, color: true, active: true } }),
   ])

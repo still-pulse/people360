@@ -122,11 +122,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ admission: created.admission, publicUrl, expiresAt: created.expiresAt }, { status: 201 })
   }
   // Cargo, departamento, horário, salário e carga horária vêm do cadastro de cargos (salário por unidade): validados e fixados aqui.
-  const positions = await prisma.position.findMany({ where: { active: true }, select: { id: true, name: true, departamento: true, salarios: { select: { unitId: true, salario: true } } } })
+  const positions = await prisma.position.findMany({ where: { active: true }, select: { id: true, name: true, departamento: true, salarios: { select: { unitId: true, cargaHorariaMensal: true, salario: true } } } })
   const position = findPosition(positions, parsed.data.jobTitle)
   if (!position) return NextResponse.json({ error: 'Selecione um cargo válido.' }, { status: 400 })
-  const salary = salaryForUnit(position, parsed.data.unitId)
-  if (salary === null) return NextResponse.json({ error: 'O cargo não tem salário cadastrado para esta unidade. Cadastre em Administração → Cargos.' }, { status: 400 })
+  const monthlyHours = parsed.data.monthlyHours ?? ADMISSION_MONTHLY_HOURS
+  if (!(ADMISSION_MONTHLY_HOURS_OPTIONS as readonly number[]).includes(monthlyHours)) return NextResponse.json({ error: 'Selecione uma carga horária mensal válida.' }, { status: 400 })
+  const salary = salaryForUnit(position, parsed.data.unitId, monthlyHours)
+  if (salary === null) return NextResponse.json({ error: `O cargo não tem salário cadastrado para esta unidade com ${monthlyHours} horas mensais. Cadastre em Administração → Cargos.` }, { status: 400 })
   const department = position.departamento || parsed.data.department?.trim()
   if (!department) return NextResponse.json({ error: 'Informe o departamento.' }, { status: 400 })
   if (!(ADMISSION_SCHEDULES as readonly string[]).includes(parsed.data.workSchedule ?? '')) return NextResponse.json({ error: 'Selecione o horário de trabalho.' }, { status: 400 })
@@ -135,8 +137,6 @@ export async function POST(req: NextRequest) {
   parsed.data.salary = salary
   parsed.data.weeklyHours = undefined
   if (parsed.data.breakSchedule && !(ADMISSION_BREAKS as readonly string[]).includes(parsed.data.breakSchedule)) return NextResponse.json({ error: 'Selecione um intervalo válido.' }, { status: 400 })
-  const monthlyHours = parsed.data.monthlyHours ?? ADMISSION_MONTHLY_HOURS
-  if (!(ADMISSION_MONTHLY_HOURS_OPTIONS as readonly number[]).includes(monthlyHours)) return NextResponse.json({ error: 'Selecione uma carga horária mensal válida.' }, { status: 400 })
   if (!analystCanAccessUnit(session!, parsed.data.unitId)) return NextResponse.json({ error: 'Sem acesso a esta unidade.' }, { status: 403 })
   if (parsed.data.vacancyId) {
     const vacancy = await prisma.vaga.findUnique({ where: { id: parsed.data.vacancyId }, select: { unidadeId: true } })

@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { ADMISSION_MONTHLY_HOURS_OPTIONS } from '@/lib/admission/positions'
 
 // Planilha de cargos, salários e unidades: a exportação usa as mesmas colunas da importação,
 // então o RH pode exportar, editar e importar de volta o mesmo arquivo.
@@ -21,6 +22,7 @@ const MAX_ROWS = 5000
 export const COLUMNS = [
   { key: 'cargo', header: 'Cargo', width: 42 },
   { key: 'unidade', header: 'Unidade', width: 32 },
+  { key: 'cargaHoraria', header: 'Carga horária mensal', width: 21 },
   { key: 'salario', header: 'Salário (R$)', width: 17 },
   { key: 'categoria', header: 'Categoria', width: 20 },
   { key: 'departamento', header: 'Departamento', width: 22 },
@@ -30,10 +32,15 @@ export const COLUMNS = [
 ] as const
 
 type ColumnKey = typeof COLUMNS[number]['key']
+/** Número (1-based) da coluna de cada campo, para não depender da ordem das colunas. */
+const COL = Object.fromEntries(COLUMNS.map((column, index) => [column.key, index + 1])) as Record<ColumnKey, number>
+
+export const MONTHLY_HOURS_OPTIONS = ADMISSION_MONTHLY_HOURS_OPTIONS
+export const ANY_HOURS_LABEL = 'Qualquer'
 
 export type SheetPosition = {
   id: string; name: string; categoria: string | null; departamento: string | null; codigoInterno: string | null; active: boolean
-  aliases: string[]; salarios: { id: string; unitId: string | null; salario: number }[]
+  aliases: string[]; salarios: { id: string; unitId: string | null; cargaHorariaMensal: number | null; salario: number }[]
 }
 export type SheetUnit = { id: string; name: string; color: string; active: boolean }
 export type Logo = { buffer: Buffer; extension: 'png' | 'jpeg'; width: number; height: number }
@@ -156,6 +163,15 @@ function styleStatus(cell: ExcelJS.Cell) {
   cell.alignment = { vertical: 'middle', horizontal: 'center' }
 }
 
+function styleMoneyAndHours(row: ExcelJS.Row) {
+  row.getCell(COL.salario).numFmt = MONEY_FORMAT
+  row.getCell(COL.salario).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }
+  const hours = row.getCell(COL.cargaHoraria)
+  if (typeof hours.value === 'number') hours.numFmt = '0"h"'
+  hours.alignment = { vertical: 'middle', horizontal: 'center' }
+  if (hours.value === ANY_HOURS_LABEL) hours.font = { name: FONT, size: 10, color: { argb: BRAND.muted } }
+}
+
 function pageSetup(sheet: ExcelJS.Worksheet, title: string) {
   sheet.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } }
   sheet.headerFooter = { oddFooter: `&L&8${title}&R&8Página &P de &N` }
@@ -170,16 +186,18 @@ function listsSheet(workbook: ExcelJS.Workbook, units: SheetUnit[]) {
   names.forEach((name, index) => { sheet.getCell(index + 1, 1).value = name })
   sheet.getCell(1, 2).value = 'Ativo'
   sheet.getCell(2, 2).value = 'Inativo'
+  ;[ANY_HOURS_LABEL, ...MONTHLY_HOURS_OPTIONS].forEach((value, index) => { sheet.getCell(index + 1, 3).value = value })
   return `${LISTS_SHEET}!$A$1:$A$${names.length}`
 }
 
 /** Validações nas colunas editáveis (lista de unidades, salário positivo e status). */
 function validations(sheet: ExcelJS.Worksheet, unitRange: string, firstRow: number, lastRow: number) {
   for (let row = firstRow; row <= lastRow; row++) {
-    sheet.getCell(row, 2).dataValidation = { type: 'list', allowBlank: true, formulae: [unitRange], showErrorMessage: true, errorTitle: 'Unidade inválida', error: 'Escolha uma unidade da lista ou "Todas as unidades".' }
-    sheet.getCell(row, 3).dataValidation = { type: 'decimal', operator: 'greaterThan', allowBlank: true, formulae: [0], showErrorMessage: true, errorTitle: 'Salário inválido', error: 'Informe um valor maior que zero.' }
-    sheet.getCell(row, 3).numFmt = MONEY_FORMAT
-    sheet.getCell(row, 8).dataValidation = { type: 'list', allowBlank: true, formulae: [`${LISTS_SHEET}!$B$1:$B$2`], showErrorMessage: true, errorTitle: 'Status inválido', error: 'Use Ativo ou Inativo.' }
+    sheet.getCell(row, COL.unidade).dataValidation = { type: 'list', allowBlank: true, formulae: [unitRange], showErrorMessage: true, errorTitle: 'Unidade inválida', error: 'Escolha uma unidade da lista ou "Todas as unidades".' }
+    sheet.getCell(row, COL.cargaHoraria).dataValidation = { type: 'list', allowBlank: true, formulae: [`${LISTS_SHEET}!$C$1:$C$${MONTHLY_HOURS_OPTIONS.length + 1}`], showErrorMessage: true, errorTitle: 'Carga horária inválida', error: `Use ${ANY_HOURS_LABEL} ou ${MONTHLY_HOURS_OPTIONS.join(', ')}.` }
+    sheet.getCell(row, COL.salario).dataValidation = { type: 'decimal', operator: 'greaterThan', allowBlank: true, formulae: [0], showErrorMessage: true, errorTitle: 'Salário inválido', error: 'Informe um valor maior que zero.' }
+    sheet.getCell(row, COL.salario).numFmt = MONEY_FORMAT
+    sheet.getCell(row, COL.status).dataValidation = { type: 'list', allowBlank: true, formulae: [`${LISTS_SHEET}!$B$1:$B$2`], showErrorMessage: true, errorTitle: 'Status inválido', error: 'Use Ativo ou Inativo.' }
   }
 }
 
@@ -200,11 +218,11 @@ export async function buildExportWorkbook(positions: SheetPosition[], units: She
   COLUMNS.forEach((column, index) => { sheet.getColumn(index + 1).width = column.width })
 
   const lines = positions.flatMap((position) => {
-    const salarios = position.salarios.slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (unitName.get(a.unitId ?? '') ?? '').localeCompare(unitName.get(b.unitId ?? '') ?? '', 'pt-BR'))
+    const salarios = position.salarios.slice().sort((a, b) => (a.unitId ? 0 : 1) - (b.unitId ? 0 : 1) || (unitName.get(a.unitId ?? '') ?? '').localeCompare(unitName.get(b.unitId ?? '') ?? '', 'pt-BR') || (a.cargaHorariaMensal ?? 0) - (b.cargaHorariaMensal ?? 0))
     const base = { cargo: position.name, categoria: position.categoria ?? '', departamento: position.departamento ?? '', codigoInterno: position.codigoInterno ?? '', aliases: position.aliases.join('; '), status: position.active ? 'Ativo' : 'Inativo' }
     return salarios.length
-      ? salarios.map((salario) => ({ ...base, unidade: salario.unitId ? unitName.get(salario.unitId) ?? '' : ALL_UNITS_LABEL, salario: salario.salario as number | null }))
-      : [{ ...base, unidade: '', salario: null as number | null }]
+      ? salarios.map((salario) => ({ ...base, unidade: salario.unitId ? unitName.get(salario.unitId) ?? '' : ALL_UNITS_LABEL, cargaHoraria: (salario.cargaHorariaMensal ?? ANY_HOURS_LABEL) as number | string, salario: salario.salario as number | null }))
+      : [{ ...base, unidade: '', cargaHoraria: '' as number | string, salario: null as number | null }]
   })
 
   const unitsWithSalary = new Set(positions.flatMap((position) => position.salarios.map((salario) => salario.unitId).filter(Boolean)))
@@ -222,11 +240,10 @@ export async function buildExportWorkbook(positions: SheetPosition[], units: She
     COLUMNS.forEach((column, col) => { row.getCell(col + 1).value = line[column.key as ColumnKey] ?? '' })
     row.getCell(1).font = { bold: true }
     styleBodyRow(row, COLUMNS.length, index)
-    row.getCell(3).numFmt = MONEY_FORMAT
-    row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }
-    if (line.unidade === ALL_UNITS_LABEL) row.getCell(2).font = { name: FONT, size: 10, italic: true, color: { argb: BRAND.tealDark } }
-    if (!line.unidade) row.getCell(2).value = null
-    styleStatus(row.getCell(8))
+    styleMoneyAndHours(row)
+    if (line.unidade === ALL_UNITS_LABEL) row.getCell(COL.unidade).font = { name: FONT, size: 10, italic: true, color: { argb: BRAND.tealDark } }
+    if (!line.unidade) row.getCell(COL.unidade).value = null
+    styleStatus(row.getCell(COL.status))
   })
 
   const lastRow = HEADER_ROW + Math.max(lines.length, 1)
@@ -290,20 +307,20 @@ export async function buildTemplateWorkbook(units: SheetUnit[], meta: Meta) {
   tableHeader(example, HEADER_ROW, COLUMNS.map((column) => column.key === 'cargo' ? 'Cargo *' : column.header))
   const [first, second] = [units[0]?.name ?? 'UPA Exemplo', units[1]?.name ?? 'PA Exemplo']
   const samples = [
-    ['Enfermeiro', first, 3886.36, 'Assistencial', 'Enfermagem', 'ENF-01', 'Enf.; Enfermeira', 'Ativo'],
-    ['Enfermeiro', second, 3950, 'Assistencial', 'Enfermagem', 'ENF-01', '', 'Ativo'],
-    ['Técnico de Enfermagem', ALL_UNITS_LABEL, 2720.45, 'Assistencial', 'Enfermagem', '', 'Tec. Enfermagem', 'Ativo'],
-    ['Auxiliar Administrativo', first, 2100, 'Administrativo', 'Administrativo', '', '', 'Ativo'],
-    ['Recepcionista', '', null, 'Administrativo', '', '', '', 'Inativo'],
+    ['Enfermeiro', first, ANY_HOURS_LABEL, 3886.36, 'Assistencial', 'Enfermagem', 'ENF-01', 'Enf.; Enfermeira', 'Ativo'],
+    ['Enfermeiro', second, ANY_HOURS_LABEL, 3950, 'Assistencial', 'Enfermagem', 'ENF-01', '', 'Ativo'],
+    ['Técnico de Enfermagem', ALL_UNITS_LABEL, ANY_HOURS_LABEL, 2720.45, 'Assistencial', 'Enfermagem', '', 'Tec. Enfermagem', 'Ativo'],
+    ['Auxiliar Administrativo', first, 180, 2100, 'Administrativo', 'Administrativo', '', '', 'Ativo'],
+    ['Auxiliar Administrativo', first, 200, 2333.33, 'Administrativo', 'Administrativo', '', '', 'Ativo'],
+    ['Recepcionista', '', '', null, 'Administrativo', '', '', '', 'Inativo'],
   ]
   samples.forEach((values, index) => {
     const row = example.getRow(HEADER_ROW + 1 + index)
     row.values = values
     row.getCell(1).font = { bold: true }
     styleBodyRow(row, COLUMNS.length, index)
-    row.getCell(3).numFmt = MONEY_FORMAT
-    row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }
-    styleStatus(row.getCell(8))
+    styleMoneyAndHours(row)
+    styleStatus(row.getCell(COL.status))
   })
   pageSetup(example, 'Exemplo de importação')
   example.properties.tabColor = { argb: 'FFF59E0B' }
@@ -316,7 +333,7 @@ export async function buildTemplateWorkbook(units: SheetUnit[], meta: Meta) {
 function hintRow(sheet: ExcelJS.Worksheet) {
   sheet.mergeCells(7, 1, 8, COLUMNS.length)
   Object.assign(sheet.getCell(7, 1), {
-    value: 'Cargo é obrigatório. Unidade vazia ou "Todas as unidades" define o salário padrão. Aliases separados por ponto e vírgula. Campos vazios mantêm o valor atual do sistema.',
+    value: 'Cargo é obrigatório. Unidade vazia ou "Todas as unidades" define o salário padrão. Carga horária vazia ou "Qualquer" vale para qualquer carga (use 180, 200… quando o salário muda conforme a carga). Aliases separados por ponto e vírgula. Campos vazios mantêm o valor atual.',
     fill: fill(BRAND.amberLight), font: { name: FONT, size: 10, color: { argb: BRAND.amber } },
     alignment: { vertical: 'middle', wrapText: true, indent: 1 }, border: { left: { style: 'thick', color: { argb: 'FFF59E0B' } } },
   })
@@ -329,10 +346,11 @@ function buildInstructionsSheet(workbook: ExcelJS.Workbook, meta: Meta, template
   brandHeader(workbook, sheet, 2, 'Como importar', 'Regras da importação em massa de cargos, salários e unidades.', meta)
   const rules: [string, string][] = [
     ['Onde preencher', template ? 'Na aba "Importar", a partir da linha 11. A aba "Exemplo" é só para consulta e não é lida.' : 'Na aba "Cargos e Salários". Edite, inclua linhas e importe este mesmo arquivo.'],
-    ['Uma linha por unidade', 'Cada linha liga um cargo a uma unidade com o seu salário. Repita o cargo em várias linhas para várias unidades.'],
+    ['Uma linha por unidade e carga', 'Cada linha liga um cargo a uma unidade e a uma carga horária com o seu salário. Repita o cargo em várias linhas para várias unidades ou cargas.'],
     ['Cargo *', 'Obrigatório. Se já existir (sem diferenciar maiúsculas e acentos) ou for um alias cadastrado, o cargo existente é atualizado; senão, é criado.'],
     ['Unidade', 'Use o nome exato da unidade (a célula tem lista). Vazia ou "Todas as unidades" = salário padrão para as unidades sem valor próprio. Unidades não são criadas pela importação.'],
-    ['Salário (R$)', 'Obrigatório quando a unidade é informada. Aceita 3886,36 ou 3.886,36. Se a unidade já tiver salário neste cargo, o valor é substituído.'],
+    ['Carga horária mensal', `${MONTHLY_HOURS_OPTIONS.join(', ')} ou "${ANY_HOURS_LABEL}" (vazia = ${ANY_HOURS_LABEL}). Use quando o mesmo cargo tem salários diferentes conforme a carga (ex.: 180h e 200h). "${ANY_HOURS_LABEL}" vale quando não há salário para a carga escolhida na admissão.`],
+    ['Salário (R$)', 'Obrigatório quando a unidade ou a carga horária é informada. Aceita 3886,36 ou 3.886,36. Se a unidade já tiver salário para essa carga neste cargo, o valor é substituído.'],
     ['Categoria, Departamento, Código', 'Opcionais. Em branco mantêm o valor atual. Nas linhas do mesmo cargo, use sempre o mesmo valor.'],
     ['Aliases', 'Opcionais, separados por ponto e vírgula (;). Apenas acrescenta: nenhum alias existente é removido.'],
     ['Status', 'Ativo ou Inativo. Em branco mantém o status atual (cargos novos entram como Ativo).'],
@@ -353,7 +371,7 @@ function buildInstructionsSheet(workbook: ExcelJS.Workbook, meta: Meta, template
 // ─── Leitura da planilha ───────────────────────────────────────────
 
 export type SheetRow = {
-  line: number; cargo: string; unidade: string; salario: number | null
+  line: number; cargo: string; unidade: string; cargaHoraria: number | null; salario: number | null
   categoria: string; departamento: string; codigoInterno: string; aliases: string[]; status: boolean | null
 }
 export type RowError = { line: number; message: string }
@@ -361,6 +379,7 @@ export type RowError = { line: number; message: string }
 const HEADER_ALIASES: Record<ColumnKey, string[]> = {
   cargo: ['cargo', 'cargo *', 'nome do cargo'],
   unidade: ['unidade'],
+  cargaHoraria: ['carga horaria mensal', 'carga horaria', 'carga', 'horas mensais'],
   salario: ['salario (r$)', 'salario'],
   categoria: ['categoria'],
   departamento: ['departamento'],
@@ -406,15 +425,18 @@ export async function readSheet(buffer: ArrayBuffer): Promise<{ rows: SheetRow[]
 
     const salarioRaw = get(row, 'salario')
     const salario = parseMoney(typeof salarioRaw === 'object' && salarioRaw !== null && 'result' in salarioRaw ? salarioRaw.result : salarioRaw)
+    const hoursText = normalize(text('cargaHoraria')).replace(/\s*(h|hs|horas?)( mensais)?$/, '')
+    const cargaHoraria = !hoursText || hoursText.startsWith(normalize(ANY_HOURS_LABEL)) ? null : Number(hoursText.replace(',', '.'))
     const statusText = normalize(text('status'))
     const status = !statusText ? null : statusText === 'ativo' ? true : statusText === 'inativo' ? false : undefined
     const rowErrors: string[] = []
     if (!text('cargo')) rowErrors.push('Informe o cargo.')
     if (salario !== null && !(salario > 0)) rowErrors.push('Salário inválido (use um valor maior que zero, ex.: 3.886,36).')
     if (status === undefined) rowErrors.push('Status deve ser Ativo ou Inativo.')
+    if (cargaHoraria !== null && !(MONTHLY_HOURS_OPTIONS as readonly number[]).includes(cargaHoraria)) rowErrors.push(`Carga horária inválida. Use ${MONTHLY_HOURS_OPTIONS.join(', ')} ou ${ANY_HOURS_LABEL}.`)
     if (rowErrors.length) { rowErrors.forEach((message) => errors.push({ line: rowNumber, message })); continue }
     rows.push({
-      line: rowNumber, cargo: text('cargo'), unidade: text('unidade'),
+      line: rowNumber, cargo: text('cargo'), unidade: text('unidade'), cargaHoraria,
       salario: salario === null ? null : Math.round(salario * 100) / 100,
       categoria: text('categoria'), departamento: text('departamento'), codigoInterno: text('codigoInterno'),
       aliases: text('aliases').split(/[;\n]/).map((alias) => alias.trim()).filter(Boolean),
@@ -429,7 +451,7 @@ export async function readSheet(buffer: ArrayBuffer): Promise<{ rows: SheetRow[]
 export type PlannedPosition = {
   key: string; existingId: string | null; name: string
   data: { categoria?: string; departamento?: string; codigoInterno?: string; active?: boolean }
-  salaries: { unitId: string | null; salario: number; existingSalaryId: string | null; previous: number | null }[]
+  salaries: { unitId: string | null; cargaHorariaMensal: number | null; salario: number; existingSalaryId: string | null; previous: number | null }[]
   aliases: string[]
 }
 export type ImportSummary = {
@@ -464,7 +486,7 @@ export function planImport(rows: SheetRow[], positions: SheetPosition[], units: 
       if (!unit) { errors.push({ line: row.line, message: `Unidade "${row.unidade}" não encontrada. Use o nome exato de uma unidade cadastrada.` }); continue }
       unitId = unit.id
     }
-    if (unitText && row.salario === null) { errors.push({ line: row.line, message: `Informe o salário do cargo em ${row.unidade}.` }); continue }
+    if ((unitText || row.cargaHoraria !== null) && row.salario === null) { errors.push({ line: row.line, message: `Informe o salário do cargo${unitText ? ` em ${row.unidade}` : ''}${row.cargaHoraria !== null ? ` para ${row.cargaHoraria}h` : ''}.` }); continue }
 
     const fields: [keyof PlannedPosition['data'], string | boolean | null][] = [
       ['categoria', row.categoria || null], ['departamento', row.departamento || null], ['codigoInterno', row.codigoInterno || null], ['active', row.status],
@@ -484,12 +506,12 @@ export function planImport(rows: SheetRow[], positions: SheetPosition[], units: 
     if (conflict) continue
 
     if (row.salario !== null) {
-      const salaryKey = unitId ?? '*'
+      const salaryKey = `${unitId ?? '*'}|${row.cargaHoraria ?? '*'}`
       const previousLine = draft.salaryLines.get(salaryKey)
-      if (previousLine) { errors.push({ line: row.line, message: `Unidade repetida para o mesmo cargo (já informada na linha ${previousLine}).` }); continue }
+      if (previousLine) { errors.push({ line: row.line, message: `Unidade e carga horária repetidas para o mesmo cargo (já informadas na linha ${previousLine}).` }); continue }
       draft.salaryLines.set(salaryKey, row.line)
-      const current = existing?.salarios.find((salario) => salario.unitId === unitId) ?? null
-      draft.salaries.push({ unitId, salario: row.salario, existingSalaryId: current?.id ?? null, previous: current?.salario ?? null })
+      const current = existing?.salarios.find((salario) => salario.unitId === unitId && (salario.cargaHorariaMensal ?? null) === row.cargaHoraria) ?? null
+      draft.salaries.push({ unitId, cargaHorariaMensal: row.cargaHoraria, salario: row.salario, existingSalaryId: current?.id ?? null, previous: current?.salario ?? null })
     }
 
     for (const alias of row.aliases) {

@@ -16,7 +16,7 @@ export async function GET() {
     prisma.user.findMany({ where: { active: true, role: { in: ['ADMIN', 'ANALYST'] } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ensureAdmissionDocumentTypes(),
     prisma.colaborador.findMany({ where: { status: 'Active', ...(!erpnextConfigured() && unitWhere.id ? { unitId: unitWhere.id } : {}) }, select: { id: true, erpnextId: true, employeeName: true, personalEmail: true, cellNumber: true, designation: true, department: true, dateOfJoining: true, dateOfBirth: true, gender: true, cpf: true, rg: true, etnia: true, naturalidade: true, unitId: true, unit: { select: { name: true } } }, orderBy: { employeeName: 'asc' } }),
-    prisma.position.findMany({ where: { active: true, salarios: { some: {} } }, select: { id: true, name: true, departamento: true, salarios: { select: { unitId: true, salario: true } } }, orderBy: { name: 'asc' } }),
+    prisma.position.findMany({ where: { active: true, salarios: { some: {} } }, select: { id: true, name: true, departamento: true, salarios: { select: { unitId: true, cargaHorariaMensal: true, salario: true } } }, orderBy: { name: 'asc' } }),
   ])
   let resolvedCollaborators = collaborators
   if (erpnextConfigured()) {

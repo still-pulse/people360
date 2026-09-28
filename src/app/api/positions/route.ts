@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { log, extractIp } from '@/lib/audit'
-import { mergeSalarios, parseSalarios, positionInclude, vagasPorUnidade } from '@/lib/positionSalaries'
+import { mergeSalarios, parseSalarios, positionInclude, salaryKey, vagasPorUnidade } from '@/lib/positionSalaries'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -41,10 +41,10 @@ export async function POST(req: NextRequest) {
   if (existing) {
     if (!salarios?.length) return NextResponse.json({ error: 'Já existe um cargo com este nome. Marque as unidades e o salário para adicioná-las a ele.' }, { status: 400 })
     // Nunca sobrescreve: unidade que já tem salário neste cargo só muda pelo "Editar".
-    const current = await prisma.positionSalary.findMany({ where: { positionId: existing.id }, select: { unitId: true, unit: { select: { name: true } } } })
-    const conflicts = current.filter((c) => salarios.some((s) => s.unitId === c.unitId))
+    const current = await prisma.positionSalary.findMany({ where: { positionId: existing.id }, select: { unitId: true, cargaHorariaMensal: true, unit: { select: { name: true } } } })
+    const conflicts = current.filter((c) => salarios.some((s) => salaryKey(s) === salaryKey(c)))
     if (conflicts.length) {
-      const nomes = conflicts.map((c) => c.unit?.name ?? 'Todas as unidades (padrão)').join(', ')
+      const nomes = conflicts.map((c) => `${c.unit?.name ?? 'Todas as unidades (padrão)'}${c.cargaHorariaMensal ? ` (${c.cargaHorariaMensal}h)` : ''}`).join(', ')
       return NextResponse.json({ error: `O cargo ${existing.name} já tem salário em: ${nomes}. Desmarque essas unidades; para alterar o salário delas, use Editar.` }, { status: 409 })
     }
     await mergeSalarios(existing.id, salarios)
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     await log({
       userId: session.user.id, userName: session.user.name, userRole: session.user.role,
       action: 'UPDATE', entity: 'Cargo', entityId: existing.id, entityName: existing.name,
-      details: { unidadesAdicionadas: salarios.map((s) => s.unitId ?? 'todas') },
+      details: { unidadesAdicionadas: salarios.map((s) => `${s.unitId ?? 'todas'}${s.cargaHorariaMensal ? `:${s.cargaHorariaMensal}h` : ''}`) },
       ip: extractIp(req.headers),
     })
     return NextResponse.json({ ...position, merged: true })

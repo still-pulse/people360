@@ -14,6 +14,20 @@ describe('cargos, salários por unidade e horários fixos', () => {
     expect(salaryForUnit(tecnico, 'vg')).toBeNull()
     expect(salaryForUnit(null, 'vg')).toBeNull()
   })
+  it('escolhe o salário pela carga horária mensal e cai para "qualquer carga"', () => {
+    const auxiliar = { salarios: [
+      { unitId: 'gru', cargaHorariaMensal: 180, salario: 1800 },
+      { unitId: 'gru', cargaHorariaMensal: 200, salario: 2000 },
+      { unitId: null, cargaHorariaMensal: 220, salario: 2200 },
+      { unitId: null, cargaHorariaMensal: null, salario: 1700 },
+    ] }
+    expect(salaryForUnit(auxiliar, 'gru', 180)).toBe(1800)
+    expect(salaryForUnit(auxiliar, 'gru', 200)).toBe(2000)
+    expect(salaryForUnit(auxiliar, 'gru', 220)).toBe(2200)
+    expect(salaryForUnit(auxiliar, 'gru', 150)).toBe(1700)
+    expect(salaryForUnit(auxiliar, 'vg', 180)).toBe(1700)
+    expect(salaryForUnit({ salarios: [{ unitId: 'gru', cargaHorariaMensal: 200, salario: 2000 }] }, 'gru', 180)).toBeNull()
+  })
   it('reconhece o cargo ignorando acento, caixa e espaços; rejeita o que não está cadastrado', () => {
     expect(findPosition(positions, '  tecnico de enfermagem ')?.name).toBe('Técnico de Enfermagem')
     expect(findPosition(positions, 'Médico')).toBeNull()
