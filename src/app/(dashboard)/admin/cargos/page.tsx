@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
 import {
   Plus, Edit2, Power, Briefcase, Search, RefreshCw, Tag, Trash2, X,
+  Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import type { PositionData } from '@/types'
 
@@ -38,6 +39,8 @@ export default function CargosPage() {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterUnit, setFilterUnit] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   async function loadPositions() {
     setIsLoading(true)
@@ -166,6 +169,19 @@ export default function CargosPage() {
     }
   }
 
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const res = await fetch('/api/positions/planilha')
+      if (!res.ok) throw new Error()
+      downloadBlob(await res.blob(), `cargos-salarios-unidades-${new Date().toLocaleDateString('sv-SE')}.xlsx`)
+    } catch {
+      alert('Não foi possível exportar a planilha.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   function openNew() {
     setEditPosition(null)
     setName('')
@@ -260,6 +276,14 @@ export default function CargosPage() {
                 <button onClick={loadPositions} className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
                   <RefreshCw className="w-4 h-4" />
                 </button>
+                <Button variant="outline" icon={<Download className="w-4 h-4" />} isLoading={exporting} onClick={handleExport}>
+                  Exportar
+                </Button>
+                {isAdmin && (
+                  <Button variant="outline" icon={<Upload className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
+                    Importar
+                  </Button>
+                )}
                 <Button icon={<Plus className="w-4 h-4" />} onClick={openNew}>
                   Novo Cargo
                 </Button>
@@ -580,6 +604,8 @@ export default function CargosPage() {
         </div>
       </Modal>
 
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={loadPositions} />
+
       {/* Confirm toggle */}
       <Modal
         open={confirmOpen}
@@ -632,4 +658,173 @@ function vagasDaLinha(pos: PositionData, salario: NonNullable<PositionData['sala
   if (salario.unitId) return porUnidade[salario.unitId] ?? 0
   const proprias = new Set((pos.salarios ?? []).map((s) => s.unitId).filter(Boolean))
   return Object.entries(porUnidade).reduce((total, [unitId, count]) => proprias.has(unitId) ? total : total + count, 0)
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+type ImportPreview = {
+  summary: { cargosNovos: number; cargosAtualizados: number; salariosNovos: number; salariosAtualizados: number; aliasesNovos: number; linhas: number; semAlteracao: number }
+  errors: { line: number; message: string }[]
+  totalErrors: number
+  changes: { name: string; isNew: boolean; fields: string[]; aliases: string[]; salaries: { unit: string; salario: number; previous: number | null }[] }[]
+  applied?: boolean
+  error?: string
+}
+
+const FIELD_LABEL: Record<string, string> = { categoria: 'categoria', departamento: 'departamento', codigoInterno: 'código interno', active: 'status' }
+
+// Importação em duas etapas: o servidor valida e devolve a prévia; só grava após a confirmação.
+function ImportModal({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<ImportPreview | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [downloading, setDownloading] = useState(false)
+
+  function close() { setFile(null); setPreview(null); setError(''); onClose() }
+
+  async function send(apply: boolean) {
+    if (!file) { setError('Selecione a planilha.'); return }
+    setBusy(true); setError('')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      if (apply) form.append('apply', 'true')
+      const res = await fetch('/api/positions/importar', { method: 'POST', body: form })
+      const data = await res.json().catch(() => ({ error: 'Resposta inválida do servidor.' }))
+      if (data.summary) setPreview(data)
+      if (!res.ok) { setError(data.error || 'Não foi possível processar a planilha.'); return }
+      if (apply) onImported()
+    } catch {
+      setError('Não foi possível enviar a planilha.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function downloadTemplate() {
+    setDownloading(true)
+    try {
+      const res = await fetch('/api/positions/planilha?tipo=modelo')
+      if (!res.ok) throw new Error()
+      downloadBlob(await res.blob(), 'modelo-importacao-cargos.xlsx')
+    } catch {
+      setError('Não foi possível baixar o modelo.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const s = preview?.summary
+  const hasChanges = !!preview?.changes.length
+  const canApply = !!preview && !preview.applied && preview.totalErrors === 0 && hasChanges
+
+  return (
+    <Modal open={open} onClose={close} title="Importar cargos e salários" size="lg">
+      <div className="p-6 space-y-4 overflow-y-auto">
+        {preview?.applied && s ? (
+          <div className="text-center py-6 space-y-3">
+            <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto"><CheckCircle2 className="w-6 h-6" /></div>
+            <p className="font-semibold text-gray-900">Importação concluída</p>
+            <p className="text-sm text-gray-500">
+              {s.cargosNovos} cargo(s) criado(s), {s.cargosAtualizados} atualizado(s), {s.salariosNovos} salário(s) novo(s) e {s.salariosAtualizados} alterado(s).
+            </p>
+            <Button onClick={close}>Fechar</Button>
+          </div>
+        ) : (
+          <>
+            <div className="rounded-xl border border-[#15AFA4]/20 bg-[#15AFA4]/5 p-4 flex items-start gap-3">
+              <FileSpreadsheet className="w-5 h-5 text-[#15AFA4] mt-0.5 shrink-0" />
+              <div className="text-xs text-gray-600 space-y-1.5 flex-1">
+                <p>Uma linha por cargo e unidade. Cargos existentes são atualizados; novos são criados. <strong>Nada é excluído</strong>: salários e aliases que não estiverem na planilha continuam como estão.</p>
+                <p>Você também pode usar o arquivo do botão <strong>Exportar</strong>, editar e importar de volta.</p>
+                <button type="button" onClick={downloadTemplate} disabled={downloading} className="inline-flex items-center gap-1.5 font-medium text-[#15AFA4] hover:underline disabled:opacity-50">
+                  <Download className="w-3.5 h-3.5" /> {downloading ? 'Gerando modelo…' : 'Baixar planilha modelo'}
+                </button>
+              </div>
+            </div>
+
+            <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#15AFA4] p-6 cursor-pointer transition-colors">
+              <Upload className="w-6 h-6 text-gray-400" />
+              <span className="text-sm text-gray-700">{file ? file.name : 'Clique para escolher a planilha (.xlsx)'}</span>
+              {file && <span className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} KB</span>}
+              <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
+                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); setError(''); e.target.value = '' }} />
+            </label>
+
+            {preview && s && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {([
+                    ['Cargos novos', s.cargosNovos], ['Cargos atualizados', s.cargosAtualizados],
+                    ['Salários novos', s.salariosNovos], ['Salários alterados', s.salariosAtualizados],
+                  ] as const).map(([label, value]) => (
+                    <div key={label} className="rounded-xl bg-gray-50 px-3 py-2">
+                      <p className="text-lg font-bold text-gray-900">{value}</p>
+                      <p className="text-[11px] text-gray-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400">
+                  {s.linhas} linha(s) lida(s){s.aliasesNovos ? ` · ${s.aliasesNovos} alias(es) novo(s)` : ''}{s.semAlteracao ? ` · ${s.semAlteracao} cargo(s) sem alteração` : ''}
+                </p>
+
+                {preview.totalErrors > 0 && (
+                  <div className="rounded-xl border border-red-100 bg-red-50 p-3 space-y-1.5">
+                    <p className="flex items-center gap-1.5 text-sm font-medium text-red-700"><AlertTriangle className="w-4 h-4" /> {preview.totalErrors} erro(s): corrija a planilha e valide de novo</p>
+                    <ul className="max-h-40 overflow-y-auto text-xs text-red-700 space-y-0.5">
+                      {preview.errors.map((item, index) => <li key={index}>{item.line ? <strong>Linha {item.line}: </strong> : null}{item.message}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {hasChanges && (
+                  <div className="rounded-xl border border-gray-100 max-h-56 overflow-y-auto divide-y divide-gray-50">
+                    {preview.changes.map((change) => (
+                      <div key={change.name} className="px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{change.name}</span>
+                          <Badge variant={change.isNew ? 'success' : 'secondary'}>{change.isNew ? 'Novo' : 'Atualizar'}</Badge>
+                        </div>
+                        <div className="text-gray-500 mt-0.5 space-y-0.5">
+                          {change.salaries.map((salary) => (
+                            <p key={salary.unit}>
+                              {salary.unit}:{' '}
+                              {salary.previous !== null && <><span className="line-through text-gray-300">R$ {formatMoney(salary.previous)}</span> → </>}
+                              <span className="text-gray-800 font-medium">R$ {formatMoney(salary.salario)}</span>
+                            </p>
+                          ))}
+                          {!change.isNew && change.fields.length > 0 && <p>Altera {change.fields.map((field) => FIELD_LABEL[field] ?? field).join(', ')}</p>}
+                          {change.aliases.length > 0 && <p>Novos aliases: {change.aliases.join(', ')}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!hasChanges && preview.totalErrors === 0 && <p className="text-sm text-gray-500 text-center py-2">A planilha não traz nenhuma alteração em relação ao cadastro atual.</p>}
+              </div>
+            )}
+
+            {error && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">{error}</div>}
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={close}>Cancelar</Button>
+              {canApply ? (
+                <Button className="flex-1" isLoading={busy} onClick={() => send(true)}>Confirmar importação</Button>
+              ) : (
+                <Button className="flex-1" isLoading={busy} disabled={!file} onClick={() => send(false)}>Validar planilha</Button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  )
 }
