@@ -43,7 +43,7 @@ describe('formulários oficiais da admissão', () => {
   it('usa o empregador configurado para a unidade e o padrão nas demais', () => {
     process.env.ADMISSION_EMPLOYERS_BY_UNIT = JSON.stringify({ u2: { nome: 'Filial Osasco', cnpj: '50.351.626/0099-00', cidade: 'Osasco' } })
     expect(employerForUnit('u2')).toMatchObject({ nome: 'FILIAL OSASCO', cnpj: '50.351.626/0099-00', cidade: 'OSASCO', uf: 'SP' })
-    expect(employerForUnit('u1')).toMatchObject({ nome: 'BENEFICENCIA HOSPITALAR DE CESARIO LANGE', cidade: 'GUARULHOS' })
+    expect(employerForUnit('u1')).toMatchObject({ nome: 'BENEFICENCIA HOSPITALAR DE CESARIO LANGE', cnpj: '50.351.626/0001-10', logradouro: 'AVENIDA SÃO PAULO, 340', bairro: 'VILA BRASIL', cidade: 'CESÁRIO LANGE', uf: 'SP' })
     delete process.env.ADMISSION_EMPLOYERS_BY_UNIT
   })
 

@@ -96,7 +96,7 @@ export function contractPeriods(snap: Snapshot, dados: Dados) {
 
 /** Variáveis comuns a qualquer template (dados do cadastro já formatados em pt-BR). */
 export function commonVars(s: Snapshot, actorName = ''): Record<string, string> {
-  const cidade = process.env.ADMISSION_EMPLOYER_CITY || 'Guarulhos'
+  const cidade = process.env.ADMISSION_EMPLOYER_CITY || 'Cesário Lange'
   return {
     empregadorNome: s.empregador.nome, empregadorCnpj: s.empregador.cnpj, empregadorEndereco: s.empregador.endereco,
     nome: s.nome, nomeSocial: s.nomeSocial, matricula: s.matricula, cpf: fmtCpf(s.cpf), rg: s.rg,

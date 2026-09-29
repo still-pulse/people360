@@ -87,7 +87,7 @@ type EmployerConfig = Partial<EmployerData> & { endereco?: string }
 
 /**
  * Empregador da unidade: ADMISSION_EMPLOYERS_BY_UNIT[unitId] (nome, cnpj, logradouro, bairro, cidade, uf),
- * com o cadastro padrão (ADMISSION_EMPLOYER_*) para o que não estiver configurado.
+ * com o cadastro padrão (ADMISSION_EMPLOYER_*, Matriz em Cesário Lange) para o que não estiver configurado.
  */
 export function employerForUnit(unitId?: string | null): EmployerData {
   let configured: Record<string, EmployerConfig> = {}
@@ -95,10 +95,10 @@ export function employerForUnit(unitId?: string | null): EmployerData {
   const unit = (unitId && configured[unitId]) || {}
   return {
     nome: upper(unit.nome || process.env.ADMISSION_EMPLOYER_LEGAL_NAME || 'BENEFICENCIA HOSPITALAR DE CESARIO LANGE'),
-    cnpj: unit.cnpj || process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0015-16',
-    logradouro: upper(unit.logradouro || process.env.ADMISSION_EMPLOYER_STREET || 'R DOS JESUITAS, 533'),
-    bairro: upper(unit.bairro || process.env.ADMISSION_EMPLOYER_DISTRICT || 'CIDADE INDUSTRIAL SATELITE DE SAO PAULO'),
-    cidade: upper(unit.cidade || process.env.ADMISSION_EMPLOYER_CITY || 'GUARULHOS'),
+    cnpj: unit.cnpj || process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0001-10',
+    logradouro: upper(unit.logradouro || process.env.ADMISSION_EMPLOYER_STREET || 'AVENIDA SÃO PAULO, 340'),
+    bairro: upper(unit.bairro || process.env.ADMISSION_EMPLOYER_DISTRICT || 'VILA BRASIL'),
+    cidade: upper(unit.cidade || process.env.ADMISSION_EMPLOYER_CITY || 'CESÁRIO LANGE'),
     uf: upper(unit.uf || process.env.ADMISSION_EMPLOYER_UF || 'SP'),
   }
 }

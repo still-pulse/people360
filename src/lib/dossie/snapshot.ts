@@ -45,8 +45,8 @@ export function employerInfo(unitId?: string | null) {
   const unit = unitId ? configured[unitId] : undefined
   return {
     nome: unit?.nome || process.env.ADMISSION_EMPLOYER_NAME || 'BENEFICÊNCIA HOSPITALAR DE CESÁRIO LANGE',
-    cnpj: unit?.cnpj || process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0015-16',
-    endereco: unit?.endereco || process.env.ADMISSION_EMPLOYER_ADDRESS || 'R. dos Jesuítas, 533, Cidade Industrial Satélite de São Paulo, Guarulhos/SP',
+    cnpj: unit?.cnpj || process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0001-10',
+    endereco: unit?.endereco || process.env.ADMISSION_EMPLOYER_ADDRESS || 'Avenida São Paulo, 340 – Vila Brasil – CEP 18.285-000 – Cesário Lange/SP',
   }
 }
 

@@ -91,8 +91,8 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
   const transportDailyTotal = routes.length ? money(routes.reduce((sum, route) => sum + route.outbound + route.returnValue, 0)) : '—'
   const values: Record<string, string> = {
     employerName: process.env.ADMISSION_EMPLOYER_NAME || 'BENEFICÊNCIA HOSPITALAR DE CESÁRIO LANGE',
-    employerCnpj: process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0015-16',
-    employerAddress: process.env.ADMISSION_EMPLOYER_ADDRESS || 'R. dos Jesuítas, 533, Cidade Industrial Satélite de São Paulo, Guarulhos/SP',
+    employerCnpj: process.env.ADMISSION_EMPLOYER_CNPJ || '50.351.626/0001-10',
+    employerAddress: process.env.ADMISSION_EMPLOYER_ADDRESS || 'Avenida São Paulo, 340 – Vila Brasil – CEP 18.285-000 – Cesário Lange/SP',
     candidateName: admission.candidateName, protocol: admission.protocol, jobTitle: admission.jobTitle,
     vacancyTitle: admission.vacancy?.titulo || admission.jobTitle, department: admission.department || admission.vacancy?.setor || '—', unit: admission.unit.name,
     hireDate: date(admission.hireDate), contractEndDate: date(admission.contractEndDate ?? (admission.experienceDays ? new Date(admission.hireDate.getTime() + (admission.experienceDays - 1) * 86_400_000) : null)), contractType: admission.contractType,
