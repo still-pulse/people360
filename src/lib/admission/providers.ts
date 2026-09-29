@@ -58,8 +58,14 @@ export const localSignatureProvider: SignatureProvider = {
   },
 }
 
+/** SIGNATURE_PROVIDER=autentique: o candidato assina na Autentique (fluxo assíncrono, ver externalSignature.ts). */
+export function usesExternalSignature() {
+  return (process.env.SIGNATURE_PROVIDER || '').trim().toLowerCase() === 'autentique'
+}
+
 export function getSignatureProvider(): { name: string; provider: SignatureProvider } {
   const name = (process.env.SIGNATURE_PROVIDER || 'people360-local').trim().toLowerCase()
+  if (name === 'autentique') throw new Error('A assinatura desta admissão é feita pela Autentique. Use o botão "Assinar na Autentique".')
   if (name === 'people360-local') return { name, provider: localSignatureProvider }
   if (name === 'mock' && process.env.NODE_ENV !== 'production') return { name, provider: mockSignatureProvider }
   throw new Error(`Provedor de assinatura não suportado: ${name || '(vazio)'}`)

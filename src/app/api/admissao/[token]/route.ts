@@ -10,6 +10,7 @@ import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, isValidCpf
 import { PUBLIC_FIELD_SECTIONS, SENSITIVE_FIELD_KEYS } from '@/lib/admission/constants'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
+import { usesExternalSignature } from '@/lib/admission/providers'
 import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
 
 const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), fields: z.record(z.union([z.string().max(500), z.boolean(), z.number(), z.null()])), nextStep: z.string().max(40).optional(), validate: z.boolean().optional().default(false) })
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   await logAdmissionEvent({ admissionId: a.id, actorName: a.candidateName, actorType: 'CANDIDATE', action: 'LINK_OPENED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') }).catch(() => {})
   return NextResponse.json({
     protocol: a.protocol, candidateName: a.candidateName, status: a.status, currentStep: a.currentStep, resumeStep, progress: a.progress, processType: a.processType, requestedSections: a.requestedSections,
-    features: { faceVerification: faceVerificationEnabled },
+    features: { faceVerification: faceVerificationEnabled, signatureProvider: usesExternalSignature() ? 'autentique' : 'local' },
     locked: { jobTitle: a.jobTitle, department: a.department, unit: a.unit.name, hireDate: a.hireDate, contractType: a.contractType, workSchedule: a.workSchedule },
     fields: Object.fromEntries(a.fields.map((f) => [f.key, f.sensitive ? decryptAdmissionValue(f.value) : f.value])), dependents: a.dependents, transport: a.transport,
     documents: a.documents.map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),

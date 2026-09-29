@@ -16,6 +16,7 @@ import { sendDossierToErpnext } from '@/lib/dossie/erpnextDossie'
 import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 import { collaboratorForAdmission, linkAdmissionCollaborator } from '@/lib/admission/collaboratorLink'
+import { cancelExternalSignature, latestExternalSignature, syncExternalSignature } from '@/lib/admission/externalSignature'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -25,7 +26,8 @@ const include = {
   faceVerifications: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, provider: true, status: true, attempts: true, resultMetadata: true, completedAt: true, capturedAt: true, createdAt: true, updatedAt: true } },
   generatedDocuments: { select: { id: true, status: true, templateVersion: true, generatedAt: true, signedAt: true, validationCode: true, originalHash: true, finalHash: true, template: { select: { key: true, name: true } } } },
   signatureEnvelopes: { select: { id: true, documentId: true, provider: true, signerName: true, signerEmail: true, status: true, transactionId: true, signedAt: true, signedIp: true, signedUserAgent: true, latitude: true, longitude: true, locationAccuracy: true, events: { orderBy: { createdAt: 'desc' as const }, select: { id: true, type: true, ip: true, userAgent: true, hash: true, metadata: true, createdAt: true } } } },
-  erpnextSyncs: { orderBy: { createdAt: 'desc' as const } }, auditLogs: { orderBy: { createdAt: 'desc' as const }, take: 100 },
+  erpnextSyncs: { orderBy: { createdAt: 'desc' as const } },
+  externalSignatures: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, provider: true, status: true, signLink: true, sandbox: true, createdAt: true, signedAt: true, rejectedReason: true } }, auditLogs: { orderBy: { createdAt: 'desc' as const }, take: 100 },
 }
 
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -103,6 +105,17 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       console.error('[registration-update] Falha ao aplicar no ERPNext:', current.protocol, caught instanceof ErpnextApiError ? { status: caught.status, message: caught.message, body: caught.body } : caught)
       // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.
       return NextResponse.json({ error: `O ERPNext recusou a atualização: ${caught instanceof Error ? caught.message : 'erro desconhecido'}` }, { status: 422 })
+    }
+  } else if (action === 'check-signature' || action === 'resend-signature') {
+    const latest = await latestExternalSignature(current.id)
+    if (!latest) return NextResponse.json({ error: 'Esta admissão não tem assinatura pela Autentique.' }, { status: 409 })
+    if (action === 'check-signature') {
+      try { response = { signatureStatus: await syncExternalSignature(latest.id) } }
+      catch (caught) { return NextResponse.json({ error: caught instanceof Error ? caught.message : 'Não foi possível consultar a Autentique.' }, { status: 422 }) }
+    } else {
+      if (latest.status === 'SIGNED') return NextResponse.json({ error: 'Os documentos já foram assinados.' }, { status: 409 })
+      // Libera um novo envio: o candidato gera outro link pelo portal (consome outro crédito).
+      await cancelExternalSignature(current.id)
     }
   } else if (action === 'set-analysts') {
     // Responsável principal + outros analistas responsáveis (mesmo acesso e avisos).

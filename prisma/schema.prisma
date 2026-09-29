@@ -1246,14 +1246,14 @@ model Admission {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  candidate          Candidato?           @relation(fields: [candidateId], references: [id], onDelete: SetNull)
-  vacancy            Vaga?                @relation(fields: [vacancyId], references: [id], onDelete: SetNull)
-  unit               Unit                 @relation(fields: [unitId], references: [id])
-  owner              User?                @relation("AdmissionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  candidate          Candidato?                 @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  vacancy            Vaga?                      @relation(fields: [vacancyId], references: [id], onDelete: SetNull)
+  unit               Unit                       @relation(fields: [unitId], references: [id])
+  owner              User?                      @relation("AdmissionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   /// Outros analistas responsáveis (mesmo acesso e avisos do responsável principal).
-  analysts           User[]               @relation("AdmissionAnalysts")
-  createdBy          User                 @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
-  collaborator       Colaborador?         @relation("RegistrationUpdateEmployee", fields: [collaboratorId], references: [id], onDelete: SetNull)
+  analysts           User[]                     @relation("AdmissionAnalysts")
+  createdBy          User                       @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
+  collaborator       Colaborador?               @relation("RegistrationUpdateEmployee", fields: [collaboratorId], references: [id], onDelete: SetNull)
   tokens             AdmissionToken[]
   fields             AdmissionField[]
   dependents         AdmissionDependent[]
@@ -1263,6 +1263,7 @@ model Admission {
   faceVerifications  FaceVerification[]
   generatedDocuments GeneratedDocument[]
   signatureEnvelopes SignatureEnvelope[]
+  externalSignatures ExternalSignatureRequest[]
   consents           ConsentRecord[]
   erpnextSyncs       ERPNextSync[]
   auditLogs          AdmissionAuditLog[]
@@ -1981,4 +1982,35 @@ model ColaboradorHistorico {
   @@index([colaboradorId, dataEvento])
   @@index([colaboradorId, tipo])
   @@map("colaborador_historico")
+}
+
+/// Pacote de documentos da admissão enviado a um provedor externo de assinatura (Autentique).
+/// Um registro por envio; `pageMap` diz quais páginas do pacote são de cada documento gerado.
+model ExternalSignatureRequest {
+  id             String    @id @default(cuid())
+  admissionId    String
+  provider       String
+  externalId     String    @unique
+  /// PENDING | SIGNED | REJECTED | CANCELLED
+  status         String    @default("PENDING")
+  signerName     String
+  signerEmail    String?
+  signerPublicId String?
+  signLink       String?
+  sandbox        Boolean   @default(false)
+  packagePath    String
+  packageHash    String
+  pageMap        Json
+  signedPath     String?
+  signedHash     String?
+  signedAt       DateTime?
+  signedIp       String?
+  rejectedReason String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+
+  @@index([admissionId, status])
+  @@map("external_signature_requests")
 }
