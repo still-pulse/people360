@@ -66,12 +66,15 @@ setInterval(() => {
   })
 }, 10 * 60 * 1000)
 
-export function checkPublicDocLinkRateLimit(key: string): { allowed: boolean; retryAfterMs?: number } {
+type LimitOptions = { max?: number; windowMs?: number; blockMs?: number }
+
+export function checkPublicDocLinkRateLimit(key: string, options: LimitOptions = {}): { allowed: boolean; retryAfterMs?: number } {
+  const max = options.max ?? DOC_MAX_ATTEMPTS, windowMs = options.windowMs ?? DOC_WINDOW_MS, blockMs = options.blockMs ?? DOC_BLOCK_MS
   const now = Date.now()
   let entry = publicDocStore.get(key)
 
   if (!entry || now > entry.resetAt) {
-    entry = { count: 0, resetAt: now + DOC_WINDOW_MS, blocked: false }
+    entry = { count: 0, resetAt: now + windowMs, blocked: false }
     publicDocStore.set(key, entry)
   }
 
@@ -81,11 +84,17 @@ export function checkPublicDocLinkRateLimit(key: string): { allowed: boolean; re
 
   entry.count++
 
-  if (entry.count > DOC_MAX_ATTEMPTS) {
+  if (entry.count > max) {
     entry.blocked = true
-    entry.resetAt = now + DOC_BLOCK_MS
-    return { allowed: false, retryAfterMs: DOC_BLOCK_MS }
+    entry.resetAt = now + blockMs
+    return { allowed: false, retryAfterMs: blockMs }
   }
 
   return { allowed: true }
+}
+
+/** Consulta se a chave está bloqueada, sem contar uma nova tentativa. */
+export function isPublicDocLinkBlocked(key: string) {
+  const entry = publicDocStore.get(key)
+  return !!entry && entry.blocked && Date.now() <= entry.resetAt
 }

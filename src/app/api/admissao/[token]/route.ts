@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getAdmissionByPublicToken, getMutableAdmissionByPublicToken } from '@/lib/admission/service'
-import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
+import { checkPublicDocLinkRateLimit, isPublicDocLinkBlocked } from '@/lib/rateLimit'
 import { extractIp } from '@/lib/audit'
 import { decryptAdmissionValue, encryptAdmissionValue, hashSensitive, isValidCpf } from '@/lib/admission/security'
 import { PUBLIC_FIELD_SECTIONS, SENSITIVE_FIELD_KEYS } from '@/lib/admission/constants'
@@ -15,13 +15,25 @@ import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notificati
 
 const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), fields: z.record(z.union([z.string().max(500), z.boolean(), z.number(), z.null()])), nextStep: z.string().max(40).optional(), validate: z.boolean().optional().default(false) })
 
-function limited(req: NextRequest, token: string) { return checkPublicDocLinkRateLimit(`${extractIp(req.headers) || 'unknown'}:${token.slice(-8)}`) }
+// Link válido: o portal salva a cada pausa na digitação, então o limite só barra laços descontrolados
+// (antes eram 60 requisições em 15 min, somando abertura e autosave, e o candidato ficava bloqueado 15 min).
+// Link inválido: limite baixo por IP, contra varredura de links.
+const VALID_LINK_LIMIT = { max: 900, windowMs: 15 * 60 * 1000, blockMs: 2 * 60 * 1000 }
+const INVALID_LINK_LIMIT = { max: 30, windowMs: 15 * 60 * 1000, blockMs: 15 * 60 * 1000 }
+const ipOf = (req: NextRequest) => extractIp(req.headers) || 'unknown'
+const invalidKey = (req: NextRequest) => `${ipOf(req)}:admission-invalid`
+const limited = (req: NextRequest, token: string) => checkPublicDocLinkRateLimit(`${ipOf(req)}:${token.slice(-8)}`, VALID_LINK_LIMIT)
+function invalidLink(req: NextRequest) {
+  checkPublicDocLinkRateLimit(invalidKey(req), INVALID_LINK_LIMIT)
+  return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+}
 
 export async function GET(req: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params;
-  if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
+  if (isPublicDocLinkBlocked(invalidKey(req))) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const result = await getAdmissionByPublicToken(params.token, true)
-  if (!result) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  if (!result) return invalidLink(req)
+  if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const a = result.admission
   const faceVerificationEnabled = isFaceVerificationEnabled()
   const requiredPending = a.documents.some((document) => document.type.required && document.status !== 'APPROVED')
@@ -48,9 +60,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params;
-  if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas.' }, { status: 429 })
+  if (isPublicDocLinkBlocked(invalidKey(req))) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const result = await getMutableAdmissionByPublicToken(params.token)
-  if (!result) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  if (!result) return invalidLink(req)
+  if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const body = await req.json().catch(() => null)
   if (body?.completeUpdate === true && result.admission.processType === 'REGISTRATION_UPDATE') {
     const missingDocuments = result.admission.documents.filter((document) => !document.uploadedAt)
