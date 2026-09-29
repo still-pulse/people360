@@ -1,4 +1,5 @@
 import { missingPcdAnswers } from '@/lib/admission/pcd'
+import { isContractOnHold } from '@/lib/admission/contractHold'
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   await logAdmissionEvent({ admissionId: a.id, actorName: a.candidateName, actorType: 'CANDIDATE', action: 'LINK_OPENED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') }).catch(() => {})
   return NextResponse.json({
     protocol: a.protocol, candidateName: a.candidateName, status: a.status, currentStep: a.currentStep, resumeStep, progress: a.progress, processType: a.processType, requestedSections: a.requestedSections,
-    features: { faceVerification: faceVerificationEnabled, signatureProvider: usesExternalSignature() ? 'autentique' : 'local' },
+    features: { faceVerification: faceVerificationEnabled, signatureProvider: usesExternalSignature() ? 'autentique' : 'local', contractOnHold: a.processType === 'ADMISSION' && await isContractOnHold(a.unitId) },
     locked: { jobTitle: a.jobTitle, department: a.department, unit: a.unit.name, hireDate: a.hireDate, contractType: a.contractType, workSchedule: a.workSchedule },
     fields: Object.fromEntries(a.fields.map((f) => [f.key, f.sensitive ? decryptAdmissionValue(f.value) : f.value])), dependents: a.dependents, transport: a.transport,
     documents: a.documents.map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),

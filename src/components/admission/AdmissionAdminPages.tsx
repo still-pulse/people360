@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import styles from './Admission.module.css'
 import { AdmissionTitle, formatDateTime, StatusBadge } from './shared'
+import { ContractHoldSettings } from './ContractHoldSettings'
 
 type Template={id:string;key:string;name:string;version:number;active:boolean;updatedAt:string}
 type DocumentType={id:string;name:string;required:boolean;maxSizeBytes:number;active:boolean}
@@ -13,6 +14,7 @@ type AdmissionSettings={
   retentionDays:number
   maxFileSize:number
   transportDeclarationVersion:string
+  contractHold?:{units:{id:string;name:string}[];unitIds:string[]}
 }
 
 export function ModelsPage(){
@@ -40,6 +42,7 @@ export function SettingsPage(){
   const percentage=(value?:number)=>value==null?'—':`${Math.round(value*100)}%`
   return <><Header title="Configurações" subtitle="Admissão Digital"/><div className={styles.module}><div className={styles.content}>
     <AdmissionTitle title="Configurações" subtitle="Providers, retenção, documentos e textos jurídicos do módulo."/>
+    {data?.contractHold&&<ContractHoldSettings units={data.contractHold.units} initial={data.contractHold.unitIds}/>}
     {!facial?.enabled?<section className={styles.card} style={{marginBottom:16}}><div className={styles.cardHeader}><div><h2 className={styles.cardTitle}>Validação facial</h2><p className={styles.itemMeta}>A comparação biométrica não faz parte do fluxo atual de admissão ou atualização cadastral.</p></div><StatusBadge status="CANCELLED" label="Desativada"/></div></section>:<section className={styles.card} data-admission-tour="settings-face-policy" style={{marginBottom:16}}>
       <div className={styles.cardHeader}><div><h2 className={styles.cardTitle}>Revisão facial por pontuação</h2><p className={styles.itemMeta}>Política aplicada pelo servidor após a comparação da selfie com o documento aprovado.</p></div><StatusBadge status={facial?.configured?'APPROVED':'ERROR'} label={facial?.configured?'CompreFace configurado':'Provider não configurado'}/></div>
       <div className={styles.faceScoreBands} data-admission-tour="settings-face-bands">

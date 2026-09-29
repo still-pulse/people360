@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { CONTRACT_HOLD_MESSAGE, isContractOnHold } from '@/lib/admission/contractHold'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getMutableAdmissionByPublicToken } from '@/lib/admission/service'
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   const params = await props.params;
   const token = await getMutableAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  if (await isContractOnHold(token.admission.unitId)) return NextResponse.json({ error: CONTRACT_HOLD_MESSAGE, contractOnHold: true }, { status: 409 })
   if (!['CONTRACT_PENDING', 'SIGNATURE_PENDING'].includes(token.admission.status)) {
     return NextResponse.json({ error: 'A admissão ainda não está pronta para assinatura.' }, { status: 409 })
   }

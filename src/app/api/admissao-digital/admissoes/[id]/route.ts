@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isContractOnHold } from '@/lib/admission/contractHold'
 import { prisma } from '@/lib/prisma'
 import { canAccessAdmission, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { createAdmissionToken } from '@/lib/admission/service'
@@ -39,11 +40,12 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.actualRole ?? session!.user.role)
   // Colaborador do People360 criado a partir desta admissão (para o link do dossiê).
   const collaborator = item.processType === 'ADMISSION' ? await collaboratorForAdmission(item.id) : null
+  const contractOnHold = item.processType === 'ADMISSION' && await isContractOnHold(item.unitId)
   const response = canViewSensitiveData ? {
-    ...item, collaborator,
+    ...item, collaborator, contractOnHold,
     features: { faceVerification: isFaceVerificationEnabled() },
     fields: item.fields.map((field) => ({ ...field, value: field.sensitive ? decryptAdmissionValue(field.value) : field.value })),
-  } : { ...item, collaborator, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
+  } : { ...item, collaborator, contractOnHold, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
   return NextResponse.json(response)
 }
 

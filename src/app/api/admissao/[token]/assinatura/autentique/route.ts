@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { CONTRACT_HOLD_MESSAGE, isContractOnHold } from '@/lib/admission/contractHold'
 import { getAdmissionByPublicToken, getMutableAdmissionByPublicToken } from '@/lib/admission/service'
 import { usesExternalSignature } from '@/lib/admission/providers'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   if (!usesExternalSignature()) return NextResponse.json({ error: 'A assinatura pela Autentique não está ativa.' }, { status: 409 })
   const token = await getMutableAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
+  if (await isContractOnHold(token.admission.unitId)) return NextResponse.json({ error: CONTRACT_HOLD_MESSAGE, contractOnHold: true }, { status: 409 })
   if (!['CONTRACT_PENDING', 'SIGNATURE_PENDING'].includes(token.admission.status)) return NextResponse.json({ error: 'A admissão ainda não está pronta para assinatura.' }, { status: 409 })
   const body = await req.json().catch(() => ({}))
   if (body?.accepted !== true) return NextResponse.json({ error: 'Confirme a leitura e concordância.' }, { status: 400 })
