@@ -4,9 +4,13 @@ import { embedFonts, loadForm, replaceLine, type Fonts } from './pdfText'
 
 export const EMPLOYEE_RECORD_FORM_FILE = 'ficha-empregado.pdf'
 
-function field(page: PDFPage, value: string, x: number, pdfY: number, width: number, fonts: Fonts, size = 8.25) {
-  replaceLine(page, value, x, page.getHeight() - pdfY, width, { font: fonts.regular, size })
+// A faixa branca cobre só o marcador "[•]" (com o destaque amarelo): mais alta que isso, apagava o rótulo impresso logo acima.
+function field(page: PDFPage, value: string, x: number, pdfY: number, width: number, fonts: Fonts, size = 8.25, maskHeight = size + 2.2) {
+  replaceLine(page, value, x, page.getHeight() - pdfY, width, { font: fonts.regular, size, height: maskHeight })
 }
+
+// Verso: sem rótulo acima do dado, a faixa sobe até o topo do destaque do marcador.
+const backField = (page: PDFPage, value: string, x: number, pdfY: number, width: number, fonts: Fonts) => field(page, value, x, pdfY, width, fonts, 6.75, 9.8)
 
 function scheduleParts(value: string) {
   const match = /(\d{1,2}:\d{2}).*?(\d{1,2}:\d{2})/.exec(value)
@@ -70,13 +74,13 @@ export async function renderEmployeeRecord(ctx: FormContext): Promise<PDFDocumen
   field(front, person.pis, 88.63, 477.43, 96, fonts)
   field(front, person.name, 412.28, 97.58, 158, fonts)
 
-  field(back, person.name, 21.77, 797.2, 410, fonts, 6.75)
-  field(back, registration, 454.33, 818.97, 116, fonts, 6.75)
-  field(back, dmy(job.hireDate), 42.05, 757.42, 82, fonts, 6.75)
-  field(back, dmy(periods.firstEnd), 135.93, 757.42, 82, fonts, 6.75)
-  field(back, periods.extension ? String(periods.extension) : '', 248.58, 757.42, 52, fonts, 6.75)
-  field(back, periods.totalEnd ? dmy(periods.totalEnd) : '', 322.9, 757.42, 82, fonts, 6.75)
-  field(back, String(periods.first), 435.55, 757.42, 48, fonts, 6.75)
-  field(back, 'SIM', 515.9, 757.42, 55, fonts, 6.75)
+  backField(back, person.name, 21.77, 797.2, 410, fonts)
+  backField(back, registration, 454.33, 818.97, 116, fonts)
+  backField(back, dmy(job.hireDate), 42.05, 757.42, 82, fonts)
+  backField(back, dmy(periods.firstEnd), 135.93, 757.42, 82, fonts)
+  backField(back, periods.extension ? String(periods.extension) : '', 248.58, 757.42, 52, fonts)
+  backField(back, periods.totalEnd ? dmy(periods.totalEnd) : '', 322.9, 757.42, 82, fonts)
+  backField(back, String(periods.first), 435.55, 757.42, 48, fonts)
+  backField(back, 'SIM', 515.9, 757.42, 55, fonts)
   return pdf
 }

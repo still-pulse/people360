@@ -24,7 +24,16 @@ export async function accountingDossierState(admissionId: string) {
 }
 
 /** Dossiê Admissional (mesmo layout do colaborador integrado) para conferência da contabilidade, sem depender do ERPNext. */
+// Início deste processo do servidor: fichas geradas antes dele podem ter saído com o layout antigo.
+const PROCESS_STARTED_AT = new Date()
+
 export async function buildAccountingAdmissionDossier(admissionId: string, origin: string) {
+  // Ficha ainda não enviada para assinatura é refeita com o layout atual (corrige rótulos encobertos).
+  // Fichas enviadas à Autentique ou assinadas nunca são alteradas.
+  await prisma.generatedDocument.updateMany({
+    where: { admissionId, status: 'GENERATED', template: { key: 'ficha_registro' }, createdAt: { lt: PROCESS_STARTED_AT } },
+    data: { status: 'CANCELLED' },
+  })
   await generateAdmissionDocuments(admissionId, origin)
   const admission = await prisma.admission.findUnique({
     where: { id: admissionId },

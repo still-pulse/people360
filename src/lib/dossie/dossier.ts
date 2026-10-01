@@ -135,16 +135,19 @@ export async function admissionDossierSources(admissionId: string) {
   })
   if (!admission) throw new DossieError('A admissão digital vinculada não foi encontrada.', 422)
 
-  const generated = admission.generatedDocuments.find((doc) => !!doc.signedStoragePath)
-    ?? admission.generatedDocuments.find((doc) => !!doc.storagePath)
-  const formulario: AttachmentSource[] = generated ? [{
-    titulo: generated.signedStoragePath ? 'Formulário Admissional (assinado)' : 'Formulário Admissional',
-    categoria: `Admissão ${admission.protocol}`,
-    data: generated.signedAt ?? generated.generatedAt ?? generated.createdAt,
-    situacao: generated.signedStoragePath ? 'Assinado' : (SITUACAO[generated.status] ?? generated.status),
-    mime: 'application/pdf',
-    read: () => readPrivateAdmissionFile(generated.signedStoragePath ?? generated.storagePath!),
-  }] : []
+  // Todas as versões válidas do formulário (ex.: o "Formulário Admissional" em texto já assinado e a ficha
+  // oficial "Registro de Empregado"), da mais antiga para a mais nova, cada uma na versão assinada quando houver.
+  const formulario: AttachmentSource[] = admission.generatedDocuments
+    .filter((doc) => !!(doc.signedStoragePath ?? doc.storagePath))
+    .reverse()
+    .map((doc) => ({
+      titulo: `${doc.template.name}${doc.signedStoragePath ? ' (assinado)' : ''}`,
+      categoria: `Admissão ${admission.protocol}`,
+      data: doc.signedAt ?? doc.generatedAt ?? doc.createdAt,
+      situacao: doc.signedStoragePath ? 'Assinado' : (SITUACAO[doc.status] ?? doc.status),
+      mime: 'application/pdf',
+      read: () => readPrivateAdmissionFile(doc.signedStoragePath ?? doc.storagePath!),
+    }))
   const documentos: AttachmentSource[] = admission.documents.map((doc) => ({
     titulo: `${doc.type.name}${doc.side ? ` (${doc.side})` : ''}`,
     categoria: `Admissão ${admission.protocol}`,
@@ -293,7 +296,8 @@ async function appendAttachments(main: Buffer, attachments: Attachment[], totalP
   const tag = (page: ReturnType<typeof out.addPage>, att: Attachment, first: boolean, note?: string) => {
     if (!first) return
     const label = pdfSafe(`Anexo — ${att.src.titulo} (${att.src.categoria})`).slice(0, 110)
-    page.drawText(label, { x: 28, y: page.getHeight() - 22, size: 8, font: bold, color: teal })
+    // Na margem superior: mais abaixo, a etiqueta ficava em cima do título dos formulários anexados.
+    page.drawText(label, { x: 28, y: page.getHeight() - 9, size: 6.5, font: bold, color: teal })
     if (note) page.drawText(pdfSafe(note), { x: 28, y: page.getHeight() - 36, size: 8, font, color: rgb(0.36, 0.43, 0.44) })
   }
   for (const att of attachments) {
