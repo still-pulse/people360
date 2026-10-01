@@ -72,7 +72,12 @@ export function createPdf(name: string, content: string, protocol: string, versi
 export async function generateAdmissionDocuments(admissionId: string, origin: string) {
   const admission = await prisma.admission.findUnique({
     where: { id: admissionId },
-    include: { unit: true, vacancy: true, fields: true, dependents: true, transport: { include: { routes: { orderBy: { position: 'asc' } } } } },
+    include: {
+      unit: true, vacancy: true, fields: true, dependents: true,
+      collaborator: { select: { matricula: true } },
+      erpnextSyncs: { where: { status: 'SUCCESS' }, orderBy: { lastSyncedAt: 'desc' }, take: 1, select: { employeeCode: true } },
+      transport: { include: { routes: { orderBy: { position: 'asc' } } } },
+    },
   })
   if (!admission) throw new Error('Admissão não encontrada.')
   await ensureAdmissionTemplates()
@@ -116,7 +121,10 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
 
   // Contrato e termos oficiais: formulário original preenchido com os dados do colaborador.
   const position = await prisma.position.findFirst({ where: { name: { equals: admission.jobTitle, mode: 'insensitive' } }, select: { cbo: true } })
-  const formContext = buildFormContext(admission, fields, { cbo: position?.cbo })
+  const registration = typeof fields.matricula === 'string' && fields.matricula.trim()
+    ? fields.matricula.trim()
+    : admission.collaborator?.matricula || admission.erpnextSyncs[0]?.employeeCode || ''
+  const formContext = buildFormContext(admission, fields, { cbo: position?.cbo, registration })
 
   // Documento ainda não assinado de uma versão substituída (ex.: contrato em texto → formulário oficial) é
   // cancelado, para o candidato não assinar duas versões. Documentos assinados nunca são alterados.

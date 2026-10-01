@@ -14,7 +14,7 @@ export type FormContext = {
     name: string; cpf: string; rg: string; rgIssuedAt: string; rgIssuer: string; birthDate: string; birthPlace: string
     nationality: string; maritalStatus: string; fatherName: string; motherName: string; ethnicity: string; gender: string
     education: string; phone: string; pis: string; voterTitle: string; voterZone: string; voterSection: string
-    disability: boolean; disabilityDetails: string
+    disability: boolean; disabilityDetails: string; registration: string
   }
   address: { street: string; number: string; complement: string; district: string; city: string; state: string; zipCode: string }
   job: { title: string; unit: string; department: string; cbo: string; salary: number | null; schedule: string; breakSchedule: string; hireDate: Date; experienceDays: number | null }
@@ -111,7 +111,7 @@ type AdmissionForForms = {
   transport: { requested: boolean; routes: FormRoute[] } | null
 }
 
-export function buildFormContext(admission: AdmissionForForms, fields: Record<string, unknown>, extra: { cbo?: string | null; issuedAt?: Date } = {}): FormContext {
+export function buildFormContext(admission: AdmissionForForms, fields: Record<string, unknown>, extra: { cbo?: string | null; issuedAt?: Date; registration?: string | null } = {}): FormContext {
   const addressCity = splitCity(text(fields.city), text(fields.state))
   const birth = splitCity(text(fields.birthCity))
   const pcd: Record<string, string> = {}
@@ -131,7 +131,7 @@ export function buildFormContext(admission: AdmissionForForms, fields: Record<st
       gender: GENEROS[text(fields.gender)] ?? '', education: text(fields.education),
       phone: text(fields.phone) ? formatPhone(text(fields.phone)) : '', pis: text(fields.pis) ? formatPis(text(fields.pis)) : '',
       voterTitle: text(fields.voterTitle), voterZone: text(fields.voterZone), voterSection: text(fields.voterSection),
-      disability: text(fields.disability) === 'Sim', disabilityDetails: text(fields.disabilityDetails),
+      disability: text(fields.disability) === 'Sim', disabilityDetails: text(fields.disabilityDetails), registration: text(extra.registration),
     },
     address: {
       street: text(fields.street), number: text(fields.number), complement: text(fields.complement), district: text(fields.district),

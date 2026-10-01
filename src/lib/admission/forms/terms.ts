@@ -29,6 +29,8 @@ function fillHeader(page: PDFPage, layout: HeaderLayout, ctx: FormContext, fonts
 
 export type TermForm = {
   key: string; name: string; code: string; file: string
+  /** Versão interna do layout; permite atualizar um termo sem recriar todos os outros. */
+  version?: number
   /** Só gera para quem se aplica (ex.: termo PCD). */
   appliesTo?: (ctx: FormContext) => boolean
   fill: (pdf: PDFDocument, ctx: FormContext, fonts: Fonts) => Promise<void> | void
@@ -39,8 +41,35 @@ const simpleTerm = (key: string, name: string, code: string, file: string, layou
   fill: (pdf, ctx, fonts) => fillHeader(pdf.getPage(0), layout, ctx, fonts),
 })
 
+/** Cabeçalho dos novos formulários FP.RH: nome/CPF/matrícula e unidade/cargo/setor. */
+const institutionalHeader: Omit<HeaderLayout, 'data'> & { cpf: Cell; registration: Cell } = {
+  nome: { x: 48.05, top: 93.08, width: 244.83 },
+  cpf: { x: 304.15, top: 93.08, width: 116.37 },
+  registration: { x: 431.05, top: 93.08, width: 116.4 },
+  unidade: { x: 48.05, top: 126.87, width: 177.25 },
+  cargo: { x: 235.8, top: 126.87, width: 184.72 },
+  setor: { x: 431.05, top: 126.87, width: 116.4 },
+}
+
+function institutionalTerm(key: string, name: string, code: string, file: string, dateTop: number): TermForm {
+  return {
+    key, name, code, file, version: 11,
+    fill: (pdf, ctx, fonts) => {
+      const page = pdf.getPage(0)
+      const style = (cell: Cell) => ({ font: fonts.regular, size: 9, maxWidth: cell.width })
+      drawLine(page, ctx.person.name, institutionalHeader.nome.x, institutionalHeader.nome.top, style(institutionalHeader.nome))
+      drawLine(page, ctx.person.cpf, institutionalHeader.cpf.x, institutionalHeader.cpf.top, style(institutionalHeader.cpf))
+      drawLine(page, ctx.person.registration, institutionalHeader.registration.x, institutionalHeader.registration.top, style(institutionalHeader.registration))
+      drawLine(page, ctx.job.unit, institutionalHeader.unidade.x, institutionalHeader.unidade.top, style(institutionalHeader.unidade))
+      drawLine(page, ctx.job.title, institutionalHeader.cargo.x, institutionalHeader.cargo.top, style(institutionalHeader.cargo))
+      drawLine(page, ctx.job.department, institutionalHeader.setor.x, institutionalHeader.setor.top, style(institutionalHeader.setor))
+      drawLine(pdf.getPage(1), dmy(ctx.issuedAt), 48.05, dateTop, { font: fonts.regular, size: 10, maxWidth: 251.58 })
+    },
+  }
+}
+
 export const TERM_FORMS: TermForm[] = [
-  simpleTerm('termo_recursos_tecnologicos', 'Termo de Responsabilidade — Recursos de Tecnologia da Informação', 'FP.RH.01.004', 'FP.RH.01.004-termo-recursos-tecnologicos.pdf', header(96.6, 130.8, 766.6)),
+  institutionalTerm('termo_recursos_tecnologicos', 'Termo de Confidencialidade e Sigilo Profissional', 'FP.RH.01.004-01', 'FP.RH.01.004-termo-recursos-tecnologicos.pdf', 570.53),
   simpleTerm('termo_ciencia_ponto', 'Termo de Ciência — Controle de Ponto', 'FP.RH.01.006', 'FP.RH.01.006-termo-ciencia-ponto.pdf', header(100.3, 137.7, 779.6)),
   {
     key: 'termo_ciencia_atestados', name: 'Termo de Ciência — Apresentação e Comunicação de Atestados Médicos', code: 'FP.RH.01.007', file: 'FP.RH.01.007-termo-ciencia-atestados.pdf',
@@ -55,7 +84,9 @@ export const TERM_FORMS: TermForm[] = [
     },
   },
   simpleTerm('termo_uso_celular', 'Termo de Ciência e Compromisso de Conduta Profissional — Uso de Celular', 'FP.RH.01.008', 'FP.RH.01.008-termo-uso-celular.pdf', header(100.3, 137.7, 759.8)),
-  simpleTerm('termo_uso_imagem_voz', 'Termo de Uso de Imagem e Voz', 'FP.RH.01.011', 'FP.RH.01.011-termo-uso-imagem-voz.pdf', header(100.3, 137.7, 703.8)),
+  institutionalTerm('termo_uso_imagem_voz', 'Termo de Ciência e Adesão à Política de Uso de Imagem, Voz, Nome e Videomonitoramento', 'FP.RH.01.011-00', 'FP.RH.01.011-termo-uso-imagem-voz.pdf', 333.3),
+  institutionalTerm('termo_desconto_folha', 'Termo de Autorização de Desconto em Folha de Pagamento', 'FP.RH.01.015-00', 'FP.RH.01.015-termo-desconto-folha.pdf', 582.52),
+  institutionalTerm('termo_programa_imunizacao', 'Termo de Ciência e Adesão ao Programa de Imunização', 'FP.RH.01.016-00', 'FP.RH.01.016-termo-programa-imunizacao.pdf', 325.8),
   simpleTerm('termo_banco_horas', 'Termo de Ciência — Política de Banco de Horas', 'FP.RH.01.013', 'FP.RH.01.013-termo-banco-horas.pdf', header(131.5, 176.0, 715.8, [47.5, 239.4, 433.8], [368, 176, 180, 112])),
   {
     key: 'termo_vale_transporte', name: 'Opção do Vale-Transporte', code: 'FP.RH.04', file: 'FP.RH.04-opcao-vale-transporte.pdf',

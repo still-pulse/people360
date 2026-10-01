@@ -19,7 +19,7 @@ export const LAYOUT_VERSION = 10
 export const ADMISSION_LAYOUTS: AdmissionLayout[] = [
   { key: 'contrato_trabalho', name: 'Contrato de Experiência e Relatórios Admissionais', version: LAYOUT_VERSION, code: 'Contrato de Experiência', render: renderContract },
   ...TERM_FORMS.map((form): AdmissionLayout => ({
-    key: form.key, name: form.name, version: LAYOUT_VERSION, code: form.code, appliesTo: form.appliesTo,
+    key: form.key, name: form.name, version: form.version ?? LAYOUT_VERSION, code: form.code, appliesTo: form.appliesTo,
     render: (ctx) => renderTerm(form, ctx),
   })),
 ]
