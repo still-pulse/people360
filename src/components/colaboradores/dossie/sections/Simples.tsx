@@ -69,22 +69,43 @@ export function Exportacoes() {
   const { id, overview, previewPdf, toast } = useDossie()
   const [selected, setSelected] = useState<string[]>(overview.selecaoDossie.map((s) => s.id))
   const [busy, setBusy] = useState(false)
+  const [admissionBusy, setAdmissionBusy] = useState(false)
   const [error, setError] = useState('')
   const url = `/api/colaboradores/${id}/dossie/exportar`
   async function download() {
     setBusy(true); setError('')
-    try { const { blob, fileName } = await fetchPdf(url, { selecao: selected }, 'Dossie_Funcional.pdf'); saveBlob(blob, fileName); toast('success', 'Dossiê gerado.') }
+    try { const { blob, fileName } = await fetchPdf(url, { tipo: 'FUNCIONAL', selecao: selected }, 'Dossie_Funcional.pdf'); saveBlob(blob, fileName); toast('success', 'Dossiê gerado.') }
     catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  async function downloadAdmission() {
+    setAdmissionBusy(true); setError('')
+    try { const { blob, fileName } = await fetchPdf(url, { tipo: 'ADMISIONAL' }, 'Dossie_Admissional.pdf'); saveBlob(blob, fileName); toast('success', 'Dossiê admissional gerado.') }
+    catch (e) { setError(errorMessage(e)) } finally { setAdmissionBusy(false) }
   }
   return (
     <div className="space-y-4">
-      <SectionTitle title="Exportações" description="Gere o dossiê completo em um único PDF, com capa, índice, documentos em ordem cronológica e anexos." />
-      <Card className="p-5 space-y-4">
-        <SelecaoDossie selected={selected} onChange={setSelected} />
-        {error && <Notice tone="danger">{error}</Notice>}
+      <SectionTitle title="Exportações" description="Gere o dossiê admissional ou o dossiê funcional completo em um único PDF." />
+      {error && <Notice tone="danger">{error}</Notice>}
+      <Card className="p-5 space-y-4 border-[#15AFA4]/30 bg-[#15AFA4]/5">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Dossiê admissional</h3>
+          <p className="mt-1 text-sm text-gray-500">Capa e índice no padrão institucional, formulário admissional e documentos enviados pelo colaborador e aprovados pelo RH.</p>
+          {!overview.admissaoVinculada && <p className="mt-2 text-xs font-medium text-amber-700">Este colaborador não possui uma admissão digital vinculada.</p>}
+        </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" size="sm" icon={<FileSearch className="w-4 h-4" />} disabled={!selected.length} onClick={() => previewPdf('Pré-visualização do dossiê', () => fetchPdf(url, { selecao: selected, preview: true }, 'Dossie_Funcional.pdf'))}>Visualizar PDF</Button>
-          <Button size="sm" icon={<FileDown className="w-4 h-4" />} isLoading={busy} disabled={!selected.length} onClick={download}>Gerar PDF</Button>
+          <Button variant="outline" size="sm" icon={<FileSearch className="w-4 h-4" />} disabled={!overview.admissaoVinculada || admissionBusy} onClick={() => previewPdf('Pré-visualização do dossiê admissional', () => fetchPdf(url, { tipo: 'ADMISIONAL', preview: true }, 'Dossie_Admissional.pdf'))}>Visualizar PDF</Button>
+          <Button size="sm" icon={<FileDown className="w-4 h-4" />} isLoading={admissionBusy} disabled={!overview.admissaoVinculada || busy} onClick={downloadAdmission}>Gerar admissional</Button>
+        </div>
+      </Card>
+      <Card className="p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Dossiê funcional (geral)</h3>
+          <p className="mt-1 text-sm text-gray-500">Escolha as seções, documentos e anexos que farão parte do dossiê geral.</p>
+        </div>
+        <SelecaoDossie selected={selected} onChange={setSelected} />
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" icon={<FileSearch className="w-4 h-4" />} disabled={!selected.length || admissionBusy} onClick={() => previewPdf('Pré-visualização do dossiê funcional', () => fetchPdf(url, { tipo: 'FUNCIONAL', selecao: selected, preview: true }, 'Dossie_Funcional.pdf'))}>Visualizar geral</Button>
+          <Button size="sm" icon={<FileDown className="w-4 h-4" />} isLoading={busy} disabled={!selected.length || admissionBusy} onClick={download}>Gerar geral</Button>
         </div>
       </Card>
       <p className="text-xs text-gray-400">Cada exportação é registrada na auditoria (quem gerou/baixou e quando).</p>

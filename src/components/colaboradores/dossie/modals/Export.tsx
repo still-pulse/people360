@@ -34,6 +34,7 @@ export function ExportModal({ open, onClose }: { open: boolean; onClose: () => v
   const { id, overview, previewPdf, toast } = useDossie()
   const [selected, setSelected] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [admissionBusy, setAdmissionBusy] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => { if (open) { setSelected(overview.selecaoDossie.map((s) => s.id)); setError('') } }, [open, overview.selecaoDossie])
@@ -42,9 +43,17 @@ export function ExportModal({ open, onClose }: { open: boolean; onClose: () => v
   async function download() {
     setBusy(true); setError('')
     try {
-      const { blob, fileName } = await fetchPdf(url, { selecao: selected }, 'Dossie_Funcional.pdf')
+      const { blob, fileName } = await fetchPdf(url, { tipo: 'FUNCIONAL', selecao: selected }, 'Dossie_Funcional.pdf')
       saveBlob(blob, fileName); toast('success', 'Dossiê gerado.'); onClose()
     } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+
+  async function downloadAdmission() {
+    setAdmissionBusy(true); setError('')
+    try {
+      const { blob, fileName } = await fetchPdf(url, { tipo: 'ADMISIONAL' }, 'Dossie_Admissional.pdf')
+      saveBlob(blob, fileName); toast('success', 'Dossiê admissional gerado.'); onClose()
+    } catch (e) { setError(errorMessage(e)) } finally { setAdmissionBusy(false) }
   }
 
   async function sendToErpnext() {
@@ -56,16 +65,32 @@ export function ExportModal({ open, onClose }: { open: boolean; onClose: () => v
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Gerar Dossiê do Colaborador" size="lg">
-      <div className="p-5 space-y-4">
-        <p className="text-sm text-gray-500">Selecione os documentos que deverão compor o dossiê.</p>
-        <SelecaoDossie selected={selected} onChange={setSelected} />
+    <Modal open={open} onClose={onClose} title="Gerar dossiê do colaborador" size="lg">
+      <div className="p-5 space-y-5">
+        <section className="rounded-2xl border border-[#15AFA4]/30 bg-[#15AFA4]/5 p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Dossiê admissional</h3>
+            <p className="mt-1 text-sm text-gray-500">Capa e índice no padrão institucional, seguidos do formulário admissional e dos documentos enviados pelo colaborador e aprovados pelo RH.</p>
+            {!overview.admissaoVinculada && <p className="mt-2 text-xs font-medium text-amber-700">Este colaborador não possui uma admissão digital vinculada.</p>}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={!overview.admissaoVinculada || admissionBusy} onClick={() => { onClose(); previewPdf('Pré-visualização do dossiê admissional', () => fetchPdf(url, { tipo: 'ADMISIONAL', preview: true }, 'Dossie_Admissional.pdf')) }}>Visualizar PDF</Button>
+            <Button size="sm" isLoading={admissionBusy} disabled={!overview.admissaoVinculada || busy || sending} onClick={downloadAdmission}>Gerar admissional</Button>
+          </div>
+        </section>
+        <div className="border-t border-gray-100 pt-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Dossiê funcional (geral)</h3>
+            <p className="mt-1 text-sm text-gray-500">Selecione os documentos que deverão compor o dossiê geral.</p>
+          </div>
+          <SelecaoDossie selected={selected} onChange={setSelected} />
+        </div>
         {error && <Notice tone="danger">{error}</Notice>}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button variant="outline" size="sm" disabled={!selected.length || busy} onClick={() => { onClose(); previewPdf('Pré-visualização do dossiê', () => fetchPdf(url, { selecao: selected, preview: true }, 'Dossie_Funcional.pdf')) }}>Visualizar PDF</Button>
-          <Button variant="outline" size="sm" isLoading={sending} disabled={busy} onClick={sendToErpnext} title="Gera o dossiê completo (todos os itens e documentos) e envia ao ERPNext">Enviar completo ao ERPNext</Button>
-          <Button size="sm" isLoading={busy} disabled={!selected.length || sending} onClick={download}>Gerar PDF</Button>
+          <Button variant="outline" size="sm" disabled={!selected.length || busy || admissionBusy} onClick={() => { onClose(); previewPdf('Pré-visualização do dossiê funcional', () => fetchPdf(url, { tipo: 'FUNCIONAL', selecao: selected, preview: true }, 'Dossie_Funcional.pdf')) }}>Visualizar geral</Button>
+          <Button variant="outline" size="sm" isLoading={sending} disabled={busy || admissionBusy} onClick={sendToErpnext} title="Gera o dossiê completo (todos os itens e documentos) e envia ao ERPNext">Enviar completo ao ERPNext</Button>
+          <Button size="sm" isLoading={busy} disabled={!selected.length || sending || admissionBusy} onClick={download}>Gerar geral</Button>
         </div>
       </div>
     </Modal>
