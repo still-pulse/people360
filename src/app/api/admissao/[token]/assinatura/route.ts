@@ -10,6 +10,7 @@ import { detectMime, savePrivateAdmissionFile } from '@/lib/admission/storage'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
+import { isDocumentResolved } from '@/lib/admission/documentStatus'
 
 function numberField(form: FormData, key: string) {
   const value = Number(form.get(key))
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   if (latitude == null || longitude == null || accuracy == null || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || accuracy < 0) {
     return NextResponse.json({ error: 'Não foi possível validar a localização do dispositivo.' }, { status: 400 })
   }
-  if (token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')) {
+  if (token.admission.documents.some((document) => document.type.required && !isDocumentResolved(document.status))) {
     return NextResponse.json({ error: 'Ainda existem documentos obrigatórios pendentes.' }, { status: 409 })
   }
   if (isFaceVerificationEnabled() && token.admission.faceVerifications[0]?.status !== 'APPROVED') {

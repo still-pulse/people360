@@ -6,6 +6,7 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
+import { isDocumentResolved } from '@/lib/admission/documentStatus'
 
 export async function GET(_: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params;
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   const file = (await req.formData()).get('file');if (!(file instanceof File)) return NextResponse.json({ error: 'Capture ou selecione a foto.' }, { status: 400 })
   let saved;try { saved = await savePrivateAdmissionFile(token.admissionId, 'badge-photo', file) } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Foto inválida.' }, { status: 400 }) }
   if (!saved.mimeType.startsWith('image/')) return NextResponse.json({ error: 'Envie uma imagem JPG ou PNG.' }, { status: 400 })
-  const requiredPending = token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')
+  const requiredPending = token.admission.documents.some((document) => document.type.required && !isDocumentResolved(document.status))
   const faceVerificationEnabled = isFaceVerificationEnabled()
   // Na admissão a foto do crachá passa pela aprovação do RH antes de o candidato seguir.
   const isAdmission = token.admission.processType !== 'REGISTRATION_UPDATE'

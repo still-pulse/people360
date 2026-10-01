@@ -13,6 +13,8 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 import { usesExternalSignature } from '@/lib/admission/providers'
 import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
+import { isDocumentResolved } from '@/lib/admission/documentStatus'
+import { reconcileAdmissionDocumentApplicability } from '@/lib/admission/documentApplicability'
 
 const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), fields: z.record(z.union([z.string().max(500), z.boolean(), z.number(), z.null()])), nextStep: z.string().max(40).optional(), validate: z.boolean().optional().default(false) })
 
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const a = result.admission
   const faceVerificationEnabled = isFaceVerificationEnabled()
-  const requiredPending = a.documents.some((document) => document.type.required && document.status !== 'APPROVED')
+  const requiredPending = a.documents.some((document) => document.type.required && !isDocumentResolved(document.status))
   const resumeStep = a.processType === 'REGISTRATION_UPDATE' ? (a.status === 'DOCUMENTS_UNDER_REVIEW' || a.status === 'COMPLETED' || (!faceVerificationEnabled && (a.status === 'FACE_VALIDATION_PENDING' || a.currentStep === 'validacao-facial')) ? 'conclusao' : (a.currentStep || 'inicio'))
     : a.signatureEnvelopes.some((envelope) => envelope.status === 'SIGNED') ? 'conclusao'
     : a.generatedDocuments.length ? 'assinatura'
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
     features: { faceVerification: faceVerificationEnabled, signatureProvider: usesExternalSignature() ? 'autentique' : 'local', contractOnHold: a.processType === 'ADMISSION' && await isContractOnHold(a.unitId) },
     locked: { jobTitle: a.jobTitle, department: a.department, unit: a.unit.name, hireDate: a.hireDate, contractType: a.contractType, workSchedule: a.workSchedule },
     fields: Object.fromEntries(a.fields.map((f) => [f.key, f.sensitive ? decryptAdmissionValue(f.value) : f.value])), dependents: a.dependents, transport: a.transport,
-    documents: a.documents.map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),
+    documents: a.documents.filter((d) => d.status !== 'NOT_APPLICABLE').map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),
     badgePhoto: a.badgePhotos[0]?.confirmedAt ? { confirmedAt: a.badgePhotos[0].confirmedAt, approvedAt: a.badgePhotos[0].approvedAt } : null,
     badgeRejection: !a.badgePhotos[0]?.confirmedAt ? a.badgePhotos[0]?.rejectionReason ?? null : null,
     faceVerification: a.faceVerifications[0] ? { status: a.faceVerifications[0].status, attempts: a.faceVerifications[0].attempts } : null,
@@ -67,7 +69,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ token: 
   if (!limited(req, params.token).allowed) return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 })
   const body = await req.json().catch(() => null)
   if (body?.completeUpdate === true && result.admission.processType === 'REGISTRATION_UPDATE') {
-    const missingDocuments = result.admission.documents.filter((document) => !document.uploadedAt)
+    const missingDocuments = result.admission.documents.filter((document) => !document.uploadedAt && !isDocumentResolved(document.status))
     if (missingDocuments.length) return NextResponse.json({ error: `Envie os ${missingDocuments.length} documento(s) solicitado(s) antes de concluir.` }, { status: 400 })
     await prisma.admission.update({ where: { id: result.admissionId }, data: { status: 'DOCUMENTS_UNDER_REVIEW', currentStep: 'conclusao', progress: 100, lastActivityAt: new Date() } })
     await logAdmissionEvent({ admissionId: result.admissionId, actorName: result.admission.candidateName, actorType: 'CANDIDATE', action: 'REGISTRATION_UPDATE_SUBMITTED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') })
@@ -95,6 +97,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ token: 
     ...entries.map(([key, value]) => { const sensitive = SENSITIVE_FIELD_KEYS.has(key); const stored = sensitive ? encryptAdmissionValue(value) : value; const searchHash = key === 'cpf' && typeof value === 'string' && value.replace(/\D/g, '').length === 11 ? hashSensitive(value) : null; return prisma.admissionField.upsert({ where: { admissionId_key: { admissionId: result.admissionId, key } }, create: { admissionId: result.admissionId, section: parsed.data.section, key, value: stored as Prisma.InputJsonValue, sensitive, searchHash }, update: { section: parsed.data.section, value: stored as Prisma.InputJsonValue, sensitive, searchHash } }) }),
     prisma.admission.update({ where: { id: result.admissionId }, data: { status: result.admission.status === 'LINK_SENT' ? 'IN_PROGRESS' : undefined, currentStep: parsed.data.nextStep || result.admission.currentStep, progress: Math.max(result.admission.progress, parsed.data.section === 'personal' ? 18 : parsed.data.section === 'address' ? 24 : 28), lastActivityAt: new Date() } }),
   ])
+  if (parsed.data.section === 'personal') await reconcileAdmissionDocumentApplicability(result.admissionId)
   await logAdmissionEvent({ admissionId: result.admissionId, actorName: result.admission.candidateName, actorType: 'CANDIDATE', action: 'AUTOSAVE', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { section: parsed.data.section, fieldCount: entries.length } })
   return NextResponse.json({ success: true, savedAt: new Date() })
 }

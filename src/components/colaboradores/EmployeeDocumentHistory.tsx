@@ -11,7 +11,7 @@ import { fmtDateTime, inputCls, Notice } from './dossie/parts'
 import type { HistoryDocument } from '@/lib/dossie/documentHistory'
 
 const STATUS: Record<string, string> = {
-  PROCESSING: 'Em processamento', RESUBMISSION_REQUIRED: 'Reenvio solicitado', EXPIRED: 'Expirado', DELETED: 'Removido', PENDING: 'Pendente', UPLOADED: 'Enviado', UNDER_REVIEW: 'Em análise', APPROVED: 'Aprovado', REJECTED: 'Rejeitado',
+  PROCESSING: 'Em processamento', RESUBMISSION_REQUIRED: 'Reenvio solicitado', EXPIRED: 'Expirado', DELETED: 'Removido', PENDING: 'Pendente', UPLOADED: 'Enviado', UNDER_REVIEW: 'Em análise', APPROVED: 'Aprovado', NOT_APPLICABLE: 'Não se aplica', REJECTED: 'Rejeitado',
   WAIVED: 'Dispensado', DRAFT: 'Rascunho', GENERATED: 'Gerado', SENT: 'Enviado', SIGNED: 'Assinado', ORIGINAL: 'Original sem assinatura',
   VOIDED: 'Cancelado', CANCELLED: 'Cancelado', RASCUNHO: 'Rascunho', GERADO: 'Gerado', AGUARDANDO_ASSINATURA: 'Aguardando assinatura',
   ASSINADO: 'Assinado', VIGENTE: 'Vigente', FINALIZADO: 'Finalizado', CANCELADO: 'Cancelado',

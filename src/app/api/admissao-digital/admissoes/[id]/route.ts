@@ -18,6 +18,8 @@ import { savePerfil } from '@/lib/dossie/perfil'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 import { collaboratorForAdmission, linkAdmissionCollaborator } from '@/lib/admission/collaboratorLink'
 import { cancelExternalSignature, latestExternalSignature, syncExternalSignature } from '@/lib/admission/externalSignature'
+import { isDocumentResolved } from '@/lib/admission/documentStatus'
+import { reconcileAdmissionDocumentApplicability } from '@/lib/admission/documentApplicability'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -34,9 +36,10 @@ const include = {
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { session, error } = await getSessionOrUnauthorized();if (error) return error
-  const item = await prisma.admission.findUnique({ where: { id: params.id }, include })
+  let item = await prisma.admission.findUnique({ where: { id: params.id }, include })
   if (!item) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!canAccessAdmission(session!, item)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
+  if (await reconcileAdmissionDocumentApplicability(params.id)) item = (await prisma.admission.findUnique({ where: { id: params.id }, include }))!
   const canViewSensitiveData = ['ADMIN', 'ANALYST'].includes(session!.user.actualRole ?? session!.user.role)
   // Colaborador do People360 criado a partir desta admissão (para o link do dossiê).
   const collaborator = item.processType === 'ADMISSION' ? await collaboratorForAdmission(item.id) : null
@@ -107,8 +110,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     if (!['DOCUMENTS_UNDER_REVIEW', 'DOCUMENTS_APPROVED'].includes(current.status)) return NextResponse.json({ error: 'A atualização ainda não foi enviada para revisão.' }, { status: 409 })
     const process = await prisma.admission.findUnique({ where: { id: current.id }, include: { fields: true, documents: true, collaborator: true } })
     if (!process?.collaborator) return NextResponse.json({ error: 'Colaborador vinculado não encontrado.' }, { status: 404 })
-    const pendingDocuments = process.documents.filter(document => document.status !== 'APPROVED')
-    if (pendingDocuments.length) return NextResponse.json({ error: `Ainda existem ${pendingDocuments.length} documento(s) sem aprovação.` }, { status: 409 })
+    const pendingDocuments = process.documents.filter(document => !isDocumentResolved(document.status))
+    if (pendingDocuments.length) return NextResponse.json({ error: `Ainda existem ${pendingDocuments.length} documento(s) não liberado(s).` }, { status: 409 })
     const values = Object.fromEntries(process.fields.map(field => [field.key, field.sensitive ? decryptAdmissionValue(field.value) : field.value]))
     const erpData: Record<string, unknown> = {}
     const erpMap: Record<string, string> = { name: 'employee_name', email: 'personal_email', phone: 'cell_number', birthDate: 'date_of_birth', gender: 'gender', cpf: 'custom_cpf', rg: 'custom_rg', ethnicity: 'custom_etnia', birthCity: 'custom_naturalidade_cidade' }
@@ -169,7 +172,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para aprovar a foto.' }, { status: 403 })
     const photo = await prisma.badgePhoto.findFirst({ where: { admissionId: current.id, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' } })
     if (!photo) return NextResponse.json({ error: 'Nenhuma foto do crachá enviada.' }, { status: 404 })
-    const requiredPending = await prisma.admissionDocument.count({ where: { admissionId: current.id, type: { required: true }, status: { not: 'APPROVED' } } })
+    const requiredPending = await prisma.admissionDocument.count({ where: { admissionId: current.id, type: { required: true }, status: { notIn: ['APPROVED', 'NOT_APPLICABLE'] } } })
     const faceVerificationEnabled = isFaceVerificationEnabled()
     const advance = current.processType === 'ADMISSION' && current.currentStep === 'foto' && requiredPending === 0
     await prisma.$transaction([

@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma'
 import { syncDocumentCatalog } from './documentCatalog'
 import { generateAdmissionToken, hashToken, makeProtocol } from './security'
 import { isFaceVerificationEnabled } from './features'
+import { isDocumentApplicableToPosition } from './documentRules'
+import { reconcileAdmissionDocumentApplicability } from './documentApplicability'
 
 export async function ensureAdmissionDocumentTypes() {
   await syncDocumentCatalog()
@@ -26,7 +28,7 @@ export async function createAdditionalAdmissionToken(admissionId: string, validi
 }
 
 export async function getAdmissionByPublicToken(rawToken: string, touch = false) {
-  const token = await prisma.admissionToken.findUnique({
+  const findToken = () => prisma.admissionToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },
     include: { admission: { include: {
       unit: { select: { id: true, name: true } }, fields: true, dependents: true,
@@ -38,7 +40,10 @@ export async function getAdmissionByPublicToken(rawToken: string, touch = false)
       signatureEnvelopes: { orderBy: { createdAt: 'desc' } },
     } } },
   })
+  let token = await findToken()
   if (!token || token.revokedAt || token.expiresAt <= new Date() || ['CANCELLED', 'EXPIRED'].includes(token.admission.status)) return null
+  if (await reconcileAdmissionDocumentApplicability(token.admissionId)) token = await findToken()
+  if (!token) return null
   if (touch) await prisma.admissionToken.update({ where: { id: token.id }, data: { lastUsedAt: new Date(), firstUsedAt: token.firstUsedAt ?? new Date() } })
   return token
 }
@@ -71,7 +76,8 @@ export async function createAdmissionRecord(input: {
   const requested = input.documentTypeIds !== undefined
     ? types.filter((type) => selectedIds.has(type.id))
     : types.filter((type) => type.required || type.defaultSelected)
-  if (!requested.length && !input.allowNoDocuments) throw new Error('Selecione ao menos um documento a solicitar.')
+  const applicable = requested.filter((type) => isDocumentApplicableToPosition(type.key, input.jobTitle))
+  if (!applicable.length && !input.allowNoDocuments) throw new Error('Selecione ao menos um documento aplicável a esta admissão.')
   const generated = generateAdmissionToken()
   const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, input.validityDays ?? 7)) * 86400000)
   const admission = await prisma.admission.create({ data: {
@@ -84,7 +90,7 @@ export async function createAdmissionRecord(input: {
     breakSchedule: input.breakSchedule, weeklyHours: input.weeklyHours, monthlyHours: input.monthlyHours, contractType: input.contractType,
     experienceDays: input.experienceDays, contractEndDate: input.contractEndDate, status: 'LINK_SENT',
     tokens: { create: { tokenHash: generated.hash, tokenHint: generated.hint, expiresAt } },
-    documents: { create: requested.map((type) => ({ typeId: type.id })) },
+    documents: { create: applicable.map((type) => ({ typeId: type.id })) },
     ...(isFaceVerificationEnabled() ? { faceVerifications: { create: { provider: process.env.FACE_VERIFICATION_PROVIDER || 'mock' } } } : {}),
   }, include: { unit: true, owner: { select: { id: true, name: true } } } })
   return { admission, token: generated.token, expiresAt }

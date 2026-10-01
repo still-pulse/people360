@@ -10,6 +10,7 @@ import { checkPublicDocLinkRateLimit } from '@/lib/rateLimit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { renderPdfFirstPageAsJpeg } from '@/lib/admission/pdfImage'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
+import { isDocumentResolved } from '@/lib/admission/documentStatus'
 
 const imageMimeTypes = new Set(['image/jpeg', 'image/png'])
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   const badgePhoto = token.admission.badgePhotos[0]
   if (!badgePhoto?.confirmedAt) return NextResponse.json({ error: 'Confirme primeiro a foto para o crachá.' }, { status: 409 })
-  if (token.admission.documents.some((document) => document.type.required && document.status !== 'APPROVED')) {
+  if (token.admission.documents.some((document) => document.type.required && !isDocumentResolved(document.status))) {
     return NextResponse.json({ error: 'Aguarde a aprovação dos documentos obrigatórios pelo RH.' }, { status: 409 })
   }
 

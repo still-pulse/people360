@@ -1,0 +1,1 @@
+ALTER TYPE "AdmissionDocumentStatus" ADD VALUE 'NOT_APPLICABLE';

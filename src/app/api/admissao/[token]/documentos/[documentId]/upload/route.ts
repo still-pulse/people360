@@ -13,6 +13,7 @@ export async function POST(
   const params = await props.params;
   const token = await getMutableAdmissionByPublicToken(params.token);if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   const doc = token.admission.documents.find((d) => d.id === params.documentId);if (!doc) return NextResponse.json({ error: 'Documento não pertence a esta admissão.' }, { status: 404 })
+  if (doc.status === 'NOT_APPLICABLE') return NextResponse.json({ error: 'Este documento foi dispensado pelo RH e não precisa ser enviado.' }, { status: 409 })
   const file = (await req.formData()).get('file');if (!(file instanceof File)) return NextResponse.json({ error: 'Selecione um arquivo.' }, { status: 400 })
   if (file.size > doc.type.maxSizeBytes) return NextResponse.json({ error: `O limite é ${Math.round(doc.type.maxSizeBytes / 1048576)} MB.` }, { status: 400 })
   let saved

@@ -48,9 +48,9 @@ describe('catálogo de documentos da admissão', () => {
     expect(keys).not.toContain('foto_3x4')
     expect(keys).not.toContain('certidao')
   })
-  it('inclui os documentos pedidos e marca como opcionais os dos filhos e o militar', () => {
+  it('inclui os documentos pedidos e exige os condicionais somente quando aplicáveis', () => {
     for (const key of ['carteira_vacinacao', 'certidao_nascimento', 'certificado_militar', 'comprovante_escolaridade', 'rg_cpf_filhos', 'certidao_nascimento_filhos', 'coren_carteirinha', 'conta_banco_brasil']) expect(keys).toContain(key)
-    for (const key of ['certificado_militar', 'rg_cpf_filhos', 'certidao_nascimento_filhos']) expect(DOCUMENT_CATALOG.find((d) => d.key === key)?.required).toBe(false)
+    for (const key of ['certificado_militar', 'rg_cpf_filhos', 'certidao_nascimento_filhos']) expect(DOCUMENT_CATALOG.find((d) => d.key === key)?.required).toBe(true)
   })
 })
 

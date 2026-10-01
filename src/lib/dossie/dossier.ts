@@ -79,7 +79,7 @@ async function loadAttachments(sources: AttachmentSource[]): Promise<Attachment[
 }
 
 const SITUACAO: Record<string, string> = {
-  APPROVED: 'Aprovado', REJECTED: 'Reprovado', RESUBMISSION_REQUIRED: 'Reenvio solicitado', UPLOADED: 'Em análise', UNDER_REVIEW: 'Em análise',
+  APPROVED: 'Aprovado', NOT_APPLICABLE: 'Não se aplica', REJECTED: 'Reprovado', RESUBMISSION_REQUIRED: 'Reenvio solicitado', UPLOADED: 'Em análise', UNDER_REVIEW: 'Em análise',
   PROCESSING: 'Em análise', SIGNED: 'Assinado', GENERATED: 'Gerado', VIGENTE: 'Vigente', ASSINADO: 'Assinado',
 }
 
