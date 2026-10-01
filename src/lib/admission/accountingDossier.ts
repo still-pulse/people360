@@ -57,7 +57,8 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
     include: {
       unit: { select: { name: true } },
       documents: { include: { type: { select: { name: true, position: true } } }, orderBy: [{ type: { position: 'asc' } }, { createdAt: 'asc' }] },
-      generatedDocuments: { where: { status: { not: 'CANCELLED' }, storagePath: { not: null } }, include: { template: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
+      // Contabilidade recebe só o formulário admissional; contrato e termos ficam de fora.
+      generatedDocuments: { where: { status: { not: 'CANCELLED' }, storagePath: { not: null }, template: { key: 'ficha_registro' } }, include: { template: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
     },
   })
   if (!admission) throw new Error('Admissão não encontrada.')
@@ -66,7 +67,7 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
   if (pending.length) throw new Error(`Ainda existem ${pending.length} documento(s) sem aprovação do RH.`)
 
   const inputs = [
-    ...admission.generatedDocuments.flatMap((document) => document.storagePath ? [{ title: document.template.name, section: 'Documentos admissionais para conferência', storagePath: document.storagePath, mime: 'application/pdf' }] : []),
+    ...admission.generatedDocuments.flatMap((document) => document.storagePath ? [{ title: document.template.name, section: 'Formulário admissional', storagePath: document.storagePath, mime: 'application/pdf' }] : []),
     ...admission.documents.flatMap((document) => document.status === 'APPROVED' && document.storagePath ? [{ title: document.type.name, section: 'Documentos enviados e aprovados', storagePath: document.storagePath, mime: document.mimeType }] : []),
   ]
   if (!inputs.length) throw new Error('Nenhum documento disponível para compor o dossiê.')
