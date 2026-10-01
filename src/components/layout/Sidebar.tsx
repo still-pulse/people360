@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Calendar, KanbanSquare, Users, BarChart3,
   Building2, Settings, ChevronRight, FileBarChart, UserPlus, Headphones, FileCheck, ClipboardList,
-  ClipboardCheck, Brain, UserCheck, Contact, UserCog,
+  ClipboardCheck, Brain, UserCheck, Contact, UserCog, BadgeCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/components/providers/SettingsProvider'
@@ -63,6 +63,12 @@ const navItems: NavItem[] = [
     label: 'Colaboradores',
     icon: Contact,
     allowedRoles: ['ADMIN', 'ANALYST', 'SUPERINTENDENT', 'GERENTE'],
+  },
+  {
+    href: '/crachas',
+    label: 'Crachás',
+    icon: BadgeCheck,
+    allowedRoles: ['ADMIN', 'ANALYST'],
   },
   {
     href: '/vagas',
@@ -201,7 +207,8 @@ export function Sidebar() {
       {/* Navegação */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 scrollbar-thin space-y-0.5">
         {navItems.map((item) => {
-          if (item.allowedRoles && !item.allowedRoles.includes(role)) return null
+          const roleForItem = item.href === '/crachas' ? actualRole : role
+          if (item.allowedRoles && !item.allowedRoles.includes(roleForItem)) return null
 
           const hasChildren = !!item.children?.length
           const Icon = item.icon

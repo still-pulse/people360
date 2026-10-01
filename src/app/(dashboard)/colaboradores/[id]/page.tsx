@@ -13,6 +13,7 @@ import {
 import { cn, formatDate } from '@/lib/utils'
 import { EmployeeDocumentHistory } from '@/components/colaboradores/EmployeeDocumentHistory'
 import { DossieTab } from '@/components/colaboradores/dossie/DossieTab'
+import { BadgeProfileCard } from '@/components/badges/BadgeManager'
 
 interface ColaboradorDetail {
   id: string
@@ -241,6 +242,8 @@ export default function ColaboradorDetailPage() {
             </Card>
 
             {canDossie && <EmployeeDocumentHistory employeeId={data.id} />}
+
+            {canDossie && <BadgeProfileCard employeeId={data.id} employeeName={data.employeeName} />}
 
             {data.syncedAt && (
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
