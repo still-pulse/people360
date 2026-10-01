@@ -94,7 +94,6 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
     cover.drawText(pdfSafe(label.toUpperCase()), { x: 52, y, size: 8, font: bold, color: muted })
     cover.drawText(pdfSafe(value), { x: 52, y: y - 17, size: 12, font: regular, color: dark, maxWidth: 490 })
   })
-  cover.drawText(pdfSafe('Documento gerado para conferência interna. Esta etapa não envia dados ao ERPNext.'), { x: 52, y: 80, size: 9, font: regular, color: muted })
 
   const rowsPerIndexPage = 32
   const indexPages = Math.max(1, Math.ceil(items.length / rowsPerIndexPage))
