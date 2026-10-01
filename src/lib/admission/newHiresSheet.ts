@@ -130,7 +130,7 @@ export async function buildNewHiresWorkbook(hires: NewHire[], meta: Meta) {
   const main = workbook.addWorksheet('Novos colaboradores')
   pageSetup(main, 'Novos colaboradores')
   table(main, NEW_HIRE_COLUMNS, hires)
-  brandHeader(workbook, main, NEW_HIRE_COLUMNS.length, 'Novos colaboradores', 'Admissões com a documentação aprovada pelo RH — dados completos para a contabilidade', meta)
+  brandHeader(workbook, main, NEW_HIRE_COLUMNS.length, 'Novos colaboradores', '', meta)
   kpis(main, [
     ['Colaboradores', hires.length],
     ['Unidades', new Set(hires.map((hire) => hire.unit)).size],
