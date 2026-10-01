@@ -32,16 +32,11 @@ Backup */
 # IDE / configs locais
 .idea/
 .vscode/
-.claude/
 *.code-workspace
 
-# documentação interna/local (README.md permanece público)
-/ADMISSION_DIGITAL.md
-/DEPLOY.md
-/DISCOVERY_JOB_REQUISITION_PEOPLE360.md
-/api-treinamentos.md
-/REVISAO_CODEX.md
-/CLAUDE.md
+# política exclusivamente local (nunca versionar)
+/.local-repository-policy.txt
+/.local-hooks/
 
 # debug
 npm-debug.log*
