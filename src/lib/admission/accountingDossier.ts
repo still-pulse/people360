@@ -3,7 +3,7 @@ import { fileSlug } from '@/lib/dossie/format'
 import { admissionDossierSources, renderAdmissionDossier } from '@/lib/dossie/dossier'
 import { loadAdmissionBadgePhoto } from '@/lib/dossie/photo'
 import { generateAdmissionDocuments } from './documentGenerator'
-import { isDocumentResolved } from './documentStatus'
+import { pendingRequiredDocuments } from './documentStatus'
 import { decryptAdmissionValue } from './security'
 
 export const ACCOUNTING_DOSSIER_GENERATED = 'ACCOUNTING_DOSSIER_GENERATED'
@@ -43,13 +43,13 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
       collaborator: { select: { matricula: true } },
       erpnextSyncs: { orderBy: { createdAt: 'desc' }, take: 1, select: { employeeCode: true } },
       fields: { where: { key: 'matricula' }, select: { value: true, sensitive: true }, take: 1 },
-      documents: { select: { status: true } },
+      documents: { select: { status: true, type: { select: { required: true } } } },
     },
   })
   if (!admission) throw new Error('Admissão não encontrada.')
   if (admission.processType !== 'ADMISSION') throw new Error('O dossiê para contabilidade está disponível somente para admissões.')
-  const pending = admission.documents.filter((document) => !isDocumentResolved(document.status))
-  if (pending.length) throw new Error(`Ainda existem ${pending.length} documento(s) sem aprovação do RH.`)
+  const pending = pendingRequiredDocuments(admission.documents)
+  if (pending.length) throw new Error(`Ainda existem ${pending.length} documento(s) obrigatório(s) sem aprovação do RH.`)
 
   const field = admission.fields[0]
   const fieldValue = field ? (field.sensitive ? decryptAdmissionValue(field.value) : field.value) : null

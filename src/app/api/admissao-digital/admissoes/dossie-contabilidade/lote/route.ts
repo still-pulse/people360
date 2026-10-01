@@ -4,7 +4,7 @@ import { canAccessAdmission, enforceUnitFilter, forbidIfReadOnly, getSessionOrUn
 import { extractIp } from '@/lib/audit'
 import { ACCOUNTING_DOSSIER_GENERATED, buildAccountingAdmissionDossier } from '@/lib/admission/accountingDossier'
 import { logAdmissionEvent } from '@/lib/admission/audit'
-import { isDocumentResolved } from '@/lib/admission/documentStatus'
+import { pendingRequiredDocuments } from '@/lib/admission/documentStatus'
 import { safeBadgeArchiveName } from '@/lib/badges/batch'
 import { allowRequest } from '@/lib/dossie/http'
 import { compressPdf } from '@/lib/pdfCompress'
@@ -39,10 +39,10 @@ export async function POST(req: NextRequest) {
 
   const admissions = await prisma.admission.findMany({
     where, orderBy: { candidateName: 'asc' },
-    select: { id: true, protocol: true, candidateName: true, unitId: true, ownerId: true, analysts: { select: { id: true } }, documents: { select: { status: true } } },
+    select: { id: true, protocol: true, candidateName: true, unitId: true, ownerId: true, analysts: { select: { id: true } }, documents: { select: { status: true, type: { select: { required: true } } } } },
   })
   const eligible = admissions.filter((admission) => canAccessAdmission(session!, admission)
-    && admission.documents.length > 0 && admission.documents.every((document) => isDocumentResolved(document.status)))
+    && admission.documents.length > 0 && !pendingRequiredDocuments(admission.documents).length)
   if (!eligible.length) return NextResponse.json({ error: 'Nenhuma admissão com todos os documentos aprovados foi encontrada.' }, { status: 404 })
   if (eligible.length > MAX_BATCH) {
     return NextResponse.json({ error: `O lote tem ${eligible.length} admissões. Selecione no máximo ${MAX_BATCH} ou filtre por unidade.` }, { status: 413 })

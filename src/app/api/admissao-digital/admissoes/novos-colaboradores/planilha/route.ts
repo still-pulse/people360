@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { canAccessAdmission, enforceUnitFilter, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { extractIp } from '@/lib/audit'
 import { logAdmissionEvent } from '@/lib/admission/audit'
-import { isDocumentResolved } from '@/lib/admission/documentStatus'
+import { pendingRequiredDocuments } from '@/lib/admission/documentStatus'
 import { buildNewHiresWorkbook, type NewHire } from '@/lib/admission/newHiresSheet'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 import { allowRequest } from '@/lib/dossie/http'
@@ -34,14 +34,14 @@ export async function POST(req: NextRequest) {
     where, orderBy: { candidateName: 'asc' },
     include: {
       unit: { select: { name: true } }, analysts: { select: { id: true } },
-      documents: { select: { status: true } },
+      documents: { select: { status: true, type: { select: { required: true } } } },
       fields: { select: { key: true, value: true, sensitive: true } },
       dependents: { orderBy: { birthDate: 'asc' } },
       transport: { include: { routes: { orderBy: { position: 'asc' } } } },
     },
   })
   const eligible = admissions.filter((admission) => canAccessAdmission(session!, admission)
-    && admission.documents.length > 0 && admission.documents.every((document) => isDocumentResolved(document.status)))
+    && admission.documents.length > 0 && !pendingRequiredDocuments(admission.documents).length)
   if (!eligible.length) return NextResponse.json({ error: 'Nenhuma admissão com a documentação aprovada foi encontrada.' }, { status: 404 })
 
   const hires: NewHire[] = eligible.map((admission) => ({

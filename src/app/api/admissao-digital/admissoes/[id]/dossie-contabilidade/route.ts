@@ -3,7 +3,7 @@ import { canAccessAdmission, forbidIfReadOnly, getSessionOrUnauthorized } from '
 import { extractIp } from '@/lib/audit'
 import { buildAccountingAdmissionDossier } from '@/lib/admission/accountingDossier'
 import { logAdmissionEvent } from '@/lib/admission/audit'
-import { isDocumentResolved } from '@/lib/admission/documentStatus'
+import { pendingRequiredDocuments } from '@/lib/admission/documentStatus'
 import { prisma } from '@/lib/prisma'
 import { allowRequest, pdfResponse } from '@/lib/dossie/http'
 import { compressPdf } from '@/lib/pdfCompress'
@@ -17,13 +17,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (forbidden) return forbidden
   const admission = await prisma.admission.findUnique({
     where: { id: params.id },
-    include: { analysts: { select: { id: true } }, documents: { select: { status: true } } },
+    include: { analysts: { select: { id: true } }, documents: { select: { status: true, type: { select: { required: true } } } } },
   })
   if (!admission) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!canAccessAdmission(session!, admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   if (admission.processType !== 'ADMISSION') return NextResponse.json({ error: 'Disponível somente para admissões.' }, { status: 409 })
-  const pending = admission.documents.filter((document) => !isDocumentResolved(document.status)).length
-  if (pending) return NextResponse.json({ error: `Ainda existem ${pending} documento(s) sem aprovação do RH.` }, { status: 409 })
+  const pending = pendingRequiredDocuments(admission.documents).length
+  if (pending) return NextResponse.json({ error: `Ainda existem ${pending} documento(s) obrigatório(s) sem aprovação do RH.` }, { status: 409 })
   if (!allowRequest(`accounting-dossier:${session!.user.id}`, 8, 60_000)) return NextResponse.json({ error: 'Muitas gerações em sequência. Aguarde um instante.' }, { status: 429 })
 
   try {
