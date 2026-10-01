@@ -61,7 +61,7 @@ describe('formulários oficiais da admissão', () => {
       pages[layout.key] = (await PDFDocument.load(bytes)).getPageCount()
     }
     expect(pages).toEqual({
-      contrato_trabalho: 6, termo_recursos_tecnologicos: 2, termo_ciencia_ponto: 1, termo_ciencia_atestados: 1, termo_uso_celular: 1,
+      contrato_trabalho: 4, ficha_registro: 2, termo_recursos_tecnologicos: 2, termo_ciencia_ponto: 1, termo_ciencia_atestados: 1, termo_uso_celular: 1,
       termo_uso_imagem_voz: 2, termo_desconto_folha: 2, termo_programa_imunizacao: 2, termo_banco_horas: 1, termo_vale_transporte: 1, regimento_interno: 27,
     })
     const pcd = buildFormContext(admission, { disability: 'Sim', pcdType: 'Auditiva' })

@@ -12,11 +12,15 @@ const lastCheck = new Map<string, number>()
 const CHECK_INTERVAL = 15_000
 
 /** Situação da assinatura na Autentique (o portal consulta enquanto o candidato assina). */
-export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params
   const token = await getAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   let request = await latestExternalSignature(token.admissionId)
+  if (request?.status === 'PENDING') {
+    try { request = await startExternalSignature(token.admissionId, req.nextUrl.origin) }
+    catch (error) { console.error('[autentique] Falha ao atualizar o pacote pendente:', error) }
+  }
   if (request?.status === 'PENDING' && Date.now() - (lastCheck.get(request.id) ?? 0) > CHECK_INTERVAL) {
     lastCheck.set(request.id, Date.now())
     try { await syncExternalSignature(request.id) } catch (error) { console.error('[autentique] Falha ao consultar a assinatura:', error) }

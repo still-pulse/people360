@@ -46,6 +46,13 @@ export function drawLine(page: PDFPage, value: string | null | undefined, x: num
   page.drawText(text, { x: left, y: page.getHeight() - top, size, font: options.font, color: options.color ?? rgb(0, 0, 0) })
 }
 
+/** Apaga o marcador impresso no formulário e escreve o dado no mesmo espaço. */
+export function replaceLine(page: PDFPage, value: string | null | undefined, x: number, top: number, width: number, options: Omit<TextOptions, 'maxWidth'> & { height?: number }) {
+  const height = options.height ?? Math.max(11, options.size + 4)
+  page.drawRectangle({ x: x - 1, y: page.getHeight() - top - 3, width: width + 2, height, color: rgb(1, 1, 1) })
+  drawLine(page, value, x, top, { ...options, maxWidth: width })
+}
+
 /** Quebra o texto em linhas que caibam na largura (por palavras). */
 export function wrap(text: string, font: PDFFont, size: number, width: number) {
   const lines: string[] = []

@@ -34,20 +34,26 @@ function candidateSignature(signatures: AutentiqueSignature[], signer: { name: s
 /** Pedido de assinatura em aberto; cria um novo (pacote + envio) se ainda não houver. Idempotente. */
 export async function startExternalSignature(admissionId: string, origin: string, meta: Meta = {}) {
   const latest = await latestExternalSignature(admissionId)
-  if (latest && ['PENDING', 'PROCESSING', 'SIGNED'].includes(latest.status)) return latest
+  if (latest?.status === 'SIGNED' || latest?.status === 'PROCESSING') return latest
   // Recusa: um novo envio consome outro crédito, então só o RH libera (ação "Reenviar para assinatura").
   if (latest?.status === 'REJECTED') throw new Error('A assinatura foi recusada. Fale com o RH para receber um novo link.')
 
   const admission = await prisma.admission.findUnique({ where: { id: admissionId }, select: {
     protocol: true, candidateName: true, candidateEmail: true, status: true,
-    generatedDocuments: { where: { status: { in: ['GENERATED', 'SENT'] } }, include: { template: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
   } })
   if (!admission) throw new Error('Admissão não encontrada.')
   if (admission.status === 'CANCELLED') throw new Error('Esta admissão foi cancelada.')
-  let documents = admission.generatedDocuments
-  if (!documents.length) {
-    await generateAdmissionDocuments(admissionId, origin)
-    documents = await prisma.generatedDocument.findMany({ where: { admissionId, status: { in: ['GENERATED', 'SENT'] } }, include: { template: { select: { name: true } } }, orderBy: { createdAt: 'asc' } })
+  // Sempre reconcilia com as versões ativas. Assim, uma admissão que já aguardava assinatura troca
+  // automaticamente o pacote antigo quando RH publica um novo contrato, ficha ou termo.
+  await generateAdmissionDocuments(admissionId, origin)
+  const documents = await prisma.generatedDocument.findMany({ where: { admissionId, status: { in: ['GENERATED', 'SENT'] } }, include: { template: { select: { name: true } } }, orderBy: { createdAt: 'asc' } })
+  if (latest?.status === 'PENDING') {
+    const packaged = new Set((Array.isArray(latest.pageMap) ? latest.pageMap : []).map((item) => typeof item === 'object' && item && 'documentId' in item ? String(item.documentId) : ''))
+    const current = new Set(documents.map((document) => document.id))
+    const currentPackage = packaged.size === current.size && [...current].every((id) => packaged.has(id))
+    if (currentPackage) return latest
+    await cancelExternalSignature(admissionId)
+    await logAdmissionEvent({ admissionId, actorName: admission.candidateName, actorType: 'SYSTEM', action: 'AUTENTIQUE_PACKAGE_REPLACED', metadata: { previousRequestId: latest.id, documents: documents.length } })
   }
   if (!documents.length) throw new Error('Nenhum documento pendente de assinatura.')
 
@@ -187,8 +193,14 @@ export async function cancelExternalSignature(admissionId: string) {
   for (const request of requests) {
     if (request.provider === AUTENTIQUE_PROVIDER) await deleteAutentiqueDocument(request.externalId)
   }
-  return prisma.externalSignatureRequest.updateMany({
-    where: { id: { in: requests.map((request) => request.id) } },
-    data: { status: 'CANCELLED' },
-  })
+  return prisma.$transaction([
+    prisma.externalSignatureRequest.updateMany({
+      where: { id: { in: requests.map((request) => request.id) } },
+      data: { status: 'CANCELLED' },
+    }),
+    prisma.signatureEnvelope.updateMany({
+      where: { admissionId, status: { in: ['CREATED', 'SENT', 'VIEWED', 'AUTHENTICATED', 'REJECTED'] } },
+      data: { status: 'CANCELLED' },
+    }),
+  ])
 }

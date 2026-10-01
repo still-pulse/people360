@@ -70,7 +70,7 @@ function institutionalTerm(key: string, name: string, code: string, file: string
 
 export const TERM_FORMS: TermForm[] = [
   institutionalTerm('termo_recursos_tecnologicos', 'Termo de Confidencialidade e Sigilo Profissional', 'FP.RH.01.004-01', 'FP.RH.01.004-termo-recursos-tecnologicos.pdf', 570.53),
-  simpleTerm('termo_ciencia_ponto', 'Termo de Ciência — Controle de Ponto', 'FP.RH.01.006', 'FP.RH.01.006-termo-ciencia-ponto.pdf', header(100.3, 137.7, 779.6)),
+  { ...simpleTerm('termo_ciencia_ponto', 'Termo de Ciência — Controle de Ponto', 'FP.RH.01.006-00', 'FP.RH.01.006-termo-ciencia-ponto.pdf', header(100.3, 137.7, 779.6)), version: 11 },
   {
     key: 'termo_ciencia_atestados', name: 'Termo de Ciência — Apresentação e Comunicação de Atestados Médicos', code: 'FP.RH.01.007', file: 'FP.RH.01.007-termo-ciencia-atestados.pdf',
     fill: (pdf, ctx, fonts) => {

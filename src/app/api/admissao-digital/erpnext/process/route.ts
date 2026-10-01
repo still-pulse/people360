@@ -33,7 +33,9 @@ export async function POST(req: NextRequest) {
       ...(body.admissionId ? { admissionId: body.admissionId } : {}),
       admission: { status: { not: 'CANCELLED' }, ...(holdUnitIds.length ? { unitId: { notIn: holdUnitIds } } : {}) },
       status: { in: ['WAITING', 'RETRYING', 'ERROR'] },
-      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
+      // Uma solicitação manual para uma admissão específica força a tentativa agora. O agendamento
+      // continua sendo respeitado no processamento em lote.
+      ...(body.admissionId && body.force ? {} : { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] }),
     },
     orderBy: { createdAt: 'asc' },
     take: 20,

@@ -5,6 +5,7 @@ import { PDFDocument } from 'pdf-lib'
 // Banco e arquivos em memória: o teste cobre o pacote único e a separação do PDF assinado por documento.
 const db = vi.hoisted(() => ({ requests: [] as any[], docs: new Map<string, any>(), envelopes: new Map<string, any>(), files: new Map<string, Uint8Array>(), admission: {} as any }))
 const api = vi.hoisted(() => ({ create: vi.fn(), link: vi.fn(), get: vi.fn(), download: vi.fn(), delete: vi.fn() }))
+const generation = vi.hoisted(() => ({ run: vi.fn() }))
 
 vi.mock('@/lib/prisma', () => {
   const find = (where: any) => db.requests.filter((r) => (!where.id || (typeof where.id === 'string' ? r.id === where.id : where.id.in.includes(r.id))) && (!where.admissionId || r.admissionId === where.admissionId) && (!where.status || (typeof where.status === 'string' ? r.status === where.status : where.status.in.includes(r.status))))
@@ -23,6 +24,7 @@ vi.mock('@/lib/prisma', () => {
       upsert: async ({ where, create }: any) => { db.envelopes.set(where.documentId, { id: `e-${where.documentId}`, ...create }); return {} },
       update: async ({ where, data }: any) => Object.assign(db.envelopes.get(where.documentId), data),
       findUnique: async ({ where }: any) => db.envelopes.get(where.documentId) ?? null,
+      updateMany: vi.fn(async () => ({ count: 0 })),
     },
     signatureEvent: { create: vi.fn(async () => ({})) },
     consentRecord: { create: vi.fn(async () => ({})) },
@@ -37,7 +39,7 @@ vi.mock('./storage', () => ({
   savePrivateAdmissionFile: async (_admission: string, category: string, file: File) => { const path = `${category}/${db.files.size}.pdf`; db.files.set(path, new Uint8Array(await file.arrayBuffer())); return { storagePath: path } },
 }))
 vi.mock('./audit', () => ({ logAdmissionEvent: vi.fn() }))
-vi.mock('./documentGenerator', () => ({ generateAdmissionDocuments: vi.fn() }))
+vi.mock('./documentGenerator', () => ({ generateAdmissionDocuments: generation.run }))
 
 import { cancelExternalSignature, startExternalSignature, syncExternalSignature } from './externalSignature'
 import { verifyAutentiqueWebhook } from '@/lib/autentique'
@@ -78,6 +80,30 @@ describe('assinatura pela Autentique', () => {
     // Segunda chamada reaproveita o envio (não gasta outro crédito).
     await startExternalSignature('a1', 'https://p360')
     expect(api.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('substitui um pacote pendente quando os documentos ativos mudam', async () => {
+    const first = await startExternalSignature('a1', 'https://p360')
+    generation.run.mockImplementationOnce(async () => {
+      db.docs.delete('contrato')
+      db.files.set('orig/contrato-v2', await pdf(4, 'contrato-v2'))
+      db.docs.set('contrato-v2', { id: 'contrato-v2', status: 'GENERATED', storagePath: 'orig/contrato-v2', template: { name: 'contrato-v2' } })
+    })
+
+    const replacement = await startExternalSignature('a1', 'https://p360')
+
+    expect(first.status).toBe('CANCELLED')
+    expect(replacement.id).not.toBe(first.id)
+    expect(replacement.pageMap).toEqual(expect.arrayContaining([
+      expect.objectContaining({ documentId: 'contrato-v2' }),
+    ]))
+    const contract = replacement.pageMap.find((item: any) => item.documentId === 'contrato-v2')
+    expect(contract.end - contract.start + 1).toBe(4)
+    expect(replacement.pageMap).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ documentId: 'contrato' }),
+    ]))
+    expect(api.delete).toHaveBeenCalledWith('aut-1')
+    expect(api.create).toHaveBeenCalledTimes(2)
   })
 
   it('separa o PDF assinado por documento, cada um com as páginas de certificado', async () => {

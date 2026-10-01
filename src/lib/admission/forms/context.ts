@@ -2,7 +2,7 @@ import { formatCep, formatCpf, formatPhone, formatPis } from '../fieldFormatters
 
 // Dados do colaborador, da vaga e do empregador já no formato dos documentos oficiais.
 
-export type EmployerData = { nome: string; cnpj: string; logradouro: string; bairro: string; cidade: string; uf: string }
+export type EmployerData = { nome: string; cnpj: string; logradouro: string; bairro: string; cidade: string; uf: string; representative: string; representativeTitle: string }
 
 export type FormDependent = { name: string; birthDate: Date; relationship: string; irrf: boolean; under14: boolean }
 export type FormRoute = { type: string; line: string; outbound: number; returnValue: number }
@@ -14,7 +14,9 @@ export type FormContext = {
     name: string; cpf: string; rg: string; rgIssuedAt: string; rgIssuer: string; birthDate: string; birthPlace: string
     nationality: string; maritalStatus: string; fatherName: string; motherName: string; ethnicity: string; gender: string
     education: string; phone: string; pis: string; voterTitle: string; voterZone: string; voterSection: string
-    disability: boolean; disabilityDetails: string; registration: string
+    disability: boolean; disabilityDetails: string; registration: string; email: string
+    ctps: string; ctpsSeries: string; ctpsIssuedAt: string; ctpsState: string; classRegistration: string
+    driverLicense: string; driverLicenseCategory: string; militaryDocument: string; militaryCategory: string
   }
   address: { street: string; number: string; complement: string; district: string; city: string; state: string; zipCode: string }
   job: { title: string; unit: string; department: string; cbo: string; salary: number | null; schedule: string; breakSchedule: string; hireDate: Date; experienceDays: number | null }
@@ -100,6 +102,8 @@ export function employerForUnit(unitId?: string | null): EmployerData {
     bairro: upper(unit.bairro || process.env.ADMISSION_EMPLOYER_DISTRICT || 'VILA BRASIL'),
     cidade: upper(unit.cidade || process.env.ADMISSION_EMPLOYER_CITY || 'CESÁRIO LANGE'),
     uf: upper(unit.uf || process.env.ADMISSION_EMPLOYER_UF || 'SP'),
+    representative: upper(unit.representative || process.env.ADMISSION_EMPLOYER_REPRESENTATIVE || ''),
+    representativeTitle: upper(unit.representativeTitle || process.env.ADMISSION_EMPLOYER_REPRESENTATIVE_TITLE || ''),
   }
 }
 
@@ -131,7 +135,10 @@ export function buildFormContext(admission: AdmissionForForms, fields: Record<st
       gender: GENEROS[text(fields.gender)] ?? '', education: text(fields.education),
       phone: text(fields.phone) ? formatPhone(text(fields.phone)) : '', pis: text(fields.pis) ? formatPis(text(fields.pis)) : '',
       voterTitle: text(fields.voterTitle), voterZone: text(fields.voterZone), voterSection: text(fields.voterSection),
-      disability: text(fields.disability) === 'Sim', disabilityDetails: text(fields.disabilityDetails), registration: text(extra.registration),
+      disability: text(fields.disability) === 'Sim', disabilityDetails: text(fields.disabilityDetails), registration: text(extra.registration), email: text(fields.email),
+      ctps: text(fields.ctps), ctpsSeries: text(fields.ctpsSeries), ctpsIssuedAt: dmy(text(fields.ctpsIssuedAt)), ctpsState: upper(text(fields.ctpsState)),
+      classRegistration: text(fields.classRegistration), driverLicense: text(fields.driverLicense), driverLicenseCategory: text(fields.driverLicenseCategory),
+      militaryDocument: text(fields.militaryDocument), militaryCategory: text(fields.militaryCategory),
     },
     address: {
       street: text(fields.street), number: text(fields.number), complement: text(fields.complement), district: text(fields.district),
