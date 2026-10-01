@@ -112,7 +112,11 @@ async function platformAttachments(colaborador: { id: string; erpnextId: string;
 async function admissionAttachments(colaborador: { erpnextId: string; cpf: string | null }) {
   const admissionId = await findLinkedAdmissionId(colaborador)
   if (!admissionId) throw new DossieError('Este colaborador não possui uma admissão digital vinculada.', 422)
+  return admissionDossierSources(admissionId)
+}
 
+/** Formulário admissional e documentos aprovados de uma admissão (usado também antes da integração com o ERPNext). */
+export async function admissionDossierSources(admissionId: string) {
   const admission = await prisma.admission.findUnique({
     where: { id: admissionId },
     select: {
@@ -156,7 +160,9 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase()
 }
 
-function drawCover(pdf: PdfBuilder, snap: Snapshot, photo: ColaboradorPhoto | null, geradoEm: Date, title = 'DOSSIÊ FUNCIONAL DO COLABORADOR') {
+type CoverInfo = Pick<Snapshot, 'nome' | 'matricula' | 'cargo' | 'unidade' | 'admissao'>
+
+function drawCover(pdf: PdfBuilder, snap: CoverInfo, photo: ColaboradorPhoto | null, geradoEm: Date, title = 'DOSSIÊ FUNCIONAL DO COLABORADOR', identifier = `Matrícula: ${snap.matricula}`) {
   const { doc } = pdf
   pdf.skipChrome(1)
   doc.setFillColor(...BRAND.teal); doc.rect(0, 0, PAGE.w, 10, 'F')
@@ -171,7 +177,7 @@ function drawCover(pdf: PdfBuilder, snap: Snapshot, photo: ColaboradorPhoto | nu
   if (photo) pdf.photo(photo.buffer, photo.mime, px, py, pw, ph)
   else pdf.photoPlaceholder(px, py, pw, ph, initials(snap.nome))
   pdf.textAt(snap.nome.toUpperCase(), PAGE.w / 2, 182, { size: 17, bold: true, align: 'center' })
-  pdf.textAt(`Matrícula: ${snap.matricula}`, PAGE.w / 2, 191, { size: 11, color: BRAND.muted, align: 'center' })
+  pdf.textAt(identifier, PAGE.w / 2, 191, { size: 11, color: BRAND.muted, align: 'center' })
   const lines: [string, string][] = [['Cargo', snap.cargo], ['Unidade', snap.unidade], ['Admissão', fmtDate(snap.admissao)]]
   lines.forEach(([label, value], i) => {
     pdf.textAt(label.toUpperCase(), PAGE.w / 2, 208 + i * 13, { size: 7.5, bold: true, color: BRAND.faint, align: 'center' })
@@ -331,15 +337,28 @@ export async function buildAdmissionDossierPdf(params: { colaboradorId: string; 
     loadColaboradorPhoto(colaborador),
     admissionAttachments(colaborador),
   ])
+  const { buffer, pages } = await renderAdmissionDossier({ info: snap, photo, sources })
+  const fileName = `Dossie_Admissional_${fileSlug(snap.nome, 'COLABORADOR')}_${snap.matricula.replace(/[^a-zA-Z0-9]/g, '')}.pdf`
+  return { buffer, fileName, pages, snapshot: snap }
+}
+
+/** Layout do Dossiê Admissional, compartilhado pelo colaborador já integrado e pela pré-admissão (contabilidade). */
+export async function renderAdmissionDossier(params: {
+  info: CoverInfo
+  photo: ColaboradorPhoto | null
+  sources: { formulario: AttachmentSource[]; documentos: AttachmentSource[] }
+  identifier?: string
+}) {
+  const { info, photo, sources } = params
   const formulario = await loadAttachments(sources.formulario)
   const documentos = await loadAttachments(sources.documentos)
   if (!formulario.length) throw new DossieError('O formulário admissional ainda não está disponível para este colaborador.', 422)
   const attachments = [...formulario, ...documentos]
   const attachmentPages = attachments.reduce((sum, item) => sum + item.pages, 0)
   const geradoEm = new Date()
-  const pdf = new PdfBuilder({ docLabel: 'Dossiê Admissional', colaboradorNome: snap.nome, matricula: snap.matricula, geradoEm }, await loadLogo())
+  const pdf = new PdfBuilder({ docLabel: 'Dossiê Admissional', colaboradorNome: info.nome, matricula: info.matricula || undefined, geradoEm }, await loadLogo())
 
-  drawCover(pdf, snap, photo, geradoEm, 'DOSSIÊ ADMISSIONAL DO COLABORADOR')
+  drawCover(pdf, info, photo, geradoEm, 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
   const indexLines = 1 + (documentos.length ? 1 + documentos.length : 0)
   const perIndexPage = Math.floor((PAGE.bottom - PAGE.top - 16) / 6.4)
   const indexPages = Math.max(1, Math.ceil(indexLines / perIndexPage))
@@ -361,8 +380,7 @@ export async function buildAdmissionDossierPdf(params: { colaboradorId: string; 
   const total = mainPages + attachmentPages
   let buffer = pdf.finalize({ totalPages: total })
   if (attachments.length) buffer = await appendAttachments(buffer, attachments, total, mainPages, 'Dossiê Admissional')
-  const fileName = `Dossie_Admissional_${fileSlug(snap.nome, 'COLABORADOR')}_${snap.matricula.replace(/[^a-zA-Z0-9]/g, '')}.pdf`
-  return { buffer, fileName, pages: total, snapshot: snap }
+  return { buffer, pages: total, documents: attachments.length }
 }
 
 export async function buildDossierPdf(params: { colaboradorId: string; selecao: string[]; actorName: string }) {

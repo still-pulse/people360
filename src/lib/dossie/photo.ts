@@ -42,12 +42,16 @@ async function fetchErpnextImage(imagePath: string): Promise<Buffer | null> {
 export async function loadColaboradorPhoto(colaborador: { erpnextId: string; cpf: string | null; imagePath: string | null }): Promise<ColaboradorPhoto | null> {
   const admissionId = await findLinkedAdmissionId(colaborador)
   if (admissionId) {
-    const badge = await prisma.badgePhoto.findFirst({ where: { admissionId }, orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }] })
-    if (badge) {
-      const fromBadge = asImage(await readPrivateAdmissionFile(badge.processedPath || badge.originalPath), 'crachá')
-      if (fromBadge) return fromBadge
-    }
+    const fromBadge = await loadAdmissionBadgePhoto(admissionId)
+    if (fromBadge) return fromBadge
   }
   if (colaborador.imagePath) return asImage(await fetchErpnextImage(colaborador.imagePath), 'erpnext')
   return null
+}
+
+/** Foto do crachá enviada na admissão digital (antes de existir colaborador no ERPNext). */
+export async function loadAdmissionBadgePhoto(admissionId: string): Promise<ColaboradorPhoto | null> {
+  const badge = await prisma.badgePhoto.findFirst({ where: { admissionId }, orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }] })
+  if (!badge) return null
+  return asImage(await readPrivateAdmissionFile(badge.processedPath || badge.originalPath), 'crachá')
 }
