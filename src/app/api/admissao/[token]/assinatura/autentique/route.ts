@@ -6,7 +6,7 @@ import { isFaceVerificationEnabled } from '@/lib/admission/features'
 import { latestExternalSignature, startExternalSignature, syncExternalSignature } from '@/lib/admission/externalSignature'
 import { extractIp } from '@/lib/audit'
 import { isDocumentResolved } from '@/lib/admission/documentStatus'
-import { accountingDossierState } from '@/lib/admission/accountingDossier'
+import { accountingDossierState, signatureAlreadyStarted } from '@/lib/admission/accountingDossier'
 
 // Evita consultar a Autentique a cada atualização do portal (limite de 60 req/min da API).
 const lastCheck = new Map<string, number>()
@@ -18,7 +18,8 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   const token = await getAdmissionByPublicToken(params.token)
   if (!token) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 })
   let request = await latestExternalSignature(token.admissionId)
-  if (request?.status === 'PENDING') {
+  // Unidade em espera: nunca refaz nem reenvia o pacote (só consulta a situação do que já existe).
+  if (request?.status === 'PENDING' && !(await isContractOnHold(token.admission.unitId))) {
     try { request = await startExternalSignature(token.admissionId, req.nextUrl.origin) }
     catch (error) { console.error('[autentique] Falha ao atualizar o pacote pendente:', error) }
   }
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   if (await isContractOnHold(token.admission.unitId)) return NextResponse.json({ error: CONTRACT_HOLD_MESSAGE, contractOnHold: true }, { status: 409 })
   if (!['CONTRACT_PENDING', 'SIGNATURE_PENDING'].includes(token.admission.status)) return NextResponse.json({ error: 'A admissão ainda não está pronta para assinatura.' }, { status: 409 })
   const accountingDossier = await accountingDossierState(token.admissionId)
-  const legacySignatureStarted = token.admission.signatureEnvelopes.length > 0 || token.admission.status === 'SIGNATURE_PENDING'
+  const legacySignatureStarted = signatureAlreadyStarted(token.admission.signatureEnvelopes)
   if (!accountingDossier.released && !legacySignatureStarted) return NextResponse.json({ error: 'O RH ainda está conferindo o dossiê pré-admissional com a contabilidade.' }, { status: 409 })
   const body = await req.json().catch(() => ({}))
   if (body?.accepted !== true) return NextResponse.json({ error: 'Confirme a leitura e concordância.' }, { status: 400 })

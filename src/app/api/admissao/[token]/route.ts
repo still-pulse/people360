@@ -15,7 +15,7 @@ import { usesExternalSignature } from '@/lib/admission/providers'
 import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
 import { isDocumentResolved } from '@/lib/admission/documentStatus'
 import { reconcileAdmissionDocumentApplicability } from '@/lib/admission/documentApplicability'
-import { accountingDossierState } from '@/lib/admission/accountingDossier'
+import { accountingDossierState, signatureAlreadyStarted } from '@/lib/admission/accountingDossier'
 
 const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), fields: z.record(z.union([z.string().max(500), z.boolean(), z.number(), z.null()])), nextStep: z.string().max(40).optional(), validate: z.boolean().optional().default(false) })
 
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   const requiredPending = a.documents.some((document) => document.type.required && !isDocumentResolved(document.status))
   const accountingDossier = a.processType === 'ADMISSION' ? await accountingDossierState(a.id) : { released: true }
   // Não bloqueia admissões antigas cuja assinatura já começou antes da criação desta etapa.
-  const accountingDossierReleased = accountingDossier.released || a.signatureEnvelopes.length > 0 || ['SIGNATURE_PENDING', 'SIGNED', 'READY_FOR_ERPNEXT', 'SYNCING', 'SYNCED', 'COMPLETED'].includes(a.status)
+  const accountingDossierReleased = accountingDossier.released || signatureAlreadyStarted(a.signatureEnvelopes) || ['SIGNED', 'READY_FOR_ERPNEXT', 'SYNCING', 'SYNCED', 'COMPLETED'].includes(a.status)
   const resumeStep = a.processType === 'REGISTRATION_UPDATE' ? (a.status === 'DOCUMENTS_UNDER_REVIEW' || a.status === 'COMPLETED' || (!faceVerificationEnabled && (a.status === 'FACE_VALIDATION_PENDING' || a.currentStep === 'validacao-facial')) ? 'conclusao' : (a.currentStep || 'inicio'))
     : a.signatureEnvelopes.some((envelope) => envelope.status === 'SIGNED') ? 'conclusao'
     : a.generatedDocuments.length ? (accountingDossierReleased ? 'assinatura' : 'revisao')

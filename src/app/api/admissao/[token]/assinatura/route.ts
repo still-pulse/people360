@@ -11,7 +11,7 @@ import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp } from '@/lib/audit'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
 import { isDocumentResolved } from '@/lib/admission/documentStatus'
-import { accountingDossierState } from '@/lib/admission/accountingDossier'
+import { accountingDossierState, signatureAlreadyStarted } from '@/lib/admission/accountingDossier'
 
 function numberField(form: FormData, key: string) {
   const value = Number(form.get(key))
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
     return NextResponse.json({ error: 'A admissão ainda não está pronta para assinatura.' }, { status: 409 })
   }
   const accountingDossier = await accountingDossierState(token.admissionId)
-  const legacySignatureStarted = token.admission.signatureEnvelopes.length > 0 || token.admission.status === 'SIGNATURE_PENDING'
+  const legacySignatureStarted = signatureAlreadyStarted(token.admission.signatureEnvelopes)
   if (!accountingDossier.released && !legacySignatureStarted) {
     return NextResponse.json({ error: 'O RH ainda está conferindo o dossiê pré-admissional com a contabilidade.' }, { status: 409 })
   }

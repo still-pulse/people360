@@ -141,6 +141,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   } else if (action === 'accounting-dossier-sent') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para liberar a assinatura.' }, { status: 403 })
     if (current.processType !== 'ADMISSION') return NextResponse.json({ error: 'Disponível somente para admissões.' }, { status: 409 })
+    if (await isContractOnHold(current.unitId)) return NextResponse.json({ error: 'A assinatura do contrato desta unidade está em espera (Admissão Digital → Configurações).' }, { status: 409 })
     const pending = await prisma.admissionDocument.count({ where: { admissionId: current.id, type: { required: true }, status: { notIn: ['APPROVED', 'NOT_APPLICABLE'] } } })
     if (pending) return NextResponse.json({ error: `Ainda existem ${pending} documento(s) obrigatório(s) sem aprovação do RH.` }, { status: 409 })
     const dossier = await accountingDossierState(current.id)

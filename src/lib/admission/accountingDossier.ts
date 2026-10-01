@@ -9,6 +9,14 @@ import { decryptAdmissionValue } from './security'
 export const ACCOUNTING_DOSSIER_GENERATED = 'ACCOUNTING_DOSSIER_GENERATED'
 export const ACCOUNTING_DOSSIER_SENT = 'ACCOUNTING_DOSSIER_SENT'
 
+/**
+ * Assinatura iniciada antes da etapa do dossiê (admissões antigas): só conta envelope que não foi cancelado.
+ * Envio cancelado pelo RH não pode liberar um novo link sem a conferência da contabilidade.
+ */
+export function signatureAlreadyStarted(envelopes: { status: string }[]) {
+  return envelopes.some((envelope) => envelope.status !== 'CANCELLED')
+}
+
 export async function accountingDossierState(admissionId: string) {
   const [events, latestDocument] = await Promise.all([
     prisma.admissionAuditLog.findMany({
