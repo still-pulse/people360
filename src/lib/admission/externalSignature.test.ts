@@ -4,19 +4,20 @@ import { PDFDocument } from 'pdf-lib'
 
 // Banco e arquivos em memória: o teste cobre o pacote único e a separação do PDF assinado por documento.
 const db = vi.hoisted(() => ({ requests: [] as any[], docs: new Map<string, any>(), envelopes: new Map<string, any>(), files: new Map<string, Uint8Array>(), admission: {} as any }))
-const api = vi.hoisted(() => ({ create: vi.fn(), link: vi.fn(), get: vi.fn(), download: vi.fn() }))
+const api = vi.hoisted(() => ({ create: vi.fn(), link: vi.fn(), get: vi.fn(), download: vi.fn(), delete: vi.fn() }))
 
 vi.mock('@/lib/prisma', () => {
-  const find = (where: any) => db.requests.filter((r) => (!where.id || r.id === where.id) && (!where.admissionId || r.admissionId === where.admissionId) && (!where.status || (typeof where.status === 'string' ? r.status === where.status : where.status.in.includes(r.status))))
-  return { prisma: {
+  const find = (where: any) => db.requests.filter((r) => (!where.id || (typeof where.id === 'string' ? r.id === where.id : where.id.in.includes(r.id))) && (!where.admissionId || r.admissionId === where.admissionId) && (!where.status || (typeof where.status === 'string' ? r.status === where.status : where.status.in.includes(r.status))))
+  const client: any = {
     externalSignatureRequest: {
       findFirst: async ({ where }: any) => find(where).at(-1) ?? null,
-      findUnique: async ({ where }: any) => find(where)[0] ?? null,
+      findUnique: async ({ where, include }: any) => { const row = find(where)[0]; return row && include?.admission ? { ...row, admission: { status: db.admission.status } } : row ?? null },
+      findMany: async ({ where }: any) => find(where),
       create: async ({ data }: any) => { const row = { id: `r${db.requests.length + 1}`, createdAt: new Date(), ...data }; db.requests.push(row); return row },
       update: async ({ where, data }: any) => Object.assign(find(where)[0], data),
       updateMany: async ({ where, data }: any) => { const rows = find(where); rows.forEach((row) => Object.assign(row, data)); return { count: rows.length } },
     },
-    admission: { findUnique: async () => db.admission, update: vi.fn(async () => ({})) },
+    admission: { findUnique: async () => db.admission, update: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({ count: db.admission.status === 'CANCELLED' ? 0 : 1 })) },
     generatedDocument: { findMany: async () => [...db.docs.values()], update: async ({ where, data }: any) => Object.assign(db.docs.get(where.id), data), updateMany: vi.fn(async () => ({})) },
     signatureEnvelope: {
       upsert: async ({ where, create }: any) => { db.envelopes.set(where.documentId, { id: `e-${where.documentId}`, ...create }); return {} },
@@ -26,10 +27,11 @@ vi.mock('@/lib/prisma', () => {
     signatureEvent: { create: vi.fn(async () => ({})) },
     consentRecord: { create: vi.fn(async () => ({})) },
     eRPNextSync: { upsert: vi.fn(async () => ({})) },
-    $transaction: async (items: any[]) => Promise.all(items),
-  } }
+  }
+  client.$transaction = async (input: any) => typeof input === 'function' ? input(client) : Promise.all(input)
+  return { prisma: client }
 })
-vi.mock('@/lib/autentique', async (importOriginal) => ({ ...(await importOriginal<object>()), autentiqueSandbox: () => true, createAutentiqueDocument: api.create, createAutentiqueSignatureLink: api.link, getAutentiqueDocument: api.get, downloadAutentiqueFile: api.download }))
+vi.mock('@/lib/autentique', async (importOriginal) => ({ ...(await importOriginal<object>()), autentiqueSandbox: () => true, createAutentiqueDocument: api.create, createAutentiqueSignatureLink: api.link, getAutentiqueDocument: api.get, downloadAutentiqueFile: api.download, deleteAutentiqueDocument: api.delete }))
 vi.mock('./storage', () => ({
   readPrivateAdmissionFile: async (path: string) => db.files.get(path) ?? null,
   savePrivateAdmissionFile: async (_admission: string, category: string, file: File) => { const path = `${category}/${db.files.size}.pdf`; db.files.set(path, new Uint8Array(await file.arrayBuffer())); return { storagePath: path } },
@@ -37,7 +39,7 @@ vi.mock('./storage', () => ({
 vi.mock('./audit', () => ({ logAdmissionEvent: vi.fn() }))
 vi.mock('./documentGenerator', () => ({ generateAdmissionDocuments: vi.fn() }))
 
-import { startExternalSignature, syncExternalSignature } from './externalSignature'
+import { cancelExternalSignature, startExternalSignature, syncExternalSignature } from './externalSignature'
 import { verifyAutentiqueWebhook } from '@/lib/autentique'
 
 async function pdf(pages: number, label: string) {
@@ -61,6 +63,7 @@ describe('assinatura pela Autentique', () => {
       { public_id: 'cand', name: 'Maria', email: 'maria@example.com', action: { name: 'SIGN' }, link: null },
     ] })
     api.link.mockResolvedValue('https://assina.ae/abc')
+    api.delete.mockResolvedValue(true)
   })
 
   it('envia um pacote único com o mapa de páginas e o link do candidato', async () => {
@@ -97,6 +100,13 @@ describe('assinatura pela Autentique', () => {
     api.get.mockResolvedValue({ id: 'aut-1', files: null, signatures: [{ public_id: 'cand', name: 'Maria', email: 'maria@example.com', action: { name: 'SIGN' }, link: null, signed: null, rejected: { created_at: '2026-09-29T12:00:00Z', reason: 'Dados errados' } }] })
     expect(await syncExternalSignature(request.id)).toBe('REJECTED')
     await expect(startExternalSignature('a1', 'https://p360')).rejects.toThrow(/recusada/)
+  })
+
+  it('encerra no provedor e localmente um pedido ainda aberto', async () => {
+    const request = await startExternalSignature('a1', 'https://p360')
+    await cancelExternalSignature('a1')
+    expect(api.delete).toHaveBeenCalledWith('aut-1')
+    expect(db.requests.find((item) => item.id === request.id)?.status).toBe('CANCELLED')
   })
 
   it('aceita só webhooks assinados com o segredo', () => {

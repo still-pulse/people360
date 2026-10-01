@@ -85,6 +85,13 @@ export async function getAutentiqueDocument(id: string) {
   return data.document
 }
 
+/** Remove um documento ainda em aberto para interromper o fluxo e os avisos da Autentique. */
+export async function deleteAutentiqueDocument(id: string) {
+  const data = await graphql<{ deleteDocument: boolean }>(
+    `mutation { deleteDocument(id: ${JSON.stringify(id)}) }`)
+  return data.deleteDocument
+}
+
 export async function downloadAutentiqueFile(url: string) {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token()}` }, signal: AbortSignal.timeout(120_000) })
   if (!response.ok) throw new AutentiqueError(`Não foi possível baixar o PDF assinado (HTTP ${response.status}).`, response.status)

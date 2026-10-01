@@ -244,6 +244,7 @@ enum ERPNextSyncStatus {
   SUCCESS
   ERROR
   RETRYING
+  CANCELLED
 }
 
 enum AdmissionTourProgressStatus {

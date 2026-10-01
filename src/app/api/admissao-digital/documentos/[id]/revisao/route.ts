@@ -20,6 +20,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const doc = await prisma.admissionDocument.findUnique({ where: { id: params.id }, include: { admission: { include: { analysts: { select: { id: true } } } }, type: true } })
   if (!doc) return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 })
   if (!canAccessAdmission(session!, doc.admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
+  if (doc.admission.status === 'CANCELLED') return NextResponse.json({ error: 'Esta admissão foi cancelada e não pode mais ser revisada.' }, { status: 409 })
   const status = parsed.data.action === 'approve' ? 'APPROVED' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'
   const faceVerificationEnabled = isFaceVerificationEnabled()
   const isRegistrationUpdate = doc.admission.processType === 'REGISTRATION_UPDATE'

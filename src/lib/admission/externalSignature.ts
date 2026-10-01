@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { PDFDocument } from 'pdf-lib'
 import { prisma } from '@/lib/prisma'
 import {
-  autentiqueSandbox, createAutentiqueDocument, createAutentiqueSignatureLink, downloadAutentiqueFile, getAutentiqueDocument,
+  autentiqueSandbox, createAutentiqueDocument, createAutentiqueSignatureLink, deleteAutentiqueDocument, downloadAutentiqueFile, getAutentiqueDocument,
   type AutentiqueSignature,
 } from '@/lib/autentique'
 import { logAdmissionEvent } from './audit'
@@ -43,6 +43,7 @@ export async function startExternalSignature(admissionId: string, origin: string
     generatedDocuments: { where: { status: { in: ['GENERATED', 'SENT'] } }, include: { template: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
   } })
   if (!admission) throw new Error('Admissão não encontrada.')
+  if (admission.status === 'CANCELLED') throw new Error('Esta admissão foi cancelada.')
   let documents = admission.generatedDocuments
   if (!documents.length) {
     await generateAdmissionDocuments(admissionId, origin)
@@ -98,8 +99,12 @@ export async function startExternalSignature(admissionId: string, origin: string
  * assinatura da admissão. Seguro contra chamadas simultâneas (webhook + consulta do portal).
  */
 export async function syncExternalSignature(requestId: string): Promise<'PENDING' | 'SIGNED' | 'REJECTED' | 'CANCELLED'> {
-  const request = await prisma.externalSignatureRequest.findUnique({ where: { id: requestId } })
+  const request = await prisma.externalSignatureRequest.findUnique({ where: { id: requestId }, include: { admission: { select: { status: true } } } })
   if (!request) throw new Error('Pedido de assinatura não encontrado.')
+  if (request.admission.status === 'CANCELLED') {
+    if (request.status !== 'CANCELLED') await prisma.externalSignatureRequest.update({ where: { id: request.id }, data: { status: 'CANCELLED' } })
+    return 'CANCELLED'
+  }
   if (request.status === 'SIGNED' || request.status === 'REJECTED' || request.status === 'CANCELLED') return request.status
   if (request.status === 'PROCESSING') return 'PENDING'
 
@@ -142,15 +147,24 @@ export async function syncExternalSignature(requestId: string): Promise<'PENDING
       if (envelope) await prisma.signatureEvent.create({ data: { envelopeId: envelope.id, type: 'SIGNED', ip: signedIp, hash, metadata: { provider: AUTENTIQUE_PROVIDER, externalId: request.externalId, pages: `${range.start}-${range.end}` } } })
     }
 
-    await prisma.$transaction([
-      prisma.externalSignatureRequest.update({ where: { id: request.id }, data: { status: 'SIGNED', signedPath: full.storagePath, signedHash: sha256(signedBytes), signedAt, signedIp } }),
-      prisma.admission.update({ where: { id: request.admissionId }, data: { status: 'READY_FOR_ERPNEXT', currentStep: 'conclusao', progress: 100, lastActivityAt: new Date() } }),
-      prisma.eRPNextSync.upsert({
+    const finalized = await prisma.$transaction(async (tx) => {
+      const active = await tx.admission.updateMany({
+        where: { id: request.admissionId, status: { not: 'CANCELLED' } },
+        data: { status: 'READY_FOR_ERPNEXT', currentStep: 'conclusao', progress: 100, lastActivityAt: new Date() },
+      })
+      if (!active.count) {
+        await tx.externalSignatureRequest.update({ where: { id: request.id }, data: { status: 'CANCELLED' } })
+        return false
+      }
+      await tx.externalSignatureRequest.update({ where: { id: request.id }, data: { status: 'SIGNED', signedPath: full.storagePath, signedHash: sha256(signedBytes), signedAt, signedIp } })
+      await tx.eRPNextSync.upsert({
         where: { idempotencyKey: `admission:${request.admissionId}` },
         create: { admissionId: request.admissionId, idempotencyKey: `admission:${request.admissionId}`, status: 'WAITING', nextAttemptAt: new Date() },
         update: { status: 'WAITING', nextAttemptAt: new Date(), lastError: null },
-      }),
-    ])
+      })
+      return true
+    })
+    if (!finalized) return 'CANCELLED'
     await logAdmissionEvent({ admissionId: request.admissionId, actorName: request.signerName, actorType: 'CANDIDATE', action: 'DOCUMENTS_SIGNED', ip: signedIp, metadata: { provider: AUTENTIQUE_PROVIDER, externalId: request.externalId, documentCount: pageMap.length } })
     return 'SIGNED'
   } catch (error) {
@@ -164,7 +178,17 @@ export function latestExternalSignature(admissionId: string) {
   return prisma.externalSignatureRequest.findFirst({ where: { admissionId }, orderBy: { createdAt: 'desc' } })
 }
 
-/** RH descarta um pedido recusado/pendente para permitir um novo envio. */
+/** RH encerra o pedido no provedor e localmente para impedir assinatura e novos avisos. */
 export async function cancelExternalSignature(admissionId: string) {
-  return prisma.externalSignatureRequest.updateMany({ where: { admissionId, status: { in: ['PENDING', 'REJECTED'] } }, data: { status: 'CANCELLED' } })
+  const requests = await prisma.externalSignatureRequest.findMany({
+    where: { admissionId, status: { in: ['PENDING', 'PROCESSING', 'REJECTED'] } },
+    select: { id: true, provider: true, externalId: true },
+  })
+  for (const request of requests) {
+    if (request.provider === AUTENTIQUE_PROVIDER) await deleteAutentiqueDocument(request.externalId)
+  }
+  return prisma.externalSignatureRequest.updateMany({
+    where: { id: { in: requests.map((request) => request.id) } },
+    data: { status: 'CANCELLED' },
+  })
 }

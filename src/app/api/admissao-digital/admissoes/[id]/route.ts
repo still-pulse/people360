@@ -3,7 +3,7 @@ import { isContractOnHold } from '@/lib/admission/contractHold'
 import { prisma } from '@/lib/prisma'
 import { canAccessAdmission, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { createAdmissionToken } from '@/lib/admission/service'
-import { assertTransition } from '@/lib/admission/stateMachine'
+import { canTransition } from '@/lib/admission/stateMachine'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { extractIp, log } from '@/lib/audit'
 import { deleteAdmissionStorage } from '@/lib/admission/storage'
@@ -58,6 +58,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (!current) return NextResponse.json({ error: 'Admissão não encontrada.' }, { status: 404 })
   if (!canAccessAdmission(session!, current)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   const body = await req.json().catch(() => ({}));const action = String(body.action || '')
+  if (current.status === 'CANCELLED') {
+    if (action === 'cancel') return NextResponse.json({ success: true, alreadyCancelled: true })
+    return NextResponse.json({ error: 'Esta admissão foi cancelada e não aceita novas ações.' }, { status: 409 })
+  }
   let response: Record<string, unknown> = {}
   if (action === 'renew-link' || action === 'resend-link') {
     const link = await createAdmissionToken(current.id, Number(body.validityDays || 7))
@@ -68,8 +72,29 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   } else if (action === 'invalidate-link') {
     await prisma.admissionToken.updateMany({ where: { admissionId: current.id, revokedAt: null }, data: { revokedAt: new Date() } })
   } else if (action === 'cancel') {
-    assertTransition(current.status, 'CANCELLED')
-    await prisma.admission.update({ where: { id: current.id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancellationReason: String(body.reason || 'Cancelado pelo RH') } })
+    const reason = String(body.reason || '').trim()
+    if (reason.length < 3 || reason.length > 500) return NextResponse.json({ error: 'Informe um motivo entre 3 e 500 caracteres.' }, { status: 400 })
+    if (!canTransition(current.status, 'CANCELLED')) return NextResponse.json({ error: 'Esta admissão não pode ser cancelada no status atual.' }, { status: 409 })
+    try {
+      await cancelExternalSignature(current.id)
+    } catch (caught) {
+      console.error('[admission-cancel] Falha ao encerrar assinatura externa:', current.protocol, caught)
+      return NextResponse.json({ error: 'Não foi possível interromper a assinatura externa. Tente cancelar novamente para garantir que nenhum aviso seja enviado.' }, { status: 422 })
+    }
+    const cancelledAt = new Date()
+    const [cancelled] = await prisma.$transaction([
+      prisma.admission.updateMany({
+        where: { id: current.id, status: current.status },
+        data: { status: 'CANCELLED', cancelledAt, cancellationReason: reason, lastActivityAt: cancelledAt },
+      }),
+      prisma.admissionToken.updateMany({ where: { admissionId: current.id, revokedAt: null }, data: { revokedAt: cancelledAt } }),
+      prisma.generatedDocument.updateMany({ where: { admissionId: current.id, status: { in: ['DRAFT', 'GENERATED', 'SENT', 'REJECTED'] } }, data: { status: 'CANCELLED' } }),
+      prisma.signatureEnvelope.updateMany({ where: { admissionId: current.id, status: { in: ['CREATED', 'SENT', 'VIEWED', 'AUTHENTICATED', 'REJECTED'] } }, data: { status: 'CANCELLED' } }),
+      prisma.externalSignatureRequest.updateMany({ where: { admissionId: current.id, status: { in: ['PENDING', 'PROCESSING', 'REJECTED'] } }, data: { status: 'CANCELLED' } }),
+      prisma.eRPNextSync.updateMany({ where: { admissionId: current.id, status: { in: ['WAITING', 'RETRYING', 'ERROR'] } }, data: { status: 'CANCELLED', nextAttemptAt: null, lastError: null } }),
+    ])
+    if (!cancelled.count) return NextResponse.json({ error: 'O status da admissão mudou durante o cancelamento. Atualize a página e tente novamente.' }, { status: 409 })
+    response = { cancelledAt, cancellationReason: reason }
   } else if (action === 'retry-erpnext') {
     if (!['ERPNEXT_ERROR', 'READY_FOR_ERPNEXT'].includes(current.status)) return NextResponse.json({ error: 'A integração não pode ser reprocessada neste status.' }, { status: 409 })
     await prisma.$transaction([

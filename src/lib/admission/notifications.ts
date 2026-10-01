@@ -3,6 +3,8 @@ import { sendEvolutionText } from '@/lib/evolution'
 import { prisma } from '@/lib/prisma'
 
 export type AdmissionNotification = {
+  id?: string
+  status?: string
   candidateName: string
   candidateEmail?: string | null
   candidatePhone?: string | null
@@ -13,6 +15,11 @@ export type AdmissionNotification = {
 }
 
 export async function notifyAdmissionCandidate(input: AdmissionNotification) {
+  if (input.status === 'CANCELLED') return []
+  if (input.id) {
+    const admission = await prisma.admission.findUnique({ where: { id: input.id }, select: { status: true } })
+    if (!admission || admission.status === 'CANCELLED') return []
+  }
   const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
   const tasks: Promise<unknown>[] = []
   if (input.candidateEmail) tasks.push(sendEmail({
@@ -31,13 +38,13 @@ export async function notifyAdmissionCandidate(input: AdmissionNotification) {
 export async function notifyAdmissionOwnerDocumentsPending(admissionId: string) {
   try {
     const admission = await prisma.admission.findUnique({ where: { id: admissionId }, select: {
-      id: true, protocol: true, candidateName: true, jobTitle: true, processType: true,
+      id: true, protocol: true, candidateName: true, jobTitle: true, processType: true, status: true,
       unit: { select: { name: true } }, owner: { select: { email: true, active: true } }, createdBy: { select: { email: true, active: true } },
       analysts: { where: { active: true }, select: { email: true } },
       documents: { where: { status: { not: 'APPROVED' } }, select: { type: { select: { name: true } } } },
       badgePhotos: { where: { confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, take: 1, select: { approvedAt: true } },
     } })
-    if (!admission) return
+    if (!admission || admission.status === 'CANCELLED') return
     const main = admission.owner?.active ? admission.owner.email : admission.createdBy?.active ? admission.createdBy.email : null
     const recipients = Array.from(new Set([main, ...admission.analysts.map((analyst) => analyst.email)].filter((email): email is string => !!email)))
     if (!recipients.length) return
