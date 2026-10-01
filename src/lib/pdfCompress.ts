@@ -42,3 +42,27 @@ export async function compressPdf(input: Buffer): Promise<CompressResult> {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }
+
+/**
+ * Regrava com Ghostscript um PDF protegido por senha de proprietário (ex.: CTPS Digital do gov.br).
+ * O pdf-lib abre esses arquivos ignorando a proteção, mas copia o conteúdo ainda cifrado: as páginas saem em branco.
+ * Devolve null se o Ghostscript não estiver disponível ou não conseguir abrir o arquivo.
+ */
+export async function decryptPdf(input: Buffer): Promise<Buffer | null> {
+  if (gsAvailable === false) return null
+  const dir = await mkdtemp(path.join(tmpdir(), 'pdfd-'))
+  try {
+    const source = path.join(dir, 'in.pdf'), target = path.join(dir, 'out.pdf')
+    await writeFile(source, input)
+    await run('gs', ['-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.5', '-dNOPAUSE', '-dQUIET', '-dBATCH', '-dSAFER', `-sOutputFile=${target}`, source])
+    gsAvailable = true
+    const output = await readFile(target)
+    return output.length > 5 && output.subarray(0, 5).toString() === '%PDF-' ? output : null
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') gsAvailable = false
+    else console.error('[pdf-decrypt] Falha ao remover a proteção do PDF:', error instanceof Error ? error.message : error)
+    return null
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}

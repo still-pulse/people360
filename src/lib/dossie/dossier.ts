@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import type { ColaboradorAvaliacao, ColaboradorDocumento } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { readPrivateAdmissionFile } from '@/lib/admission/storage'
+import { decryptPdf } from '@/lib/pdfCompress'
 import { renderTextAdmissionForm } from '@/lib/admission/documentGenerator'
 import { decryptAdmissionText } from '@/lib/admission/security'
 import { decryptAdmissionValue } from '@/lib/admission/security'
@@ -66,7 +67,13 @@ async function loadAttachments(sources: AttachmentSource[]): Promise<Attachment[
     if (loadedBytes + bytes.length > ANEXO_MAX_BYTES || pages >= ANEXO_MAX_PAGES) { out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue }
     try {
       if (src.mime === 'application/pdf') {
-        const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+        let pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+        // PDF protegido: sem remover a proteção, as páginas copiadas saem em branco.
+        if (pdf.isEncrypted) {
+          const decrypted = await decryptPdf(bytes)
+          if (!decrypted) { out.push({ src, kind: 'error', pages: 1 }); pages += 1; continue }
+          pdf = await PDFDocument.load(decrypted)
+        }
         const count = Math.max(1, pdf.getPageCount())
         if (pages + count > ANEXO_MAX_PAGES) { out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue }
         pages += count; loadedBytes += bytes.length
@@ -325,7 +332,7 @@ async function appendAttachments(main: Buffer, attachments: Attachment[], totalP
       const page = out.addPage([A4.w, A4.h])
       tag(page, att, true, att.kind === 'skipped'
         ? 'Arquivo não incorporado: o dossiê atingiu o limite de 50 MB / 500 páginas de anexos. Consulte o arquivo original no People360.'
-        : 'Não foi possível incorporar este arquivo ao dossiê (ausente ou corrompido).')
+        : 'Não foi possível incorporar este arquivo ao dossiê (ausente, corrompido ou protegido por senha). Consulte o arquivo original no People360.')
     }
   }
   // Rodapé com paginação nas páginas de anexos (as demais já receberam o rodapé institucional).

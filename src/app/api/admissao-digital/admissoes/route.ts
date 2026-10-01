@@ -3,7 +3,7 @@ import { erpnextConfigured } from '@/lib/erpnextClient'
 import { fromErpnextMunicipio } from '@/lib/admission/municipios'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { AdmissionStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { analystCanAccessUnit, enforceUnitFilter, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { createAdmissionRecord } from '@/lib/admission/service'
@@ -65,7 +65,9 @@ export async function GET(req: NextRequest) {
     where.OR = [{ candidateName: { contains: search, mode: 'insensitive' } }, { jobTitle: { contains: search, mode: 'insensitive' } }, { protocol: { contains: search, mode: 'insensitive' } }]
     if (digits.length === 11) where.OR.push({ fields: { some: { key: 'cpf', searchHash: hashSensitive(digits) } } })
   }
-  if (p.get('status')) where.status = p.get('status')
+  // Aceita vários status separados por vírgula (ex.: "Documentos aprovados" = toda a fase pós-aprovação).
+  const statuses = (p.get('status') || '').split(',').map((value) => value.trim()).filter((value): value is AdmissionStatus => (Object.values(AdmissionStatus) as string[]).includes(value))
+  if (statuses.length) where.status = statuses.length === 1 ? statuses[0] : { in: statuses }
   if (p.get('processType') === 'ADMISSION' || p.get('processType') === 'REGISTRATION_UPDATE') where.processType = p.get('processType')
   if (p.get('ownerId')) where.AND = [{ OR: [{ ownerId: p.get('ownerId') }, { analysts: { some: { id: p.get('ownerId') } } }] }]
   if (p.get('from') || p.get('to')) where.createdAt = { ...(p.get('from') ? { gte: new Date(`${p.get('from')}T00:00:00`) } : {}), ...(p.get('to') ? { lte: new Date(`${p.get('to')}T23:59:59`) } : {}) }
