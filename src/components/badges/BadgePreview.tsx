@@ -1,14 +1,36 @@
 'use client'
 
-import type { CSSProperties } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { badgeBackName, badgeDepartmentLines, printableBadgeDocument } from '@/lib/badges/format'
 
 export type BadgePreviewData = {
   fullName: string; firstName: string; lastName: string; role: string; department: string
   admissionDate: string; document: string; employeeId: string; photoFocusY: number; photoUrl?: string | null
 }
-function sizeFor(text: string, max: number, min: number, threshold: number) {
-  if (text.length <= threshold) return max
-  return Math.max(min, max - (text.length - threshold) * 0.14)
+function FitText({ text, children, max, min, maxLines = 1, className, style }: {
+  text: string; children?: ReactNode; max: number; min: number; maxLines?: number; className?: string; style?: CSSProperties
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    for (let size = max; size >= min; size -= 0.25) {
+      element.style.fontSize = `${size}px`
+      if (element.scrollWidth <= element.clientWidth + 0.5 && element.scrollHeight <= element.clientHeight + 0.5) return
+    }
+    element.style.fontSize = `${min}px`
+  }, [max, min, maxLines, text])
+  return <div
+    ref={ref}
+    className={className}
+    style={{
+      ...style,
+      fontSize: max,
+      overflow: 'hidden',
+      whiteSpace: maxLines === 1 ? 'nowrap' : 'normal',
+      ...(maxLines > 1 ? { display: '-webkit-box', WebkitLineClamp: maxLines, WebkitBoxOrient: 'vertical' } : {}),
+    }}
+  >{children ?? text}</div>
 }
 
 function BhclLogo() {
@@ -37,25 +59,33 @@ export function BadgeFront({ data }: { data: BadgePreviewData }) {
     </svg>
     <BhclLogo />
     {data.photoUrl ? <img src={data.photoUrl} alt="" className="absolute object-cover" style={{ left: '21.67%', top: '15.99%', width: '56.67%', height: '40.84%', objectPosition: `50% ${data.photoFocusY}%`, clipPath: 'polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)' }} /> : null}
-    <div className="absolute text-white font-bold text-center whitespace-nowrap overflow-hidden flex items-center justify-center" style={{ left: '4.63%', top: '61.45%', width: '90.74%', height: '8.14%', fontSize: sizeFor(data.firstName, 21.2, 12.8, 11) }}>{data.firstName}</div>
-    <div className="absolute text-white italic text-center whitespace-nowrap overflow-hidden flex items-center justify-center" style={{ left: '4.63%', top: '70.35%', width: '90.74%', height: '7.56%', fontSize: sizeFor(data.lastName, 19.2, 10.4, 13) }}>{data.lastName}</div>
+    <FitText text={data.firstName} max={21.2} min={12.8} className="absolute text-white font-bold text-center flex items-center justify-center" style={{ left: '4.63%', top: '61.45%', width: '90.74%', height: '8.14%' }} />
+    <FitText text={data.lastName} max={19.2} min={10.4} className="absolute text-white italic text-center flex items-center justify-center" style={{ left: '4.63%', top: '70.35%', width: '90.74%', height: '7.56%' }} />
     <div className="absolute flex items-center justify-center" style={{ left: '4.63%', top: '77.9%', width: '90.74%', height: '16.86%' }}>
-      <div className="bg-[#0CAFD2] text-white text-center rounded-[4px] px-[6px] py-[6px] max-w-full leading-[1.15] overflow-hidden" style={{ fontSize: sizeFor(data.role, 15.4, 9.6, 22), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{data.role}</div>
+      <FitText text={data.role} max={15.4} min={9.6} maxLines={2} className="bg-[#0CAFD2] text-white text-center rounded-[4px] px-[6px] py-[6px] max-w-full max-h-[49px] leading-[1.15]" />
     </div>
   </div>
 }
 
-function InfoLine({ label, value }: { label: string; value: string }) {
-  return <div className="min-h-[20px] flex items-center justify-center text-center whitespace-nowrap overflow-hidden px-1" style={{ fontSize: sizeFor(`${label}: ${value}`, 12, 7.2, 31) }}><b>{label}:</b>&nbsp;<span>{value}</span></div>
+function InfoLines({ label, lines }: { label: string; lines: string[] }) {
+  return <>{lines.map((line, index) => {
+    const text = `${index === 0 ? `${label}: ` : ''}${line}`
+    return <FitText key={`${line}-${index}`} text={text} max={12} min={7.2} className="min-h-[20px] flex items-center justify-center text-center px-1">
+      {index === 0 && <><b>{label}:</b>&nbsp;</>}<span>{line}</span>
+    </FitText>
+  })}</>
 }
 
 export function BadgeBack({ data }: { data: BadgePreviewData }) {
+  const backName = badgeBackName(data.fullName)
+  const departmentLines = badgeDepartmentLines(data.department)
+  const document = printableBadgeDocument(data.document)
   return <div style={{ ...face, background: '#fff' }} aria-label="Verso do crachá">
     <svg viewBox="0 0 54 86" className="absolute inset-0 w-full h-full" aria-hidden="true"><rect width="54" height="86" fill="#fff" /><g transform="rotate(30)"><rect x="-150" y="-200" width="400" height="198.18" fill="#14678F" /><path d="M-150 -1.82 L28.4 -1.82 L28.4 4.24 A2 2 0 0 1 26.4 6.24 L-150 6.24 Z" fill="#0CAFD2" /><rect x="-150" y="67.55" width="400" height="200" fill="#0CAFD2" /><path d="M-150 69.1 L46.5 69.1 A1.5 1.5 0 0 1 48 70.6 L48 260 L-150 260 Z" fill="#14678F" /></g></svg>
     <BhclLogo />
     <div className="absolute flex flex-col gap-[9px]" style={{ left: '9.72%', top: '33.26%', width: '80.56%' }}>
-      <div className="bg-[#0CAFD2] rounded-[5px] py-1 px-[7px] text-white"><InfoLine label="Nome" value={data.fullName} /><InfoLine label="Setor" value={data.department} /><InfoLine label="Admissão" value={data.admissionDate} /><InfoLine label="Documento" value={data.document} /></div>
-      <div className="bg-[#0CAFD2] rounded-[5px] min-h-[35px] px-[7px] text-white flex items-center justify-center w-full"><InfoLine label="Matrícula" value={data.employeeId} /></div>
+      <div className="bg-[#0CAFD2] rounded-[5px] py-1 px-[7px] text-white"><InfoLines label="Nome" lines={[backName]} /><InfoLines label="Setor" lines={departmentLines} /><InfoLines label="Admissão" lines={[data.admissionDate]} />{document && <InfoLines label="Registro" lines={[document]} />}</div>
+      <div className="bg-[#0CAFD2] rounded-[5px] min-h-[35px] px-[7px] text-white flex items-center justify-center w-full"><InfoLines label="Matrícula" lines={[data.employeeId]} /></div>
       <div className="px-[8px] text-[#1F3240] text-[7.6px] leading-[11.2px]"><div className="text-justify">Este crachá é de uso pessoal e</div><div className="text-justify">intransferível. É obrigatório o uso durante</div><div>a permanência na Unidade.</div></div>
     </div>
     <div className="absolute left-0 w-full flex items-center justify-center gap-[4px] text-[#05405E] text-[8.3px]" style={{ top: '93.6%', height: '3.2%' }}><span className="w-[10px] h-[10px] rounded-full bg-[#0CAFD2] text-white text-[7px] flex items-center justify-center">◎</span><span>www.bhcl.org.br</span></div>

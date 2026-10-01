@@ -9,11 +9,11 @@ import { BadgePreview, type BadgePreviewData } from './BadgePreview'
 type HistoryItem = { id: string; versao: number; observacao?: string | null; geradoEm?: string | null; createdAt: string; criadoPorNome?: string | null }
 type Payload = { employee: { id: string; name: string }; preview: BadgePreviewData; missing: string[]; current: HistoryItem | null; history: HistoryItem[] }
 
-const fields: { key: keyof BadgePreviewData; label: string; wide?: boolean }[] = [
+const fields: { key: keyof BadgePreviewData; label: string; wide?: boolean; required?: boolean }[] = [
   { key: 'firstName', label: 'Nome no crachá' }, { key: 'lastName', label: 'Sobrenome' },
   { key: 'fullName', label: 'Nome completo', wide: true }, { key: 'role', label: 'Cargo no crachá' },
   { key: 'department', label: 'Setor' }, { key: 'admissionDate', label: 'Data de admissão' },
-  { key: 'document', label: 'Documento' }, { key: 'employeeId', label: 'Matrícula' },
+  { key: 'document', label: 'Registro profissional (opcional)', required: false }, { key: 'employeeId', label: 'Matrícula' },
 ]
 
 export function BadgeManager({ employeeId, employeeName, open, onClose, onGenerated }: { employeeId: string; employeeName: string; open: boolean; onClose: () => void; onGenerated?: () => void }) {
@@ -32,7 +32,7 @@ export function BadgeManager({ employeeId, employeeName, open, onClose, onGenera
     setLoading(false)
   }, [employeeId])
   useEffect(() => { if (open) void load() }, [open, load])
-  const missing = useMemo(() => !form ? [] : fields.filter(({ key }) => !String(form[key] ?? '').trim()).map(({ label }) => label).concat(form.photoUrl ? [] : ['Foto para o crachá']), [form])
+  const missing = useMemo(() => !form ? [] : fields.filter(({ key, required }) => required !== false && !String(form[key] ?? '').trim()).map(({ label }) => label).concat(form.photoUrl ? [] : ['Foto para o crachá']), [form])
   async function generate() {
     if (!form || missing.length) return
     setGenerating(true); setError('')
@@ -49,7 +49,7 @@ export function BadgeManager({ employeeId, employeeName, open, onClose, onGenera
         <BadgePreview data={form} />
         {missing.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex gap-2"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>Antes de gerar, confira: {missing.join(', ')}.</span></div>}
         <section><h3 className="text-sm font-semibold text-gray-900 mb-3">Dados desta emissão</h3><div className="grid sm:grid-cols-2 gap-3">
-          {fields.map(({ key, label, wide }) => <label key={key} className={wide ? 'sm:col-span-2' : ''}><span className="block text-xs font-medium text-gray-500 mb-1">{label}</span><input value={String(form[key] ?? '')} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#15AFA4]/30" /></label>)}
+          {fields.map(({ key, label, wide }) => <label key={key} className={wide ? 'sm:col-span-2' : ''}><span className="block text-xs font-medium text-gray-500 mb-1">{label}</span><input value={String(form[key] ?? '')} onChange={(e) => setForm({ ...form, [key]: e.target.value })} placeholder={key === 'document' ? 'Ex.: COREN-SP 123456' : undefined} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#15AFA4]/30" />{key === 'document' && <span className="block mt-1 text-[11px] text-gray-400">CPF e RG não são exibidos no crachá.</span>}</label>)}
           <label className="sm:col-span-2"><span className="block text-xs font-medium text-gray-500 mb-1">Enquadramento vertical da foto: {form.photoFocusY}%</span><input type="range" min="0" max="100" value={form.photoFocusY} onChange={(e) => setForm({ ...form, photoFocusY: Number(e.target.value) })} className="w-full accent-[#15AFA4]" /></label>
           {payload?.current && <label className="sm:col-span-2"><span className="block text-xs font-medium text-gray-500 mb-1">Motivo da segunda via</span><select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm"><option value="">Não informado</option><option>Perda</option><option>Dano</option><option>Alteração de cargo</option><option>Alteração de nome</option><option>Atualização de foto</option><option>Outro</option></select></label>}
         </div></section>

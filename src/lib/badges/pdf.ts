@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import type { BadgeSnapshot } from './types'
+import { badgeBackName, badgeDepartmentLines, printableBadgeDocument } from './format'
 
 const MM_TO_PT = 72 / 25.4
 const COLORS = {
@@ -164,18 +165,34 @@ function pairLine(doc: jsPDF, label: string, value: string, y: number, maxMm = 3
   const start = 27 - (lw + vw) / 2; doc.setFont('helvetica', 'bold'); doc.text(label + ': ', start, y); doc.setFont('helvetica', 'normal'); doc.text(safe(value), start + lw, y)
 }
 
+function centeredLine(doc: jsPDF, value: string, y: number, maxMm = 3, minMm = 1.8) {
+  const mm = fitSize(doc, value, maxMm, minMm, 39.9)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(mm * MM_TO_PT); doc.setTextColor(...COLORS.white)
+  doc.text(safe(value), 27, y, { align: 'center' })
+}
+
 function drawBack(doc: jsPDF, data: BadgeSnapshot) {
   backgroundBack(doc); drawLogo(doc)
-  doc.setFillColor(...COLORS.turquoise); doc.roundedRect(5.25, 28.6, 43.5, 22.2, 1.3, 1.3, 'F')
-  pairLine(doc, 'Nome', data.fullName, 33.25, 3, 2)
-  pairLine(doc, 'Setor', data.department, 38.25)
-  pairLine(doc, 'Admissão', data.admissionDate, 43.25)
-  pairLine(doc, 'Documento', data.document, 48.25)
-  doc.roundedRect(5.25, 53, 43.5, 8.7, 1.3, 1.3, 'F'); pairLine(doc, 'Matrícula', data.employeeId, 58.25)
+  const departmentLines = badgeDepartmentLines(data.department)
+  const document = printableBadgeDocument(data.document)
+  const rows = [
+    { label: 'Nome', value: badgeBackName(data.fullName) },
+    ...departmentLines.map((value, index) => ({ label: index === 0 ? 'Setor' : '', value })),
+    { label: 'Admissão', value: data.admissionDate },
+    ...(document ? [{ label: 'Registro', value: document }] : []),
+  ]
+  const extraHeight = Math.max(0, rows.length - 4) * 4.6
+  doc.setFillColor(...COLORS.turquoise); doc.roundedRect(5.25, 28.6, 43.5, 22.2 + extraHeight, 1.3, 1.3, 'F')
+  rows.forEach(({ label, value }, index) => label
+    ? pairLine(doc, label, value, 33.25 + index * 4.6, 3, 1.8)
+    : centeredLine(doc, value, 33.25 + index * 4.6))
+  const employeeBoxY = 53 + extraHeight
+  doc.setFillColor(...COLORS.turquoise)
+  doc.roundedRect(5.25, employeeBoxY, 43.5, 8.7, 1.3, 1.3, 'F'); pairLine(doc, 'Matrícula', data.employeeId, employeeBoxY + 5.25)
   doc.setTextColor(...COLORS.ink); doc.setFont('helvetica', 'normal'); doc.setFontSize(1.9 * MM_TO_PT)
-  doc.text('Este crachá é de uso pessoal e', 7.2, 66.2)
-  doc.text('intransferível. É obrigatório o uso durante', 7.2, 69)
-  doc.text('a permanência na Unidade.', 7.2, 71.8)
+  doc.text('Este crachá é de uso pessoal e', 7.2, 66.2 + extraHeight)
+  doc.text('intransferível. É obrigatório o uso durante', 7.2, 69 + extraHeight)
+  doc.text('a permanência na Unidade.', 7.2, 71.8 + extraHeight)
   doc.setFillColor(...COLORS.turquoise); doc.circle(19.4, 81.85, 1.25, 'F')
   doc.setDrawColor(...COLORS.white); doc.setLineWidth(0.13); doc.circle(19.4, 81.85, 0.95, 'S'); doc.line(18.45,81.85,20.35,81.85); doc.line(19.4,80.9,19.4,82.8)
   doc.setTextColor(...COLORS.petroleum); doc.setFontSize(2.08 * MM_TO_PT); doc.text('www.bhcl.org.br', 21.55, 82.55)
