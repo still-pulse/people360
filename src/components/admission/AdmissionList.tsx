@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { Header } from '@/components/layout/Header'
-import { SlidersHorizontal, ChevronLeft, ChevronRight, Plus, Trash2, XCircle } from 'lucide-react'
+import { SlidersHorizontal, ChevronLeft, ChevronRight, FolderArchive, Plus, Trash2, XCircle } from 'lucide-react'
 import styles from './Admission.module.css'
 import { AdmissionTitle, ErrorState, formatDateTime, NewAdmissionButton, SearchBox, StatusBadge } from './shared'
 
@@ -32,6 +32,8 @@ export function AdmissionList({ processType = 'ADMISSION' }: { processType?: 'AD
   const [page,setPage] = useState(1)
   const [loading,setLoading] = useState(true)
   const [error,setError] = useState('')
+  const [dossierBusy,setDossierBusy] = useState(false)
+  const [notice,setNotice] = useState('')
 
   useEffect(() => { const id=setTimeout(()=>{setQuery(search);setPage(1)},350); return()=>clearTimeout(id) }, [search])
   useEffect(() => { fetch('/api/admissao-digital/meta').then(r=>r.ok?r.json():Promise.reject()).then(setMeta).catch(()=>undefined) }, [])
@@ -71,9 +73,24 @@ export function AdmissionList({ processType = 'ADMISSION' }: { processType?: 'AD
     } catch { setError('Não foi possível excluir as admissões selecionadas.') } finally { setLoading(false) }
   }
 
+  async function downloadAccountingDossiers(){
+    const scope=selected.length?`${selected.length} admissão(ões) selecionada(s)`:'todas as admissões com documentos aprovados'+(unitId?' da unidade filtrada':'')
+    if(!window.confirm(`Gerar o dossiê pré-admissional de ${scope}? Isso pode levar alguns minutos. Nada será enviado ao ERPNext.`))return
+    setDossierBusy(true); setNotice('Gerando dossiês... não feche esta página.')
+    try {
+      const response=await fetch('/api/admissao-digital/admissoes/dossie-contabilidade/lote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:selected,unitId:unitId||undefined})})
+      if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Não foi possível gerar os dossiês.')}
+      const blob=await response.blob(),match=(response.headers.get('content-disposition')||'').match(/filename="?([^";]+)"?/i)
+      const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=match?.[1]||'Dossies_Pre_Admissionais.zip';document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)
+      const failed=Number(response.headers.get('x-dossiers-failed')||0)
+      setNotice(`${response.headers.get('x-dossiers-generated')||0} dossiê(s) gerado(s).${failed?` ${failed} com pendência — veja o relatorio.csv no ZIP.`:''}`)
+    } catch(caught){ setNotice(caught instanceof Error?caught.message:'Não foi possível gerar os dossiês.') } finally { setDossierBusy(false) }
+  }
+
   const filtered=!!(search||status||unitId||ownerId||from||to||sort!=='lastActivityAt')
   return <><Header title={isUpdate?'Atualização Cadastral':'Admissões'} subtitle={isUpdate?'Colaboradores ativos':'Admissão Digital'}/><div className={styles.module}><div className={styles.content}>
-    <AdmissionTitle tourId="list-heading" title={isUpdate?'Atualizações cadastrais':'Admissões'} subtitle={isUpdate?'Solicitações de revisão de dados e documentos de colaboradores ativos.':'Acompanhe cada processo, pendência, responsável e integração.'}>{isUpdate?<Link href="/atualizacao-cadastral/nova" className={styles.buttonPrimary}><Plus size={15}/>Nova atualização</Link>:<NewAdmissionButton/>}</AdmissionTitle>
+    <AdmissionTitle tourId="list-heading" title={isUpdate?'Atualizações cadastrais':'Admissões'} subtitle={isUpdate?'Solicitações de revisão de dados e documentos de colaboradores ativos.':'Acompanhe cada processo, pendência, responsável e integração.'}>{isUpdate?<Link href="/atualizacao-cadastral/nova" className={styles.buttonPrimary}><Plus size={15}/>Nova atualização</Link>:<><button className={styles.button} disabled={dossierBusy} onClick={downloadAccountingDossiers} title="Gera um ZIP com uma pasta por colaborador, contendo o dossiê pré-admissional em PDF"><FolderArchive size={15}/>{dossierBusy?'Gerando dossiês...':selected.length?'Dossiês das selecionadas (ZIP)':'Dossiês aprovados (ZIP)'}</button><NewAdmissionButton/></>}</AdmissionTitle>
+    {notice&&<div className={styles.docRow} role="status" style={{marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>{notice}</span>{!dossierBusy&&<button className={styles.button} onClick={()=>setNotice('')}>Fechar</button>}</div>}
     <div className={styles.filterBar} data-admission-tour="list-filters"><SearchBox value={search} onChange={setSearch}/><select className={styles.select} value={status} onChange={e=>{setStatus(e.target.value);setPage(1)}}><option value="">Todos os status</option><option value="LINK_SENT">Aguardando candidato</option><option value="IN_PROGRESS">Em andamento</option><option value="DOCUMENTS_UNDER_REVIEW">Documentos em análise</option><option value="CORRECTION_REQUESTED">Correção solicitada</option><option value="SIGNATURE_PENDING">Aguardando assinatura</option><option value="ERPNEXT_ERROR">Erro no ERPNext</option><option value="COMPLETED">Concluída</option><option value="CANCELLED">Cancelada</option></select><button className={styles.button} aria-expanded={advanced} onClick={()=>setAdvanced(value=>!value)}><SlidersHorizontal size={14}/>Filtros avançados</button>{filtered&&<button className={styles.button} onClick={clearFilters}>Limpar filtros</button>}</div>
     {advanced&&<div className={styles.card} style={{marginBottom:16}}><div className={styles.formGrid}><label className={styles.field}><span className={styles.label}>Unidade</span><select className={styles.select} value={unitId} onChange={e=>{setUnitId(e.target.value);setPage(1)}}><option value="">Todas</option>{meta.units.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label className={styles.field}><span className={styles.label}>Responsável</span><select className={styles.select} value={ownerId} onChange={e=>{setOwnerId(e.target.value);setPage(1)}}><option value="">Todos</option>{meta.users.map(user=><option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label className={styles.field}><span className={styles.label}>Criada a partir de</span><input className={styles.input} type="date" value={from} onChange={e=>{setFrom(e.target.value);setPage(1)}}/></label><label className={styles.field}><span className={styles.label}>Criada até</span><input className={styles.input} type="date" value={to} onChange={e=>{setTo(e.target.value);setPage(1)}}/></label><label className={styles.field}><span className={styles.label}>Ordenação</span><select className={styles.select} value={sort} onChange={e=>{setSort(e.target.value);setPage(1)}}><option value="lastActivityAt">Última atividade</option><option value="candidateName">Candidato</option><option value="hireDate">Data de admissão</option><option value="createdAt">Data de criação</option><option value="status">Status</option></select></label></div></div>}
     {!!selected.length&&<div className={styles.docRow} style={{marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}><strong>{selected.length} selecionada(s)</strong><div className={styles.actions}><button className={styles.buttonDanger} onClick={cancelSelected}><XCircle size={14}/>Cancelar em lote</button>{isAdmin&&<button className={styles.buttonDanger} onClick={deleteSelected}><Trash2 size={14}/>Excluir</button>}</div></div>}
