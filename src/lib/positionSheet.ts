@@ -16,7 +16,7 @@ export const IMPORT_SHEET = 'Importar'
 export const EXPORT_SHEET = 'Cargos e Salários'
 const LISTS_SHEET = 'Listas'
 const MONEY_FORMAT = '"R$" #,##0.00'
-const HEADER_ROW = 10
+export const HEADER_ROW = 10
 const MAX_ROWS = 5000
 
 export const COLUMNS = [
@@ -45,7 +45,7 @@ export type SheetPosition = {
 }
 export type SheetUnit = { id: string; name: string; color: string; active: boolean }
 export type Logo = { buffer: Buffer; extension: 'png' | 'jpeg'; width: number; height: number }
-type Meta = { companyName: string; userName: string; logo: Logo | null }
+export type Meta = { companyName: string; userName: string; logo: Logo | null }
 
 // ─── Texto e números ───────────────────────────────────────────────
 
@@ -76,12 +76,12 @@ function cellText(value: ExcelJS.CellValue): string {
 
 // ─── Visual ────────────────────────────────────────────────────────
 
-const fill = (argb: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } })
-const thin = (argb = BRAND.border): Partial<ExcelJS.Borders> => ({
+export const fill = (argb: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } })
+export const thin = (argb = BRAND.border): Partial<ExcelJS.Borders> => ({
   top: { style: 'thin', color: { argb } }, bottom: { style: 'thin', color: { argb } },
   left: { style: 'thin', color: { argb } }, right: { style: 'thin', color: { argb } },
 })
-const FONT = 'Calibri'
+export const FONT = 'Calibri'
 
 function formatNow() {
   return new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
@@ -90,7 +90,7 @@ function formatNow() {
 const logoIds = new WeakMap<ExcelJS.Workbook, number>()
 
 /** Cabeçalho com logo, título, subtítulo e a faixa na cor do sistema (linhas 1 a 5). */
-function brandHeader(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, lastCol: number, title: string, subtitle: string, meta: Meta) {
+export function brandHeader(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, lastCol: number, title: string, subtitle: string, meta: Meta) {
   sheet.getRow(1).height = 18
   for (const row of [2, 3, 4]) sheet.getRow(row).height = 26
   if (meta.logo) {
@@ -118,7 +118,7 @@ function brandHeader(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, lastC
 }
 
 /** Cartões de indicadores nas linhas 7 e 8. */
-function kpis(sheet: ExcelJS.Worksheet, items: [string, number | string][]) {
+export function kpis(sheet: ExcelJS.Worksheet, items: [string, number | string][]) {
   sheet.getRow(7).height = 18
   sheet.getRow(8).height = 30
   items.forEach(([label, value], index) => {
@@ -135,7 +135,7 @@ function kpis(sheet: ExcelJS.Worksheet, items: [string, number | string][]) {
   })
 }
 
-function tableHeader(sheet: ExcelJS.Worksheet, rowNumber: number, headers: string[]) {
+export function tableHeader(sheet: ExcelJS.Worksheet, rowNumber: number, headers: string[]) {
   const row = sheet.getRow(rowNumber)
   row.height = 26
   headers.forEach((header, index) => {
@@ -146,7 +146,7 @@ function tableHeader(sheet: ExcelJS.Worksheet, rowNumber: number, headers: strin
   })
 }
 
-function styleBodyRow(row: ExcelJS.Row, columns: number, index: number) {
+export function styleBodyRow(row: ExcelJS.Row, columns: number, index: number) {
   row.height = 20
   for (let col = 1; col <= columns; col++) {
     const cell = row.getCell(col)
@@ -173,7 +173,7 @@ function styleMoneyAndHours(row: ExcelJS.Row) {
   if (hours.value === ANY_HOURS_LABEL) hours.font = { name: FONT, size: 10, color: { argb: BRAND.muted } }
 }
 
-function pageSetup(sheet: ExcelJS.Worksheet, title: string) {
+export function pageSetup(sheet: ExcelJS.Worksheet, title: string) {
   sheet.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } }
   sheet.headerFooter = { oddFooter: `&L&8${title}&R&8Página &P de &N` }
   sheet.properties.tabColor = { argb: BRAND.teal }
