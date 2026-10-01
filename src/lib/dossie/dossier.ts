@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import type { ColaboradorAvaliacao, ColaboradorDocumento } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { readPrivateAdmissionFile } from '@/lib/admission/storage'
+import { renderTextAdmissionForm } from '@/lib/admission/documentGenerator'
 import { decryptAdmissionText } from '@/lib/admission/security'
 import { decryptAdmissionValue } from '@/lib/admission/security'
 import { fileSlug, fmtCpf, fmtDate, fmtDateTime, fmtMoney } from './format'
@@ -126,9 +127,10 @@ export async function admissionDossierSources(admissionId: string) {
         include: { type: { select: { name: true, position: true } } },
         orderBy: [{ type: { position: 'asc' } }, { createdAt: 'asc' }],
       },
+      createdAt: true,
       generatedDocuments: {
         where: { template: { key: 'ficha_registro' }, status: { not: 'CANCELLED' } },
-        include: { template: { select: { name: true } } },
+        include: { template: { select: { name: true, content: true } } },
         orderBy: { createdAt: 'desc' },
       },
     },
@@ -148,6 +150,13 @@ export async function admissionDossierSources(admissionId: string) {
       mime: 'application/pdf',
       read: () => readPrivateAdmissionFile(doc.signedStoragePath ?? doc.storagePath!),
     }))
+  // Admissões feitas depois da ficha oficial não têm o "Formulário Admissional" em texto: ele é montado na hora
+  // (o template de layout guarda um texto descritivo que começa com "Documento oficial").
+  const hasTextForm = admission.generatedDocuments.some((doc) => !doc.template.content.startsWith('Documento oficial'))
+  if (!hasTextForm) formulario.unshift({
+    titulo: 'Formulário Admissional', categoria: `Admissão ${admission.protocol}`, data: admission.createdAt,
+    situacao: 'Gerado', mime: 'application/pdf', read: () => renderTextAdmissionForm(admissionId),
+  })
   const documentos: AttachmentSource[] = admission.documents.map((doc) => ({
     titulo: `${doc.type.name}${doc.side ? ` (${doc.side})` : ''}`,
     categoria: `Admissão ${admission.protocol}`,

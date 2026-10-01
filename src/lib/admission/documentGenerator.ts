@@ -10,6 +10,7 @@ import { StandardFonts } from 'pdf-lib'
 import { layoutByKey } from './forms'
 import { buildFormContext } from './forms/context'
 import { stampValidation } from './forms/pdfText'
+import { ADMISSION_TEMPLATE_DEFAULTS } from './templateDefaults'
 
 export function interpolate(content: string, values: Record<string, string>) {
   return content.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key) => values[key] ?? '—')
@@ -32,7 +33,7 @@ function valueText(value: unknown) {
   return typeof value === 'string' ? value : String(value)
 }
 
-export function createPdf(name: string, content: string, protocol: string, version: number, validationCode: string, qrDataUrl: string) {
+export function createPdf(name: string, content: string, protocol: string, version: number, validationCode: string | null, qrDataUrl: string | null) {
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
   const margin = 20, width = 170, bottom = 267
   let page = 1, y = 22
@@ -45,7 +46,7 @@ export function createPdf(name: string, content: string, protocol: string, versi
   }
   const footer = () => {
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(124, 142, 145)
-    pdf.text(`People360 · Documento ${validationCode} · Página ${page}`, 105, 289, { align: 'center' })
+    pdf.text(validationCode ? `People360 · Documento ${validationCode} · Página ${page}` : `People360 · Página ${page}`, 105, 289, { align: 'center' })
     pdf.setTextColor(29, 43, 46)
   }
   const nextPage = () => { footer(); pdf.addPage(); page += 1; header() }
@@ -59,6 +60,7 @@ export function createPdf(name: string, content: string, protocol: string, versi
     if (y + height > bottom) nextPage()
     pdf.text(lines, margin, y); y += height + (heading ? 2.2 : 1.4)
   }
+  if (!validationCode || !qrDataUrl) { footer(); return pdf }
   if (y > 229) nextPage()
   pdf.setDrawColor(226, 232, 231); pdf.roundedRect(margin, y + 2, width, 40, 2, 2)
   pdf.addImage(qrDataUrl, 'PNG', 153, y + 6, 32, 32)
@@ -69,8 +71,8 @@ export function createPdf(name: string, content: string, protocol: string, versi
   return pdf
 }
 
-export async function generateAdmissionDocuments(admissionId: string, origin: string) {
-  const admission = await prisma.admission.findUnique({
+function loadAdmissionForDocuments(admissionId: string) {
+  return prisma.admission.findUnique({
     where: { id: admissionId },
     include: {
       unit: true, vacancy: true, fields: true, dependents: true,
@@ -79,12 +81,11 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
       transport: { include: { routes: { orderBy: { position: 'asc' } } } },
     },
   })
-  if (!admission) throw new Error('Admissão não encontrada.')
-  await ensureAdmissionTemplates()
-  // Os templates do dossiê do colaborador (`colab_*`) vivem na mesma tabela e não fazem parte da admissão.
-  const templates = await prisma.documentTemplate.findMany({ where: { active: true, NOT: { key: { startsWith: 'colab_' } } }, orderBy: [{ key: 'asc' }, { version: 'desc' }], distinct: ['key'] })
-  if (!templates.length) throw new Error('Nenhum template ativo foi configurado.')
+}
+type AdmissionForDocuments = NonNullable<Awaited<ReturnType<typeof loadAdmissionForDocuments>>>
 
+/** Valores dos templates em texto ({{campo}}). */
+function templateValues(admission: AdmissionForDocuments) {
   const fields = Object.fromEntries(admission.fields.map((field) => [field.key, field.sensitive ? decryptAdmissionValue(field.value) : field.value]))
   const address = [fields.street, fields.number, fields.complement, fields.district, fields.city, fields.state, fields.zipCode].filter(Boolean).join(', ')
   const transport = admission.transport
@@ -118,6 +119,17 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
     transportYes: transportRequested ? '(X)' : '( )', transportNo: transport && !transportRequested ? '(X)' : '( )',
     transportRefusalReason: transportRequested ? '—' : valueText(transport?.refusalReason), transportRoutesTable, transportDailyTotal,
   }
+  return { values, fields }
+}
+
+export async function generateAdmissionDocuments(admissionId: string, origin: string) {
+  const admission = await loadAdmissionForDocuments(admissionId)
+  if (!admission) throw new Error('Admissão não encontrada.')
+  await ensureAdmissionTemplates()
+  // Os templates do dossiê do colaborador (`colab_*`) vivem na mesma tabela e não fazem parte da admissão.
+  const templates = await prisma.documentTemplate.findMany({ where: { active: true, NOT: { key: { startsWith: 'colab_' } } }, orderBy: [{ key: 'asc' }, { version: 'desc' }], distinct: ['key'] })
+  if (!templates.length) throw new Error('Nenhum template ativo foi configurado.')
+  const { values, fields } = templateValues(admission)
 
   // Contrato e termos oficiais: formulário original preenchido com os dados do colaborador.
   const position = await prisma.position.findFirst({ where: { name: { equals: admission.jobTitle, mode: 'insensitive' } }, select: { cbo: true } })
@@ -157,4 +169,16 @@ export async function generateAdmissionDocuments(admissionId: string, origin: st
     results.push({ ...created, validationUrl })
   }
   return results
+}
+
+/**
+ * "Formulário Admissional" em texto (modelo anterior à ficha oficial), montado na hora para o dossiê
+ * de quem não o tem. Não é gravado nem enviado para assinatura; por isso sai sem o bloco de validação.
+ */
+export async function renderTextAdmissionForm(admissionId: string) {
+  const admission = await loadAdmissionForDocuments(admissionId)
+  const template = ADMISSION_TEMPLATE_DEFAULTS.find((item) => item.key === 'ficha_registro')
+  if (!admission || !template) return null
+  const { values } = templateValues(admission)
+  return Buffer.from(createPdf(template.name, interpolate(template.content, values), admission.protocol, template.version, null, null).output('arraybuffer'))
 }
