@@ -55,6 +55,8 @@ export function validateBadgeSnapshot(snapshot: BadgeSnapshot) {
 
 export function snapshotNeedsUpdate(current: BadgeSnapshot, previous: Partial<BadgeSnapshot> | null | undefined) {
   if (!previous) return false
-  const keys: (keyof BadgeSnapshot)[] = ['fullName', 'role', 'department', 'admissionDate', 'document', 'employeeId', 'photoId']
-  return keys.some((key) => String(current[key] ?? '') !== String(previous[key] ?? ''))
+  const keys: (keyof BadgeSnapshot)[] = ['fullName', 'role', 'department', 'admissionDate', 'employeeId', 'photoId']
+  if (keys.some((key) => String(current[key] ?? '') !== String(previous[key] ?? ''))) return true
+  const previousDocument = String(previous.document ?? '')
+  return previousDocument !== printableBadgeDocument(previousDocument)
 }

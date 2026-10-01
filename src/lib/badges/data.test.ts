@@ -28,5 +28,7 @@ describe('dados do crachá', () => {
   it('detecta somente divergências relevantes', () => {
     expect(snapshotNeedsUpdate(base, { ...base })).toBe(false)
     expect(snapshotNeedsUpdate({ ...base, role: 'Gerente' }, base)).toBe(true)
+    expect(snapshotNeedsUpdate({ ...base, document: '' }, base)).toBe(false)
+    expect(snapshotNeedsUpdate({ ...base, document: '' }, { ...base, document: 'CPF: 422.230.158-24' })).toBe(true)
   })
 })

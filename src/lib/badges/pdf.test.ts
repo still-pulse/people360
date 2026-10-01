@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 import { coverImagePlacement, renderBadgePdf } from './pdf'
+import { badgeArchiveFolder, badgeBatchCsvRow, splitBadgePdf } from './batch'
 import type { BadgeSnapshot } from './types'
 
 const onePixelPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
@@ -39,5 +40,21 @@ describe('PDF do crachá', () => {
     expect(vertical.height).toBeGreaterThanOrEqual(35.125)
     expect(horizontal.width).toBeGreaterThanOrEqual(30.6)
     expect(horizontal.height).toBeGreaterThanOrEqual(35.125)
+  })
+
+  it('separa frente e verso em PDFs individuais no tamanho físico correto', async () => {
+    const combined = renderBadgePdf(data, onePixelPng, 'image/png')
+    const sides = await splitBadgePdf(combined)
+    for (const bytes of [sides.front, sides.back]) {
+      const pdf = await PDFDocument.load(bytes)
+      expect(pdf.getPageCount()).toBe(1)
+      expect(pdf.getPage(0).getWidth()).toBeCloseTo(153.07, 1)
+      expect(pdf.getPage(0).getHeight()).toBeCloseTo(243.78, 1)
+    }
+  })
+
+  it('gera nomes seguros e relatório compatível com CSV', () => {
+    expect(badgeArchiveFolder(0, 'João: da Silva/Junior', '0001')).toBe('0001 - Joao_ da Silva_Junior - 0001')
+    expect(badgeBatchCsvRow(['Nome', 'Erro "na foto"'])).toBe('"Nome";"Erro ""na foto"""')
   })
 })
