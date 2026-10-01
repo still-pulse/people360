@@ -54,6 +54,39 @@ function authHeader(): string {
   return `token ${KEY}:${SECRET}`
 }
 
+function serverMessages(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((item) => {
+      try {
+        const message = typeof item === 'string' ? JSON.parse(item)?.message : item?.message
+        return typeof message === 'string' && message.trim() ? [message.trim()] : []
+      } catch {
+        return typeof item === 'string' && item.trim() ? [item.trim()] : []
+      }
+    })
+  } catch {
+    return []
+  }
+}
+
+/** Extrai a mensagem funcional do Frappe sem reduzir erros de validação a apenas "MandatoryError". */
+export function erpnextErrorMessage(data: any, status: number) {
+  const details = [
+    ...serverMessages(data?._server_messages),
+    data?._error_message,
+    typeof data?.message === 'string' ? data.message : null,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+  const detail = [...new Set(details.map((value) => value.trim()))].join(' | ')
+  const type = typeof data?.exc_type === 'string' ? data.exc_type.trim() : ''
+  if (detail) return type && !detail.includes(type) ? `${type}: ${detail}` : detail
+  if (type) return type
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  return `ERPNext HTTP ${status}`
+}
+
 async function request<T = unknown>(
   method: string,
   path: string,
@@ -84,12 +117,7 @@ async function request<T = unknown>(
   }
 
   if (!res.ok) {
-    const msg =
-      data?.exc_type || data?.message || data?._error_message || data?.exception ||
-      (typeof data === 'string' ? data : null) ||
-      `ERPNext HTTP ${res.status}`
-    const detail = typeof msg === 'string' ? msg : JSON.stringify(msg).slice(0, 500)
-    throw new ErpnextApiError(detail, res.status, data)
+    throw new ErpnextApiError(erpnextErrorMessage(data, res.status), res.status, data)
   }
 
   return data as T

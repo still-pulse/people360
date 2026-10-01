@@ -10,9 +10,9 @@ import type { Actor } from './types'
 const COMPROVANTES = new Set(['comprovante_residencia', 'conta_banco_brasil', 'comprovante_escolaridade', 'coren_carteirinha'])
 const DEPENDENTES = new Set(['rg_cpf_filhos', 'certidao_nascimento_filhos', 'carteira_vacinacao_dependentes', 'comprovante_matricula_filhos'])
 const GERADOS: Record<string, { categoria: string; titulo: string }> = {
-  contrato_trabalho: { categoria: 'Contrato', titulo: 'Contrato de Experiência e Relatórios Admissionais' },
-  termo_vale_transporte: { categoria: 'Termo', titulo: 'Opção do Vale-Transporte' },
-  ficha_registro: { categoria: 'Documento Pessoal', titulo: 'Formulário Admissional' },
+  contrato_trabalho: { categoria: 'Contrato', titulo: 'Contrato Individual de Trabalho e Documentos Admissionais - BHCL' },
+  termo_vale_transporte: { categoria: 'Termo', titulo: 'Termo de Opção do Vale-Transporte' },
+  ficha_registro: { categoria: 'Documento Pessoal', titulo: 'Ficha de Empregado' },
 }
 
 const categoriaDoc = (key: string) => (COMPROVANTES.has(key) ? 'Comprovante' : DEPENDENTES.has(key) ? 'Dependente' : 'Documento Pessoal')

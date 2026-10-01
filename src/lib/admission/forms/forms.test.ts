@@ -61,12 +61,10 @@ describe('formulários oficiais da admissão', () => {
       pages[layout.key] = (await PDFDocument.load(bytes)).getPageCount()
     }
     expect(pages).toEqual({
-      contrato_trabalho: 4, ficha_registro: 2, termo_recursos_tecnologicos: 2, termo_ciencia_ponto: 1, termo_ciencia_atestados: 1, termo_uso_celular: 1,
-      termo_uso_imagem_voz: 2, termo_desconto_folha: 2, termo_programa_imunizacao: 2, termo_banco_horas: 1, termo_vale_transporte: 1, regimento_interno: 27,
+      contrato_trabalho: 4, ficha_registro: 2,
+      termo_ciencia_ponto: 1, termo_recursos_tecnologicos: 2, aviso_privacidade_empregado: 1,
+      termo_programa_imunizacao: 2, termo_codigo_conduta_anticorrupcao: 1, termo_prevencao_assedio_discriminacao: 1,
+      termo_uso_imagem_voz: 2, termo_vale_transporte: 1, termo_desconto_folha: 2,
     })
-    const pcd = buildFormContext(admission, { disability: 'Sim', pcdType: 'Auditiva' })
-    const termoPcd = ADMISSION_LAYOUTS.find((layout) => layout.key === 'termo_pcd')!
-    expect(termoPcd.appliesTo!(pcd)).toBe(true)
-    expect((await PDFDocument.load(await (await termoPcd.render(pcd)).save())).getPageCount()).toBe(2)
   }, 30000)
 })

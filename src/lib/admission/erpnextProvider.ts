@@ -16,6 +16,15 @@ function tokens(value: string) {
   return normalize(value).split(' ').filter((token) => token.length > 1 && !ignored.has(token))
 }
 
+const GENERIC_LOCATION_TOKENS = new Set(['PA', 'UPA', 'PSI', 'PS', 'SEDE', 'UNIDADE', 'VG', 'GRU'])
+
+/** Evita relacionar, por exemplo, Enfermagem de uma unidade com o departamento de outra. */
+function bestScopedMatch(values: string[], subject: string, ...scopeHints: string[]) {
+  const scope = new Set(scopeHints.flatMap(tokens).filter((token) => !GENERIC_LOCATION_TOKENS.has(token)))
+  const scoped = scope.size ? values.filter((value) => tokens(value).some((token) => scope.has(token))) : values
+  return scoped.length ? bestMatch(scoped, subject, ...scopeHints) : null
+}
+
 function bestMatch(values: string[], ...hints: string[]) {
   const wanted = new Set(hints.flatMap(tokens))
   if (!wanted.size) return null
@@ -61,8 +70,9 @@ export async function syncAdmissionToERPNext(admissionId: string) {
   const duplicate = await findEmployeeByCpf(cpf)
   if (duplicate) return { employeeId: duplicate.name, employeeCode: duplicate.name }
 
-  const [companies, departments, designations, employmentTypes] = await Promise.all([
+  const [companies, branches, departments, designations, employmentTypes] = await Promise.all([
     listErpnextResourceNames('Company'),
+    listErpnextResourceNames('Branch'),
     listErpnextResourceNames('Department'),
     listErpnextResourceNames('Designation'),
     listErpnextResourceNames('Employment Type'),
@@ -70,12 +80,16 @@ export async function syncAdmissionToERPNext(admissionId: string) {
   const unitHint = admission.unit.name.includes(' - ') ? admission.unit.name.split(' - ').slice(1).join(' - ') : admission.unit.name
   const company = bestMatch(companies, admission.unit.name, unitHint)
   if (!company) throw new Error(`Não foi possível relacionar a unidade “${admission.unit.name}” a uma empresa do ERPNext.`)
+  const branch = bestScopedMatch(branches, unitHint, admission.unit.name, unitHint)
+  if (!branch) throw new Error(`Não foi possível relacionar a unidade “${admission.unit.name}” a um Local de Trabalho (Branch) do ERPNext. Cadastre o local correspondente no ERPNext antes de tentar novamente.`)
   const designation = bestMatch(designations, admission.jobTitle)
   if (!designation) throw new Error(`Não foi possível relacionar o cargo “${admission.jobTitle}” a um cargo do ERPNext.`)
-  const department = bestMatch(departments, `${admission.department || ''} ${unitHint}`, admission.department || '', unitHint)
+  const department = bestScopedMatch(departments, admission.department || '', admission.unit.name, unitHint, branch, company)
   if (!department) throw new Error(`Não foi possível relacionar o departamento “${admission.department || 'não informado'}” e a unidade ao ERPNext.`)
   const employmentTypeHint = /indeterminado/i.test(admission.contractType) ? 'Prazo indeterminado' : /determinado/i.test(admission.contractType) ? 'Prazo determinado' : admission.contractType
   const employmentType = bestMatch(employmentTypes, employmentTypeHint)
+  if (!employmentType) throw new Error(`Não foi possível relacionar o tipo de contrato “${admission.contractType}” ao ERPNext.`)
+  if (admission.salary == null || admission.salary <= 0) throw new Error('Salário base não informado na admissão.')
 
   const employee = await createEmployee({
     ...splitName(admission.candidateName),
@@ -85,9 +99,11 @@ export async function syncAdmissionToERPNext(admissionId: string) {
     date_of_birth: isoDate(birthDate),
     date_of_joining: isoDate(admission.hireDate),
     company,
+    branch,
     department,
     designation,
-    ...(employmentType ? { employment_type: employmentType } : {}),
+    employment_type: employmentType,
+    ctc: admission.salary,
     cell_number: text(fields.phone) || undefined,
     personal_email: text(fields.email) || admission.candidateEmail || undefined,
     custom_cpf: cpf,

@@ -15,11 +15,11 @@ export type AdmissionLayout = {
 }
 
 /** Versão dos templates de layout (acima das versões em texto, para substituí-las). */
-export const LAYOUT_VERSION = 10
+export const LAYOUT_VERSION = 13
 
 export const ADMISSION_LAYOUTS: AdmissionLayout[] = [
-  { key: 'contrato_trabalho', name: 'Contrato Individual de Trabalho e Documentos Admissionais - BHCL', version: 12, code: 'Contrato Individual de Trabalho', render: renderContract },
-  { key: 'ficha_registro', name: 'Ficha de Empregado', version: 12, code: 'Registro de Empregado', render: renderEmployeeRecord },
+  { key: 'contrato_trabalho', name: 'Contrato Individual de Trabalho e Documentos Admissionais - BHCL', version: LAYOUT_VERSION, code: 'Contrato Individual de Trabalho', render: renderContract },
+  { key: 'ficha_registro', name: 'Ficha de Empregado', version: LAYOUT_VERSION, code: 'Registro de Empregado', render: renderEmployeeRecord },
   ...TERM_FORMS.map((form): AdmissionLayout => ({
     key: form.key, name: form.name, version: form.version ?? LAYOUT_VERSION, code: form.code, appliesTo: form.appliesTo,
     render: (ctx) => renderTerm(form, ctx),
