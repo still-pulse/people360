@@ -34,7 +34,7 @@ describe('cargos, salários por unidade e horários fixos', () => {
     expect(findPosition(positions, '')).toBeNull()
   })
   it('mantém os horários, intervalos e cargas mensais (padrão 180 horas)', () => {
-    expect([...ADMISSION_SCHEDULES]).toEqual(['07h00 às 19h00', '19h00 às 07h00', '07h00 às 17h00', '08h00 às 17h00'])
+    expect([...ADMISSION_SCHEDULES]).toEqual(['07h00 às 19h00', '19h00 às 07h00', '07h00 às 17h00', '07h00 às 16h00', '08h00 às 17h00'])
     expect([...ADMISSION_BREAKS]).toEqual(['12h00 às 13h00', '20h00 às 21h00'])
     expect([...ADMISSION_MONTHLY_HOURS_OPTIONS]).toEqual([120, 150, 180, 200, 220])
     expect(ADMISSION_MONTHLY_HOURS).toBe(180)

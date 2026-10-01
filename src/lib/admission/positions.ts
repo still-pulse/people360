@@ -2,7 +2,7 @@
 // Cargos, departamentos e salários vêm do cadastro de cargos (Administração → Cargos), com salário por unidade.
 // Módulo sem dependências: usado pelo formulário (cliente) e pela validação da API (servidor).
 
-export const ADMISSION_SCHEDULES = ['07h00 às 19h00', '19h00 às 07h00', '07h00 às 17h00', '08h00 às 17h00'] as const
+export const ADMISSION_SCHEDULES = ['07h00 às 19h00', '19h00 às 07h00', '07h00 às 17h00', '07h00 às 16h00', '08h00 às 17h00'] as const
 export const ADMISSION_BREAKS = ['12h00 às 13h00', '20h00 às 21h00'] as const
 export const ADMISSION_MONTHLY_HOURS_OPTIONS = [120, 150, 180, 200, 220] as const
 export const ADMISSION_MONTHLY_HOURS = 180
