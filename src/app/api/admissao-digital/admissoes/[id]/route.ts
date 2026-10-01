@@ -20,6 +20,7 @@ import { collaboratorForAdmission, linkAdmissionCollaborator } from '@/lib/admis
 import { cancelExternalSignature, latestExternalSignature, syncExternalSignature } from '@/lib/admission/externalSignature'
 import { isDocumentResolved } from '@/lib/admission/documentStatus'
 import { reconcileAdmissionDocumentApplicability } from '@/lib/admission/documentApplicability'
+import { accountingDossierState } from '@/lib/admission/accountingDossier'
 
 const include = {
   unit: true, candidate: { select: { id: true, nome: true, email: true, telefone: true } }, vacancy: true,
@@ -44,11 +45,12 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
   // Colaborador do People360 criado a partir desta admissão (para o link do dossiê).
   const collaborator = item.processType === 'ADMISSION' ? await collaboratorForAdmission(item.id) : null
   const contractOnHold = item.processType === 'ADMISSION' && await isContractOnHold(item.unitId)
+  const accountingDossier = item.processType === 'ADMISSION' ? await accountingDossierState(item.id) : null
   const response = canViewSensitiveData ? {
-    ...item, collaborator, contractOnHold,
+    ...item, collaborator, contractOnHold, accountingDossier,
     features: { faceVerification: isFaceVerificationEnabled() },
     fields: item.fields.map((field) => ({ ...field, value: field.sensitive ? decryptAdmissionValue(field.value) : field.value })),
-  } : { ...item, collaborator, contractOnHold, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
+  } : { ...item, collaborator, contractOnHold, accountingDossier, features: { faceVerification: isFaceVerificationEnabled() }, fields: [], dependents: [], transport: null, badgePhotos: [], faceVerifications: [], signatureEnvelopes: [] }
   return NextResponse.json(response)
 }
 
@@ -136,6 +138,23 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       // 422 e não 502: o Cloudflare troca respostas 502 pela página de erro dele e a mensagem do ERPNext se perde.
       return NextResponse.json({ error: `O ERPNext recusou a atualização: ${caught instanceof Error ? caught.message : 'erro desconhecido'}` }, { status: 422 })
     }
+  } else if (action === 'accounting-dossier-sent') {
+    if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para liberar a assinatura.' }, { status: 403 })
+    if (current.processType !== 'ADMISSION') return NextResponse.json({ error: 'Disponível somente para admissões.' }, { status: 409 })
+    const pending = await prisma.admissionDocument.count({ where: { admissionId: current.id, status: { notIn: ['APPROVED', 'NOT_APPLICABLE'] } } })
+    if (pending) return NextResponse.json({ error: `Ainda existem ${pending} documento(s) sem aprovação do RH.` }, { status: 409 })
+    const dossier = await accountingDossierState(current.id)
+    if (!dossier.generatedAt) return NextResponse.json({ error: 'Gere o dossiê atualizado antes de confirmar o envio à contabilidade.' }, { status: 409 })
+    if (!dossier.released) {
+      const access = await createAdditionalAdmissionToken(current.id)
+      await notifyAdmissionCandidate({
+        ...current,
+        title: 'Documentos liberados para assinatura',
+        message: 'A conferência pré-admissional foi concluída. Continue pelo link abaixo; as próximas etapas, incluindo a assinatura, serão exibidas no portal.',
+        portalUrl: `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${access.token}`,
+      })
+    }
+    response = { released: true, alreadyReleased: dossier.released }
   } else if (action === 'check-signature' || action === 'resend-signature') {
     const latest = await latestExternalSignature(current.id)
     if (!latest) return NextResponse.json({ error: 'Esta admissão não tem assinatura pela Autentique.' }, { status: 409 })
@@ -181,7 +200,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     ])
     if (advance) {
       const access = await createAdditionalAdmissionToken(current.id)
-      await notifyAdmissionCandidate({ ...current, title: 'Documentos e foto aprovados', message: 'O RH aprovou seus documentos e a foto do crachá. Você já pode continuar a admissão pelo link abaixo.', portalUrl: `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${access.token}` })
+      await notifyAdmissionCandidate({ ...current, title: 'Documentos e foto aprovados', message: 'O RH aprovou seus documentos e a foto do crachá. O dossiê pré-admissional seguirá para conferência; avisaremos novamente quando a assinatura estiver liberada. Se houver validação facial pendente, continue pelo link abaixo.', portalUrl: `${process.env.NEXTAUTH_URL || req.nextUrl.origin}/admissao/${access.token}` })
     }
     response = { approved: true, advanced: advance }
   } else if (action === 'approve-face' || action === 'request-face-retry' || action === 'request-badge-retry') {

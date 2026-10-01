@@ -15,6 +15,7 @@ import { usesExternalSignature } from '@/lib/admission/providers'
 import { notifyAdmissionOwnerDocumentsPending } from '@/lib/admission/notifications'
 import { isDocumentResolved } from '@/lib/admission/documentStatus'
 import { reconcileAdmissionDocumentApplicability } from '@/lib/admission/documentApplicability'
+import { accountingDossierState } from '@/lib/admission/accountingDossier'
 
 const saveSchema = z.object({ section: z.enum(['personal', 'address', 'bank']), fields: z.record(z.union([z.string().max(500), z.boolean(), z.number(), z.null()])), nextStep: z.string().max(40).optional(), validate: z.boolean().optional().default(false) })
 
@@ -40,16 +41,19 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   const a = result.admission
   const faceVerificationEnabled = isFaceVerificationEnabled()
   const requiredPending = a.documents.some((document) => document.type.required && !isDocumentResolved(document.status))
+  const accountingDossier = a.processType === 'ADMISSION' ? await accountingDossierState(a.id) : { released: true }
+  // Não bloqueia admissões antigas cuja assinatura já começou antes da criação desta etapa.
+  const accountingDossierReleased = accountingDossier.released || a.signatureEnvelopes.length > 0 || ['SIGNATURE_PENDING', 'SIGNED', 'READY_FOR_ERPNEXT', 'SYNCING', 'SYNCED', 'COMPLETED'].includes(a.status)
   const resumeStep = a.processType === 'REGISTRATION_UPDATE' ? (a.status === 'DOCUMENTS_UNDER_REVIEW' || a.status === 'COMPLETED' || (!faceVerificationEnabled && (a.status === 'FACE_VALIDATION_PENDING' || a.currentStep === 'validacao-facial')) ? 'conclusao' : (a.currentStep || 'inicio'))
     : a.signatureEnvelopes.some((envelope) => envelope.status === 'SIGNED') ? 'conclusao'
-    : a.generatedDocuments.length ? 'assinatura'
+    : a.generatedDocuments.length ? (accountingDossierReleased ? 'assinatura' : 'revisao')
     : faceVerificationEnabled && a.faceVerifications[0]?.status === 'APPROVED' ? 'revisao'
     : a.badgePhotos[0]?.confirmedAt ? (requiredPending || !a.badgePhotos[0].approvedAt ? 'foto' : faceVerificationEnabled ? 'validacao-facial' : 'revisao')
     : ['presentation', 'inicio'].includes(a.currentStep) ? 'inicio' : a.currentStep
   await logAdmissionEvent({ admissionId: a.id, actorName: a.candidateName, actorType: 'CANDIDATE', action: 'LINK_OPENED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent') }).catch(() => {})
   return NextResponse.json({
     protocol: a.protocol, candidateName: a.candidateName, status: a.status, currentStep: a.currentStep, resumeStep, progress: a.progress, processType: a.processType, requestedSections: a.requestedSections,
-    features: { faceVerification: faceVerificationEnabled, signatureProvider: usesExternalSignature() ? 'autentique' : 'local', contractOnHold: a.processType === 'ADMISSION' && await isContractOnHold(a.unitId) },
+    features: { faceVerification: faceVerificationEnabled, signatureProvider: usesExternalSignature() ? 'autentique' : 'local', contractOnHold: a.processType === 'ADMISSION' && await isContractOnHold(a.unitId), accountingDossierReleased },
     locked: { jobTitle: a.jobTitle, department: a.department, unit: a.unit.name, hireDate: a.hireDate, contractType: a.contractType, workSchedule: a.workSchedule },
     fields: Object.fromEntries(a.fields.map((f) => [f.key, f.sensitive ? decryptAdmissionValue(f.value) : f.value])), dependents: a.dependents, transport: a.transport,
     documents: a.documents.filter((d) => d.status !== 'NOT_APPLICABLE').map((d) => ({ id: d.id, status: d.status, rejectionReason: d.rejectionReason, version: d.version, uploadedAt: d.uploadedAt, type: { key: d.type.key, name: d.type.name, description: d.type.description, required: d.type.required, maxSizeBytes: d.type.maxSizeBytes, maxFiles: d.type.maxFiles } })),
