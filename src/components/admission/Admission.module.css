@@ -199,6 +199,29 @@ label.docRow > div { min-width:0 }
 .faceScoreBands span { color:var(--adm-ink); font-size:12.5px; font-weight:600 }
 .faceScoreBands small { display:block; margin-top:3px; color:var(--adm-subtle); font-size:11px; font-weight:400 }
 
+.reviewWorkspace { width:100%; height:calc(100vh - 64px); height:calc(100dvh - 64px); min-height:560px; display:grid; grid-template-columns:280px minmax(0,1fr) 320px; overflow:hidden }
+.reviewQueuePane,.reviewActionsPane { min-width:0; min-height:0; border-radius:0; border-top:0; border-bottom:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable }
+.reviewQueueHeader { position:sticky; top:0; z-index:3; display:grid; gap:10px; padding:16px; border-bottom:1px solid var(--adm-border-soft); background:#fff; box-shadow:0 2px 6px rgba(18,41,44,.04) }
+.reviewViewer { min-width:0; min-height:0; position:relative; display:grid; place-items:center; padding:58px 24px 24px; background:#E9EFEE }
+.reviewCanvas { width:94%; height:100%; max-width:1100px; min-width:0; min-height:0; overflow:hidden; border-radius:8px; background:#fff; box-shadow:0 2px 10px rgba(18,41,44,.08); transform-origin:center; transition:transform .2s ease }
+.reviewCanvas img,.reviewCanvas iframe { display:block; width:100%; height:100%; border:0; box-sizing:border-box }
+.reviewCanvas img { object-fit:contain; background:#F6F8F8 }
+.reviewToolbar { position:absolute; top:10px; left:50%; z-index:2; flex-wrap:nowrap; transform:translateX(-50%) }
+.reviewActionsPane { padding:18px }
+
+@media (max-width:1280px) {
+  .reviewWorkspace { grid-template-columns:240px minmax(0,1fr) 280px }
+  .reviewViewer { padding-inline:16px }
+  .reviewCanvas { width:97% }
+}
+
+@media (max-width:1050px) {
+  .reviewWorkspace { height:auto; min-height:calc(100vh - 64px); grid-template-columns:1fr; overflow:visible }
+  .reviewQueuePane { max-height:380px; border-left:0; border-right:0 }
+  .reviewViewer { height:70vh; height:70dvh; min-height:520px }
+  .reviewActionsPane { overflow:visible; border-left:0; border-right:0 }
+}
+
 @media (max-width:1000px) { .kpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))} .grid2,.grid3{grid-template-columns:1fr} }
 @media (max-width:640px) {
   .module{padding:18px 14px 36px}.title{font-size:22px}.kpiGrid{grid-template-columns:1fr 1fr;gap:9px}.kpi{padding:13px;min-height:96px}.kpiValue{font-size:23px}
