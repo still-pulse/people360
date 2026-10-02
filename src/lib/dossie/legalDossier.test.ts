@@ -76,6 +76,22 @@ async function attachment(title: string, sizes: [number, number][]): Promise<Att
 }
 
 describe('PDF jurídico com capa e índice institucional', () => {
+  it('inclui dados dos dependentes e desloca o índice dos anexos no dossiê admissional', async () => {
+    const kv = vi.spyOn(PdfBuilder.prototype, 'kv')
+    const text = vi.spyOn(PdfBuilder.prototype, 'textAt')
+    const source = await attachment('Ficha', [[500, 700]])
+    const result = await renderAdmissionDossier({ info, photo: null, sources: { formulario: [source], documentos: [] }, dependents: [
+      { name: 'Filho Teste', cpf: '11144477735', birthDate: new Date('2020-03-02'), relationship: 'Filho(a)', irrfDependent: true, childUnder14: true },
+      { name: 'Dependente antigo', cpf: '', birthDate: new Date('2000-01-01'), relationship: 'Filho(a)', irrfDependent: false, childUnder14: false },
+    ] })
+    expect(kv).toHaveBeenCalledWith(expect.arrayContaining([['CPF', '111.444.777-35'], ['Nome', 'Filho Teste'], ['Nascimento', '02/03/2020'], ['Dependente de IRRF', 'Sim'], ['Menor de 14 anos', 'Sim']]))
+    expect(kv).toHaveBeenCalledWith(expect.arrayContaining([['CPF', 'CPF completo não disponível — solicitar preenchimento']]))
+    const pdf = await PDFDocument.load(result.buffer)
+    expect(pdf.getPageCount()).toBe(result.pages)
+    expect(pdf.getPages().at(-1)?.getWidth()).toBe(500)
+    const indexCalls = text.mock.calls.filter(call => call[1] === PAGE.w - PAGE.mr && call[3]?.align === 'right')
+    expect(indexCalls.map(call => call[0])).toEqual(['3', String(result.pages)])
+  })
   it('preserva todas as páginas dos contratos e termos na ordem do índice', async () => {
     const text = vi.spyOn(PdfBuilder.prototype, 'textAt')
     const contrato = await attachment('Contrato assinado', [[500, 700], [510, 710]])

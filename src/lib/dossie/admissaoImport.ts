@@ -100,7 +100,7 @@ export async function importAdmissionIntoDossie(colaborador: { id: string; erpne
     if (existing.some((e) => sameName(e.nome, dependent.name) && e.nascimento.getTime() === dependent.birthDate.getTime())) continue
     await prisma.colaboradorDependente.create({
       data: {
-        colaboradorId: colaborador.id, nome: dependent.name, cpfMascarado: dependent.cpfMasked, nascimento: dependent.birthDate, parentesco: dependent.relationship,
+        colaboradorId: colaborador.id, nome: dependent.name, cpfMascarado: dependent.cpfMasked, ...(dependent.cpfEncrypted ? { cpfCifrado: dependent.cpfEncrypted } : {}), nascimento: dependent.birthDate, parentesco: dependent.relationship,
         dependenteIr: dependent.irrfDependent, salarioFamilia: dependent.childUnder14, planoSaude: false, inclusaoEm: admission?.hireDate ?? new Date(), criadoPorNome: actor.name,
       },
     })

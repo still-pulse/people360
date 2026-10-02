@@ -52,6 +52,7 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
       erpnextSyncs: { orderBy: { createdAt: 'desc' }, take: 1, select: { employeeCode: true } },
       fields: { where: { key: 'matricula' }, select: { value: true, sensitive: true }, take: 1 },
       documents: { select: { status: true, type: { select: { required: true } } } },
+      dependents: { orderBy: { birthDate: 'asc' } },
     },
   })
   if (!admission) throw new Error('Admissão não encontrada.')
@@ -66,6 +67,10 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
   const result = await renderAdmissionDossier({
     info: { nome: admission.candidateName, matricula, cargo: admission.jobTitle, unidade: admission.unit.name, admissao: admission.hireDate.toISOString() },
     photo, sources,
+    dependents: admission.dependents.map((dependent) => {
+      const cpf = decryptAdmissionValue(dependent.cpfEncrypted)
+      return { name: dependent.name, cpf: typeof cpf === 'string' ? cpf : '', birthDate: dependent.birthDate, relationship: dependent.relationship, irrfDependent: dependent.irrfDependent, childUnder14: dependent.childUnder14 }
+    }),
     identifier: matricula ? `Matrícula: ${matricula}` : `Protocolo: ${admission.protocol}`,
   })
   return {

@@ -372,7 +372,7 @@ export async function buildAdmissionDossierPdf(params: { colaboradorId: string; 
     loadColaboradorPhoto(colaborador),
     admissionAttachments(colaborador),
   ])
-  const { buffer, pages } = await renderAdmissionDossier({ info: snap, photo, sources })
+  const { buffer, pages } = await renderAdmissionDossier({ info: snap, photo, sources, dependents: snap.dependentes.map(d => ({ name: d.nome, cpf: d.cpf.includes('*') ? '' : d.cpf, birthDate: new Date(d.nascimento), relationship: d.parentesco, irrfDependent: d.dependenteIr, sexo: d.sexo, salarioFamilia: d.salarioFamilia, planoSaude: d.planoSaude, inclusaoEm: d.inclusaoEm, exclusaoEm: d.exclusaoEm })) })
   const fileName = `Dossie_Admissional_${fileSlug(snap.nome, 'COLABORADOR')}_${snap.matricula.replace(/[^a-zA-Z0-9]/g, '')}.pdf`
   return { buffer, fileName, pages, snapshot: snap }
 }
@@ -384,6 +384,7 @@ export async function renderAdmissionDossier(params: {
   sources: { formulario: AttachmentSource[]; documentos: AttachmentSource[]; certificados?: AttachmentSource[] }
   identifier?: string
   juridico?: boolean
+  dependents?: { name: string; cpf: string; birthDate: Date; relationship: string; irrfDependent: boolean; childUnder14?: boolean; sexo?: string; salarioFamilia?: boolean; planoSaude?: boolean; inclusaoEm?: string; exclusaoEm?: string | null }[]
 }) {
   const { info, photo, sources } = params
   const loaded = await loadAttachments([...sources.formulario, ...sources.documentos, ...(sources.certificados ?? [])], params.juridico)
@@ -399,17 +400,36 @@ export async function renderAdmissionDossier(params: {
   const pdf = new PdfBuilder({ docLabel, colaboradorNome: info.nome, matricula: info.matricula || undefined, geradoEm }, await loadLogo())
 
   drawCover(pdf, info, photo, geradoEm, params.juridico ? 'DOSSIÊ JURÍDICO DO COLABORADOR' : 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
-  const indexLines = (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0) + (certificados.length ? 1 + certificados.length : 0)
+  const indexLines = (params.dependents ? 1 : 0) + (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0) + (certificados.length ? 1 + certificados.length : 0)
   const perIndexPage = Math.floor((PAGE.bottom - PAGE.top - 16) / 6.4)
   const indexPages = Math.max(1, Math.ceil(indexLines / perIndexPage))
   for (let index = 0; index < indexPages; index++) pdf.newPage()
+  const entries: IndexEntry[] = []
+  if (params.dependents) {
+    pdf.newPage()
+    entries.push({ numero: '01', titulo: 'Dados dos dependentes', page: pdf.page, sub: [] })
+    pdf.title('DADOS DOS DEPENDENTES')
+    if (!params.dependents.length) pdf.kv([['Dependentes', 'Nenhum dependente informado.']])
+    for (const [index, dependent] of params.dependents.entries()) {
+      pdf.heading(`Dependente ${index + 1}`)
+      pdf.kv([
+        ['Nome', dependent.name], ['CPF', dependent.cpf ? fmtCpf(dependent.cpf) : 'CPF completo não disponível — solicitar preenchimento'],
+        ['Nascimento', fmtDate(dependent.birthDate)], ['Parentesco', dependent.relationship],
+        ['Dependente de IRRF', dependent.irrfDependent ? 'Sim' : 'Não'],
+        ...(dependent.childUnder14 !== undefined ? [['Menor de 14 anos', dependent.childUnder14 ? 'Sim' : 'Não']] as [string, string][] : []),
+        ...(dependent.sexo !== undefined ? [['Sexo', dependent.sexo || 'Não informado']] as [string, string][] : []),
+        ...(dependent.salarioFamilia !== undefined ? [['Salário-família', dependent.salarioFamilia ? 'Sim' : 'Não']] as [string, string][] : []),
+        ...(dependent.planoSaude !== undefined ? [['Plano de saúde', dependent.planoSaude ? 'Sim' : 'Não']] as [string, string][] : []),
+        ...(dependent.inclusaoEm ? [['Inclusão', fmtDate(dependent.inclusaoEm)], ['Situação', dependent.exclusaoEm ? `Excluído em ${fmtDate(dependent.exclusaoEm)}` : 'Ativo']] as [string, string][] : []),
+      ])
+    }
+  }
   let attachmentPage = pdf.page + 1
   const formPage = attachmentPage
   attachmentPage += formulario.reduce((sum, item) => sum + item.pages, 0)
-  const entries: IndexEntry[] = []
   if (formulario.length) {
     let page = formPage
-    entries.push({ numero: '01', titulo: params.juridico ? 'Contratos, aditivos e acordos' : 'Formulário admissional', page: formPage,
+    entries.push({ numero: String(entries.length + 1).padStart(2, '0'), titulo: params.juridico ? 'Contratos, aditivos e acordos' : 'Formulário admissional', page: formPage,
       sub: params.juridico ? formulario.map(item => { const entry = { titulo: item.src.titulo, page }; page += item.pages; return entry }) : [] })
   }
   if (documentos.length) {

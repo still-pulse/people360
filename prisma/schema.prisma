@@ -1320,6 +1320,7 @@ model AdmissionDependent {
   name          String
   cpfMasked     String?
   cpfHash       String?
+  cpfEncrypted  Json?
   birthDate     DateTime
   relationship  String
   irrfDependent Boolean  @default(false)
