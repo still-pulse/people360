@@ -190,8 +190,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     response = { documents: await pushAdmissionDocumentsToErpnext(current.id, employeeId, { id: session!.user.id, name: session!.user.name }) }
   } else if (action === 'approve-badge') {
     if (!['ADMIN', 'ANALYST'].includes(actualRole)) return NextResponse.json({ error: 'Sem permissão para aprovar a foto.' }, { status: 403 })
-    const photo = await prisma.badgePhoto.findFirst({ where: { admissionId: current.id, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' } })
-    if (!photo) return NextResponse.json({ error: 'Nenhuma foto do crachá enviada.' }, { status: 404 })
+    const photo = await prisma.badgePhoto.findFirst({ where: { admissionId: current.id }, orderBy: { createdAt: 'desc' } })
+    if (!photo?.confirmedAt) return NextResponse.json({ error: 'Nenhuma foto do crachá confirmada.' }, { status: 409 })
+    if (body.photoId && body.photoId !== photo.id) return NextResponse.json({ error: 'A foto foi atualizada pelo candidato. Atualize a fila antes de revisar.' }, { status: 409 })
     const requiredPending = await prisma.admissionDocument.count({ where: { admissionId: current.id, type: { required: true }, status: { notIn: ['APPROVED', 'NOT_APPLICABLE'] } } })
     const faceVerificationEnabled = isFaceVerificationEnabled()
     const advance = current.processType === 'ADMISSION' && current.currentStep === 'foto' && requiredPending === 0
