@@ -10,14 +10,15 @@ export async function GET(req: NextRequest) {
   const units = getAnalystUnits(session!)
   const processType = parseProcessType(req.nextUrl.searchParams.get('processType'))
   const admissionScope = units ? { OR: [{ unitId: { in: units } }, { ownerId: session!.user.id }, { analysts: { some: { id: session!.user.id } } }] } : {}
+  const reviewScope = { processType, status: { notIn: ['CANCELLED', 'EXPIRED'] }, ...admissionScope }
   const [documents, photos] = await Promise.all([
     prisma.admissionDocument.findMany({ where: {
       status: { in: ['UPLOADED', 'UNDER_REVIEW', 'RESUBMISSION_REQUIRED'] },
-      admission: { processType, ...admissionScope },
+      admission: reviewScope,
     }, include: { type: true, admission: { select: admissionSelect } }, orderBy: { uploadedAt: 'asc' }, take: 500 }),
     // Foto do crachá confirmada pelo candidato e ainda não aprovada pelo RH (somente admissão).
     processType !== 'ADMISSION' ? Promise.resolve([]) : prisma.admission.findMany({ where: {
-      processType: 'ADMISSION', status: { notIn: ['CANCELLED', 'EXPIRED'] }, ...admissionScope,
+      ...reviewScope,
       badgePhotos: { some: { confirmedAt: { not: null }, approvedAt: null } },
     }, select: { ...admissionSelect, badgePhotos: {
       orderBy: { createdAt: 'desc' }, take: 1,

@@ -11,9 +11,21 @@ vi.mock('@/lib/apiHelpers', () => ({
 } ))
 import { GET } from '@/app/api/admissao-digital/revisao/route'
 
-beforeEach(() => { vi.clearAllMocks(); mocks.documents.mockResolvedValue([]) })
+beforeEach(() => { vi.clearAllMocks(); mocks.documents.mockResolvedValue([]); mocks.admissions.mockResolvedValue([]) })
 const request = () => new NextRequest('http://localhost/api/admissao-digital/revisao')
 const admission = (photo: object) => ({ id: 'candidate', candidateName: 'Candidato', jobTitle: 'Cargo', unit: { name: 'Unidade' }, badgePhotos: [photo] })
+
+it.each(['ADMISSION', 'REGISTRATION_UPDATE'])('exclui processos cancelados e expirados dos documentos de %s', async (processType) => {
+  await GET(new NextRequest(`http://localhost/api/admissao-digital/revisao?processType=${processType}`))
+  expect(mocks.documents).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+    admission: expect.objectContaining({ processType, status: { notIn: ['CANCELLED', 'EXPIRED'] } }),
+  }) }))
+  if (processType === 'ADMISSION') {
+    expect(mocks.admissions).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      processType, status: { notIn: ['CANCELLED', 'EXPIRED'] },
+    }) }))
+  } else expect(mocks.admissions).not.toHaveBeenCalled()
+})
 
 it('consulta somente a captura mais recente e lista uma foto por candidato', async () => {
   mocks.admissions.mockResolvedValue([admission({ id: 'latest', confirmedAt: new Date(), approvedAt: null })])
