@@ -46,7 +46,7 @@ export const SELECAO = [
 export const SELECAO_IDS: string[] = SELECAO.map((s) => s.id)
 
 type IndexEntry = { numero: string; titulo: string; page: number; sub: { titulo: string; page: number }[] }
-type AttachmentSource = { titulo: string; categoria: string; data: Date; situacao: string; mime: string; read: () => Promise<Buffer | null> }
+export type AttachmentSource = { titulo: string; categoria: string; data: Date; situacao: string; mime: string; read: () => Promise<Buffer | null> }
 type Attachment = { src: AttachmentSource; kind: 'pdf' | 'image' | 'error' | 'skipped'; pdf?: PDFDocument; bytes?: Buffer; pages: number }
 type Item = { key: number; kind: 'doc'; row: ColaboradorDocumento; titulo: string } | { key: number; kind: 'aval'; row: ColaboradorAvaliacao; titulo: string }
 
@@ -179,7 +179,7 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase()
 }
 
-type CoverInfo = Pick<Snapshot, 'nome' | 'matricula' | 'cargo' | 'unidade' | 'admissao'>
+export type CoverInfo = Pick<Snapshot, 'nome' | 'matricula' | 'cargo' | 'unidade' | 'admissao'>
 
 function drawCover(pdf: PdfBuilder, snap: CoverInfo, photo: ColaboradorPhoto | null, geradoEm: Date, title = 'DOSSIÊ FUNCIONAL DO COLABORADOR', identifier = `Matrícula: ${snap.matricula}`) {
   const { doc } = pdf
@@ -368,27 +368,35 @@ export async function renderAdmissionDossier(params: {
   photo: ColaboradorPhoto | null
   sources: { formulario: AttachmentSource[]; documentos: AttachmentSource[] }
   identifier?: string
+  juridico?: boolean
 }) {
   const { info, photo, sources } = params
   const formulario = await loadAttachments(sources.formulario)
   const documentos = await loadAttachments(sources.documentos)
-  if (!formulario.length) throw new DossieError('O formulário admissional ainda não está disponível para este colaborador.', 422)
+  if (!formulario.length && !params.juridico) throw new DossieError('O formulário admissional ainda não está disponível para este colaborador.', 422)
   const attachments = [...formulario, ...documentos]
+  if (!attachments.length) throw new DossieError('Ainda não há contratos ou termos assinados disponíveis para o dossiê jurídico.', 422)
   const attachmentPages = attachments.reduce((sum, item) => sum + item.pages, 0)
   const geradoEm = new Date()
-  const pdf = new PdfBuilder({ docLabel: 'Dossiê Admissional', colaboradorNome: info.nome, matricula: info.matricula || undefined, geradoEm }, await loadLogo())
+  const docLabel = params.juridico ? 'Dossiê Jurídico' : 'Dossiê Admissional'
+  const pdf = new PdfBuilder({ docLabel, colaboradorNome: info.nome, matricula: info.matricula || undefined, geradoEm }, await loadLogo())
 
-  drawCover(pdf, info, photo, geradoEm, 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
-  const indexLines = 1 + (documentos.length ? 1 + documentos.length : 0)
+  drawCover(pdf, info, photo, geradoEm, params.juridico ? 'DOSSIÊ JURÍDICO DO COLABORADOR' : 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
+  const indexLines = (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0)
   const perIndexPage = Math.floor((PAGE.bottom - PAGE.top - 16) / 6.4)
   const indexPages = Math.max(1, Math.ceil(indexLines / perIndexPage))
   for (let index = 0; index < indexPages; index++) pdf.newPage()
   let attachmentPage = pdf.page + 1
   const formPage = attachmentPage
   attachmentPage += formulario.reduce((sum, item) => sum + item.pages, 0)
-  const entries: IndexEntry[] = [{ numero: '01', titulo: 'Formulário admissional', page: formPage, sub: [] }]
+  const entries: IndexEntry[] = []
+  if (formulario.length) {
+    let page = formPage
+    entries.push({ numero: '01', titulo: params.juridico ? 'Contratos, aditivos e acordos' : 'Formulário admissional', page: formPage,
+      sub: params.juridico ? formulario.map(item => { const entry = { titulo: item.src.titulo, page }; page += item.pages; return entry }) : [] })
+  }
   if (documentos.length) {
-    const documentEntry: IndexEntry = { numero: '02', titulo: 'Documentos do colaborador', page: attachmentPage, sub: [] }
+    const documentEntry: IndexEntry = { numero: String(entries.length + 1).padStart(2, '0'), titulo: params.juridico ? 'Termos, declarações e normas' : 'Documentos do colaborador', page: attachmentPage, sub: [] }
     for (const item of documentos) {
       documentEntry.sub.push({ titulo: item.src.titulo, page: attachmentPage })
       attachmentPage += item.pages
@@ -399,7 +407,7 @@ export async function renderAdmissionDossier(params: {
   drawIndex(pdf, entries, 2, indexPages)
   const total = mainPages + attachmentPages
   let buffer = pdf.finalize({ totalPages: total })
-  if (attachments.length) buffer = await appendAttachments(buffer, attachments, total, mainPages, 'Dossiê Admissional')
+  if (attachments.length) buffer = await appendAttachments(buffer, attachments, total, mainPages, docLabel)
   return { buffer, pages: total, documents: attachments.length }
 }
 
