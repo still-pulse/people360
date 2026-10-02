@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { downloadDossierBatch } from '@/lib/admission/downloadDossierBatch'
 import { useSession } from 'next-auth/react'
 import { Header } from '@/components/layout/Header'
 import { SlidersHorizontal, ChevronLeft, ChevronRight, FileSpreadsheet, FolderArchive, Plus, Trash2, XCircle } from 'lucide-react'
@@ -78,13 +79,10 @@ export function AdmissionList({ processType = 'ADMISSION' }: { processType?: 'AD
     if(!window.confirm(`Gerar o dossiê pré-admissional de ${scope}? Isso pode levar alguns minutos. Nada será enviado ao ERPNext.`))return
     setDossierBusy(true); setNotice('Gerando dossiês... não feche esta página.')
     try {
-      const response=await fetch('/api/admissao-digital/admissoes/dossie-contabilidade/lote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:dependentCorrection?[]:selected,unitId:unitId||undefined,dependentCorrection})})
-      if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||`Não foi possível gerar os dossiês (HTTP ${response.status}).${response.status===504?' O servidor excedeu o tempo de espera; tente selecionar apenas uma admissão.':' Consulte os logs da aplicação.'}`)}
-      const blob=await response.blob(),match=(response.headers.get('content-disposition')||'').match(/filename="?([^";]+)"?/i)
-      const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=match?.[1]||'Dossies_Pre_Admissionais.zip';document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)
-      const failed=Number(response.headers.get('x-dossiers-failed')||0)
-      const remaining=Number(response.headers.get('x-dossiers-remaining')||0)
-      setNotice(`${response.headers.get('x-dossiers-generated')||0} dossiê(s) gerado(s).${failed?` ${failed} com pendência — veja o relatorio.csv no ZIP.`:''}${remaining?` Restam ${remaining} dossiês; gere outro lote após um minuto.`:''}`)
+      const result=await downloadDossierBatch({dependentCorrection,unitId:unitId||undefined,ids:dependentCorrection?[]:selected,onProgress:(done,total,name)=>setNotice(`Gerando dossiês: ${done} de ${total}.${name?` Agora: ${name}.`:''} Não feche esta página.`)})
+      const blob=new Blob([new Uint8Array(result.bytes)],{type:'application/zip'})
+      const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=`Dossies_Pre_Admissionais_${new Date().toISOString().slice(0,10)}.zip`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)
+      setNotice(`${result.generated} dossiê(s) gerado(s).${result.failed?` ${result.failed} com erro — veja o relatorio.csv no ZIP.`:''}`)
     } catch(caught){ setNotice(caught instanceof Error?caught.message:'Não foi possível gerar os dossiês.') } finally { setDossierBusy(false) }
   }
 

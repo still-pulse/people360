@@ -20,6 +20,25 @@ const CLOSED_STATUSES = ['DRAFT', 'CANCELLED', 'EXPIRED', 'SYNCED', 'COMPLETED']
 
 const csv = (values: string[]) => values.map((value) => `"${value.replace(/"/g, '""')}"`).join(';')
 
+/** Lista o escopo autorizado sem executar a geração de PDFs. */
+export async function GET(req: NextRequest) {
+  const { session, error } = await getSessionOrUnauthorized()
+  if (error) return error
+  const forbidden = forbidIfReadOnly(session!.user.actualRole ?? session!.user.role)
+  if (forbidden) return forbidden
+  const correction = req.nextUrl.searchParams.get('dependentCorrection') === 'true'
+  const where: Record<string, any> = { processType: 'ADMISSION', status: { notIn: correction ? ['DRAFT', 'CANCELLED', 'EXPIRED'] : CLOSED_STATUSES } }
+  if (correction) where.dependents = { some: {} }
+  enforceUnitFilter(where, session!, req.nextUrl.searchParams.get('unitId'), 'unitId')
+  const admissions = await prisma.admission.findMany({ where, orderBy: { candidateName: 'asc' }, select: {
+    id: true, protocol: true, candidateName: true, unitId: true, ownerId: true, analysts: { select: { id: true } },
+    documents: { select: { status: true, type: { select: { required: true } } } },
+  } })
+  const items = admissions.filter(a => canAccessAdmission(session!, a) && (correction || (a.documents.length > 0 && !pendingRequiredDocuments(a.documents).length)))
+    .map(a => ({ id: a.id, protocol: a.protocol, candidateName: a.candidateName }))
+  return NextResponse.json({ items }, { headers: { 'Cache-Control': 'no-store' } })
+}
+
 /** Gera em lote os dossiês pré-admissionais de quem já tem todos os documentos aprovados, em um ZIP com uma pasta por colaborador. */
 export async function POST(req: NextRequest) {
   try {
@@ -39,12 +58,12 @@ async function generateBatch(req: NextRequest) {
   const role = session!.user.actualRole ?? session!.user.role
   const forbidden = forbidIfReadOnly(role)
   if (forbidden) return forbidden
-  if (!allowRequest(`accounting-dossier-batch:${session!.user.id}`, 2, 60_000)) {
-    return NextResponse.json({ error: 'Aguarde um minuto antes de gerar outro lote.' }, { status: 429 })
-  }
-
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string').slice(0, 200) : []
+  const single = ids.length === 1
+  if (!allowRequest(`accounting-dossier-${single ? 'single' : 'batch'}:${session!.user.id}`, single ? 60 : 2, 60_000)) {
+    return NextResponse.json({ error: 'Aguarde um minuto antes de gerar outro lote.' }, { status: 429 })
+  }
   const correction = body.dependentCorrection === true
   const where: Record<string, any> = { processType: 'ADMISSION', status: { notIn: correction ? ['DRAFT', 'CANCELLED', 'EXPIRED'] : CLOSED_STATUSES } }
   if (correction) where.dependents = { some: {} }
@@ -70,7 +89,7 @@ async function generateBatch(req: NextRequest) {
   const failures: string[] = []
 
   for (const admission of eligible) {
-    let folderName = safeBadgeArchiveName(admission.candidateName)
+    let folderName = `${safeBadgeArchiveName(admission.candidateName)} - ${admission.protocol}`
     // Homônimos não podem cair na mesma pasta.
     if (usedFolders.has(folderName.toLowerCase())) folderName = `${folderName} - ${admission.protocol}`
     usedFolders.add(folderName.toLowerCase())
