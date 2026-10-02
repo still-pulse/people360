@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getAnalystUnits, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { parseProcessType } from '@/lib/admission/constants'
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   const units = getAnalystUnits(session!)
   const processType = parseProcessType(req.nextUrl.searchParams.get('processType'))
   const admissionScope = units ? { OR: [{ unitId: { in: units } }, { ownerId: session!.user.id }, { analysts: { some: { id: session!.user.id } } }] } : {}
-  const reviewScope = { processType, status: { notIn: ['CANCELLED', 'EXPIRED'] }, ...admissionScope }
+  const reviewScope: Prisma.AdmissionWhereInput = { processType, status: { notIn: ['CANCELLED', 'EXPIRED'] }, ...admissionScope }
   const [documents, photos] = await Promise.all([
     prisma.admissionDocument.findMany({ where: {
       status: { in: ['UPLOADED', 'UNDER_REVIEW', 'RESUBMISSION_REQUIRED'] },

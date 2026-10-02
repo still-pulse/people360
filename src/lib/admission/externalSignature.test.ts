@@ -97,7 +97,11 @@ describe('assinatura pela Autentique', () => {
     expect(replacement.pageMap).toEqual(expect.arrayContaining([
       expect.objectContaining({ documentId: 'contrato-v2' }),
     ]))
-    const contract = replacement.pageMap.find((item: any) => item.documentId === 'contrato-v2')
+    if (!Array.isArray(replacement.pageMap)) throw new Error('O pacote deve conter um mapa de páginas.')
+    const contract = replacement.pageMap.find((item) => typeof item === 'object' && item !== null && !Array.isArray(item) && item.documentId === 'contrato-v2')
+    if (!contract || typeof contract !== 'object' || Array.isArray(contract) || typeof contract.start !== 'number' || typeof contract.end !== 'number') {
+      throw new Error('O contrato substituto deve conter um intervalo de páginas válido.')
+    }
     expect(contract.end - contract.start + 1).toBe(4)
     expect(replacement.pageMap).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ documentId: 'contrato' }),
