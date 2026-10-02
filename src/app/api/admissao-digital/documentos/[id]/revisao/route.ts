@@ -7,9 +7,9 @@ import { extractIp } from '@/lib/audit'
 import { notifyAdmissionCandidate } from '@/lib/admission/notifications'
 import { createAdditionalAdmissionToken } from '@/lib/admission/service'
 import { isFaceVerificationEnabled } from '@/lib/admission/features'
-import { isDocumentResolved } from '@/lib/admission/documentStatus'
+import { canCancelDocumentRequest, isDocumentResolved } from '@/lib/admission/documentStatus'
 
-const schema = z.object({ action: z.enum(['approve', 'not_applicable', 'reject', 'resubmit']), reason: z.string().trim().max(500).optional() }).superRefine((v, ctx) => {
+const schema = z.object({ action: z.enum(['approve', 'not_applicable', 'reject', 'resubmit', 'cancel_request']), reason: z.string().trim().max(500).optional() }).superRefine((v, ctx) => {
   if (v.action !== 'approve' && !v.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Informe o motivo.' })
 })
 
@@ -23,12 +23,15 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!canAccessAdmission(session!, doc.admission)) return NextResponse.json({ error: 'Sem acesso.' }, { status: 403 })
   if (doc.admission.status === 'CANCELLED') return NextResponse.json({ error: 'Esta admissão foi cancelada e não pode mais ser revisada.' }, { status: 409 })
   if (parsed.data.action === 'not_applicable' && doc.uploadedAt) return NextResponse.json({ error: 'Somente documentos ainda não enviados podem ser marcados como não aplicáveis.' }, { status: 409 })
-  const status = parsed.data.action === 'approve' ? 'APPROVED' : parsed.data.action === 'not_applicable' ? 'NOT_APPLICABLE' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'
+  if (parsed.data.action === 'cancel_request' && !canCancelDocumentRequest(doc.status)) return NextResponse.json({ error: 'Este documento não possui uma solicitação de reenvio pendente.' }, { status: 409 })
+  if (parsed.data.action === 'cancel_request' && (parsed.data.reason?.length ?? 0) < 3) return NextResponse.json({ error: 'Informe uma justificativa com pelo menos 3 caracteres.' }, { status: 400 })
+  const status = parsed.data.action === 'approve' ? 'APPROVED' : (parsed.data.action === 'not_applicable' || parsed.data.action === 'cancel_request') ? 'NOT_APPLICABLE' : parsed.data.action === 'reject' ? 'REJECTED' : 'RESUBMISSION_REQUIRED'
   const resolved = isDocumentResolved(status)
   const faceVerificationEnabled = isFaceVerificationEnabled()
   const isRegistrationUpdate = doc.admission.processType === 'REGISTRATION_UPDATE'
-  await prisma.$transaction(async (tx) => {
-    await tx.admissionDocument.update({ where: { id: doc.id }, data: { status, rejectionReason: resolved ? (status === 'NOT_APPLICABLE' ? parsed.data.reason : null) : parsed.data.reason, reviewedById: session!.user.id, reviewedAt: new Date() } })
+  const reviewed = await prisma.$transaction(async (tx) => {
+    const changed = await tx.admissionDocument.updateMany({ where: { id: doc.id, ...(parsed.data.action === 'cancel_request' ? { status: doc.status, updatedAt: doc.updatedAt } : {}) }, data: { status, rejectionReason: resolved ? (status === 'NOT_APPLICABLE' ? parsed.data.reason : null) : parsed.data.reason, reviewedById: session!.user.id, reviewedAt: new Date() } })
+    if (!changed.count) return false
     const remaining = await tx.admissionDocument.count({ where: { admissionId: doc.admissionId, type: { required: true }, status: { notIn: ['APPROVED', 'NOT_APPLICABLE'] } } })
     // Considera só a foto mais recente: uma nova foto enviada precisa de nova aprovação.
     const latestConfirmed = remaining === 0 ? await tx.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, select: { id: true, approvedAt: true } }) : null
@@ -37,7 +40,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     // senão a admissão sai de DOCUMENTS_UNDER_REVIEW e o RH não consegue confirmar no ERPNext.
     if (isRegistrationUpdate) {
       await tx.admission.update({ where: { id: doc.admissionId }, data: { status: resolved ? undefined : 'CORRECTION_REQUESTED', lastActivityAt: new Date() } })
-      return
+      return true
     }
     await tx.admission.update({ where: { id: doc.admissionId }, data: {
       status: resolved && remaining === 0 ? (badgePhoto ? (faceVerificationEnabled ? 'FACE_VALIDATION_PENDING' : 'CONTRACT_PENDING') : 'DOCUMENTS_APPROVED') : resolved ? 'DOCUMENTS_UNDER_REVIEW' : 'CORRECTION_REQUESTED',
@@ -45,8 +48,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       progress: resolved && remaining === 0 && badgePhoto ? { set: Math.max(faceVerificationEnabled ? 74 : 82, doc.admission.progress) } : undefined,
       lastActivityAt: new Date(),
     } })
+    return true
   })
-  await logAdmissionEvent({ admissionId: doc.admissionId, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: `DOCUMENT_${status}`, resource: 'AdmissionDocument', resourceId: doc.id, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { documentType: doc.type.name, reason: parsed.data.reason } })
+  if (!reviewed) return NextResponse.json({ error: 'O documento foi atualizado durante a revisão. Atualize a tela e tente novamente.' }, { status: 409 })
+  await logAdmissionEvent({ admissionId: doc.admissionId, actorId: session!.user.id, actorName: session!.user.name, actorType: 'USER', action: parsed.data.action === 'cancel_request' ? 'DOCUMENT_REQUEST_CANCELLED' : `DOCUMENT_${status}`, resource: 'AdmissionDocument', resourceId: doc.id, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'), metadata: { documentType: doc.type.name, reason: parsed.data.reason, previousStatus: doc.status } })
   const requiredRemaining = await prisma.admissionDocument.count({ where: { admissionId: doc.admissionId, type: { required: true }, status: { notIn: ['APPROVED', 'NOT_APPLICABLE'] } } })
   const allResolved = resolved && !isDocumentResolved(doc.status) && doc.type.required && requiredRemaining === 0
   const latestPhoto = allResolved ? await prisma.badgePhoto.findFirst({ where: { admissionId: doc.admissionId, confirmedAt: { not: null } }, orderBy: { createdAt: 'desc' }, select: { approvedAt: true } }) : null
