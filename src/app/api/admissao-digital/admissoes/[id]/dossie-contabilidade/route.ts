@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessAdmission, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { extractIp } from '@/lib/audit'
-import { buildAccountingAdmissionDossier } from '@/lib/admission/accountingDossier'
+import { buildAccountingAdmissionDossier, DEPENDENT_DOSSIER_VERSION } from '@/lib/admission/accountingDossier'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { pendingRequiredDocuments } from '@/lib/admission/documentStatus'
 import { prisma } from '@/lib/prisma'
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     await logAdmissionEvent({
       admissionId: admission.id, actorId: session!.user.id, actorName: session!.user.name,
       actorType: 'USER', action: 'ACCOUNTING_DOSSIER_GENERATED', ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
-      metadata: { pages: result.pages, documents: result.documents, fileName: result.fileName },
+      metadata: { pages: result.pages, documents: result.documents, fileName: result.fileName, dependentDataVersion: DEPENDENT_DOSSIER_VERSION },
     })
     return pdfResponse(compressed.buffer, result.fileName, false)
   } catch (caught) {

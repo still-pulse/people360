@@ -38,5 +38,5 @@ export function LoadingCards({ count = 4 }: { count?: number }) { return <div cl
 
 export function ErrorState({ message, retry }: { message: string; retry: () => void }) { return <div className={`${styles.card} ${styles.empty}`}><p>{message}</p><button className={styles.button} onClick={retry}><RefreshCw size={14}/>Tentar novamente</button></div> }
 
-export function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat('pt-BR').format(new Date(value)) : '—' }
+export function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(value)) : '—' }
 export function formatDateTime(value?: string | Date | null) { return value ? new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value)) : '—' }

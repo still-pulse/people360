@@ -4,10 +4,17 @@ import { admissionDossierSources, renderAdmissionDossier } from '@/lib/dossie/do
 import { loadAdmissionBadgePhoto } from '@/lib/dossie/photo'
 import { generateAdmissionDocuments } from './documentGenerator'
 import { pendingRequiredDocuments } from './documentStatus'
-import { decryptAdmissionValue } from './security'
+import { decryptAdmissionValue, encryptAdmissionValue } from './security'
+import { resolveDependentCpf } from './dependentCpf'
 
 export const ACCOUNTING_DOSSIER_GENERATED = 'ACCOUNTING_DOSSIER_GENERATED'
 export const ACCOUNTING_DOSSIER_SENT = 'ACCOUNTING_DOSSIER_SENT'
+export const DEPENDENT_DOSSIER_VERSION = 2
+
+export function needsDependentDossierCorrection(events: { metadata: unknown }[]) {
+  const metadata = events[0]?.metadata
+  return !!events.length && !(metadata && typeof metadata === 'object' && 'dependentDataVersion' in metadata && metadata.dependentDataVersion === DEPENDENT_DOSSIER_VERSION)
+}
 
 /**
  * Assinatura iniciada antes da etapa do dossiê (admissões antigas): só conta envelope que não foi cancelado.
@@ -61,16 +68,21 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
   if (pending.length) throw new Error(`Ainda existem ${pending.length} documento(s) obrigatório(s) sem aprovação do RH.`)
 
   const field = admission.fields[0]
+  const dependents = []
+  for (const dependent of admission.dependents) {
+    const cpf = resolveDependentCpf(dependent)
+    if (cpf && !dependent.cpfEncrypted) {
+      await prisma.admissionDependent.update({ where: { id: dependent.id }, data: { cpfEncrypted: encryptAdmissionValue(cpf) } })
+    }
+    dependents.push({ name: dependent.name, cpf, birthDate: dependent.birthDate, relationship: dependent.relationship, irrfDependent: dependent.irrfDependent, childUnder14: dependent.childUnder14 })
+  }
   const fieldValue = field ? (field.sensitive ? decryptAdmissionValue(field.value) : field.value) : null
   const matricula = (typeof fieldValue === 'string' && fieldValue.trim()) || admission.collaborator?.matricula || admission.erpnextSyncs[0]?.employeeCode || ''
   const [photo, sources] = await Promise.all([loadAdmissionBadgePhoto(admissionId), admissionDossierSources(admissionId)])
   const result = await renderAdmissionDossier({
     info: { nome: admission.candidateName, matricula, cargo: admission.jobTitle, unidade: admission.unit.name, admissao: admission.hireDate.toISOString() },
     photo, sources,
-    dependents: admission.dependents.map((dependent) => {
-      const cpf = decryptAdmissionValue(dependent.cpfEncrypted)
-      return { name: dependent.name, cpf: typeof cpf === 'string' ? cpf : '', birthDate: dependent.birthDate, relationship: dependent.relationship, irrfDependent: dependent.irrfDependent, childUnder14: dependent.childUnder14 }
-    }),
+    dependents,
     identifier: matricula ? `Matrícula: ${matricula}` : `Protocolo: ${admission.protocol}`,
   })
   return {

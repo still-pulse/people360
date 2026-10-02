@@ -394,26 +394,20 @@ export async function renderAdmissionDossier(params: {
   if (!formulario.length && !params.juridico) throw new DossieError('O formulário admissional ainda não está disponível para este colaborador.', 422)
   const attachments = [...formulario, ...documentos, ...certificados]
   if (!formulario.length && !documentos.length) throw new DossieError('Ainda não há contratos ou termos assinados disponíveis para o dossiê jurídico.', 422)
-  const attachmentPages = attachments.reduce((sum, item) => sum + item.pages, 0)
   const geradoEm = new Date()
   const docLabel = params.juridico ? 'Dossiê Jurídico' : 'Dossiê Admissional'
   const pdf = new PdfBuilder({ docLabel, colaboradorNome: info.nome, matricula: info.matricula || undefined, geradoEm }, await loadLogo())
 
-  drawCover(pdf, info, photo, geradoEm, params.juridico ? 'DOSSIÊ JURÍDICO DO COLABORADOR' : 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
-  const indexLines = (params.dependents ? 1 : 0) + (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0) + (certificados.length ? 1 + certificados.length : 0)
-  const perIndexPage = Math.floor((PAGE.bottom - PAGE.top - 16) / 6.4)
-  const indexPages = Math.max(1, Math.ceil(indexLines / perIndexPage))
-  for (let index = 0; index < indexPages; index++) pdf.newPage()
-  const entries: IndexEntry[] = []
+  let dependentAttachment: Attachment | undefined
   if (params.dependents) {
-    pdf.newPage()
-    entries.push({ numero: '01', titulo: 'Dados dos dependentes', page: pdf.page, sub: [] })
-    pdf.title('DADOS DOS DEPENDENTES')
-    if (!params.dependents.length) pdf.kv([['Dependentes', 'Nenhum dependente informado.']])
+    const dependentPdf = new PdfBuilder({ docLabel, colaboradorNome: info.nome, geradoEm }, null)
+    dependentPdf.skipChrome()
+    dependentPdf.title('DADOS DOS DEPENDENTES')
+    if (!params.dependents.length) dependentPdf.kv([['Dependentes', 'Nenhum dependente informado.']])
     for (const [index, dependent] of params.dependents.entries()) {
-      pdf.heading(`Dependente ${index + 1}`)
-      pdf.kv([
-        ['Nome', dependent.name], ['CPF', dependent.cpf ? fmtCpf(dependent.cpf) : 'CPF completo não disponível — solicitar preenchimento'],
+      dependentPdf.heading(`Dependente ${index + 1}`)
+      dependentPdf.kv([
+        ['Nome', dependent.name], ['CPF', dependent.cpf ? fmtCpf(dependent.cpf) : 'CPF completo pendente de conferência nos documentos'],
         ['Nascimento', fmtDate(dependent.birthDate)], ['Parentesco', dependent.relationship],
         ['Dependente de IRRF', dependent.irrfDependent ? 'Sim' : 'Não'],
         ...(dependent.childUnder14 !== undefined ? [['Menor de 14 anos', dependent.childUnder14 ? 'Sim' : 'Não']] as [string, string][] : []),
@@ -423,7 +417,19 @@ export async function renderAdmissionDossier(params: {
         ...(dependent.inclusaoEm ? [['Inclusão', fmtDate(dependent.inclusaoEm)], ['Situação', dependent.exclusaoEm ? `Excluído em ${fmtDate(dependent.exclusaoEm)}` : 'Ativo']] as [string, string][] : []),
       ])
     }
+    for (let page = 1; page <= dependentPdf.page; page++) dependentPdf.skipChrome(page)
+    const bytes = dependentPdf.finalize({ totalPages: dependentPdf.page })
+    const document = await PDFDocument.load(bytes)
+    dependentAttachment = { src: { titulo: 'Dados dos dependentes', categoria: 'Formulário admissional', data: geradoEm, situacao: 'Atualizado', mime: 'application/pdf', read: async () => bytes }, kind: 'pdf', pdf: document, pages: document.getPageCount() }
+    attachments.splice(formulario.length, 0, dependentAttachment)
   }
+
+  drawCover(pdf, info, photo, geradoEm, params.juridico ? 'DOSSIÊ JURÍDICO DO COLABORADOR' : 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
+  const indexLines = (params.dependents ? 1 : 0) + (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0) + (certificados.length ? 1 + certificados.length : 0)
+  const perIndexPage = Math.floor((PAGE.bottom - PAGE.top - 16) / 6.4)
+  const indexPages = Math.max(1, Math.ceil(indexLines / perIndexPage))
+  for (let index = 0; index < indexPages; index++) pdf.newPage()
+  const entries: IndexEntry[] = []
   let attachmentPage = pdf.page + 1
   const formPage = attachmentPage
   attachmentPage += formulario.reduce((sum, item) => sum + item.pages, 0)
@@ -431,6 +437,10 @@ export async function renderAdmissionDossier(params: {
     let page = formPage
     entries.push({ numero: String(entries.length + 1).padStart(2, '0'), titulo: params.juridico ? 'Contratos, aditivos e acordos' : 'Formulário admissional', page: formPage,
       sub: params.juridico ? formulario.map(item => { const entry = { titulo: item.src.titulo, page }; page += item.pages; return entry }) : [] })
+  }
+  if (dependentAttachment) {
+    entries.push({ numero: String(entries.length + 1).padStart(2, '0'), titulo: 'Dados dos dependentes', page: attachmentPage, sub: [] })
+    attachmentPage += dependentAttachment.pages
   }
   if (documentos.length) {
     const documentEntry: IndexEntry = { numero: String(entries.length + 1).padStart(2, '0'), titulo: params.juridico ? 'Termos, declarações e normas' : 'Documentos do colaborador', page: attachmentPage, sub: [] }
@@ -448,12 +458,13 @@ export async function renderAdmissionDossier(params: {
     }
     entries.push(entry)
   }
+  const attachmentPages = attachments.reduce((sum, item) => sum + item.pages, 0)
   const mainPages = pdf.page
   drawIndex(pdf, entries, 2, indexPages)
   const total = mainPages + attachmentPages
   let buffer = pdf.finalize({ totalPages: total })
   if (attachments.length) buffer = await appendAttachments(buffer, attachments, total, mainPages, docLabel)
-  return { buffer, pages: total, documents: attachments.length }
+  return { buffer, pages: total, documents: attachments.length - (dependentAttachment ? 1 : 0) }
 }
 
 export async function buildDossierPdf(params: { colaboradorId: string; selecao: string[]; actorName: string }) {

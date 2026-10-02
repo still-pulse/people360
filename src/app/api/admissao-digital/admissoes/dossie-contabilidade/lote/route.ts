@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import JSZip from 'jszip'
 import { canAccessAdmission, enforceUnitFilter, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { extractIp } from '@/lib/audit'
-import { ACCOUNTING_DOSSIER_GENERATED, buildAccountingAdmissionDossier } from '@/lib/admission/accountingDossier'
+import { ACCOUNTING_DOSSIER_GENERATED, buildAccountingAdmissionDossier, DEPENDENT_DOSSIER_VERSION, needsDependentDossierCorrection } from '@/lib/admission/accountingDossier'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { pendingRequiredDocuments } from '@/lib/admission/documentStatus'
 import { safeBadgeArchiveName } from '@/lib/badges/batch'
@@ -33,17 +33,21 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string').slice(0, 200) : []
-  const where: Record<string, any> = { processType: 'ADMISSION', status: { notIn: CLOSED_STATUSES } }
+  const correction = body.dependentCorrection === true
+  const where: Record<string, any> = { processType: 'ADMISSION', status: { notIn: correction ? ['DRAFT', 'CANCELLED', 'EXPIRED'] : CLOSED_STATUSES } }
+  if (correction) where.dependents = { some: {} }
   enforceUnitFilter(where, session!, typeof body.unitId === 'string' ? body.unitId : null, 'unitId')
   if (ids.length) where.id = { in: ids }
 
   const admissions = await prisma.admission.findMany({
     where, orderBy: { candidateName: 'asc' },
-    select: { id: true, protocol: true, candidateName: true, unitId: true, ownerId: true, analysts: { select: { id: true } }, documents: { select: { status: true, type: { select: { required: true } } } } },
+    select: { id: true, protocol: true, candidateName: true, unitId: true, ownerId: true, analysts: { select: { id: true } }, documents: { select: { status: true, type: { select: { required: true } } } }, auditLogs: { where: { action: ACCOUNTING_DOSSIER_GENERATED }, orderBy: { createdAt: 'desc' }, take: 1, select: { metadata: true } } },
   })
-  const eligible = admissions.filter((admission) => canAccessAdmission(session!, admission)
+  const candidates = admissions.filter((admission) => canAccessAdmission(session!, admission)
+    && (!correction || needsDependentDossierCorrection(admission.auditLogs))
     && admission.documents.length > 0 && !pendingRequiredDocuments(admission.documents).length)
-  if (!eligible.length) return NextResponse.json({ error: 'Nenhuma admissão com todos os documentos aprovados foi encontrada.' }, { status: 404 })
+  const eligible = correction ? candidates.slice(0, MAX_BATCH) : candidates
+  if (!eligible.length) return NextResponse.json({ error: correction ? 'Nenhum dossiê antigo com dependentes e documentação aprovada precisa ser regenerado.' : 'Nenhuma admissão com todos os documentos aprovados foi encontrada.' }, { status: 404 })
   if (eligible.length > MAX_BATCH) {
     return NextResponse.json({ error: `O lote tem ${eligible.length} admissões. Selecione no máximo ${MAX_BATCH} ou filtre por unidade.` }, { status: 413 })
   }
@@ -66,7 +70,7 @@ export async function POST(req: NextRequest) {
       await logAdmissionEvent({
         admissionId: admission.id, actorId: session!.user.id, actorName: session!.user.name,
         actorType: 'USER', action: ACCOUNTING_DOSSIER_GENERATED, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
-        metadata: { pages: result.pages, documents: result.documents, fileName: result.fileName, batch: true },
+        metadata: { pages: result.pages, documents: result.documents, fileName: result.fileName, batch: true, dependentDataVersion: DEPENDENT_DOSSIER_VERSION },
       })
       generated++
       report.push(csv([admission.candidateName, admission.protocol, 'GERADO', `${result.documents} documento(s), ${result.pages} página(s)`]))
@@ -89,6 +93,7 @@ export async function POST(req: NextRequest) {
       'Cache-Control': 'no-store',
       'X-Dossiers-Generated': String(generated),
       'X-Dossiers-Failed': String(eligible.length - generated),
+      'X-Dossiers-Remaining': String(correction ? Math.max(0, candidates.length - eligible.length) : 0),
     },
   })
 }
