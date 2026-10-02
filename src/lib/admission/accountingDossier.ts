@@ -42,7 +42,7 @@ export async function accountingDossierState(admissionId: string) {
 // Início deste processo do servidor: fichas geradas antes dele podem ter saído com o layout antigo.
 const PROCESS_STARTED_AT = new Date()
 
-export async function buildAccountingAdmissionDossier(admissionId: string, origin: string) {
+export async function buildAccountingAdmissionDossier(admissionId: string, origin: string, options: { allowIncomplete?: boolean } = {}) {
   // Ficha ainda não enviada para assinatura é refeita com o layout atual (corrige rótulos encobertos).
   // Fichas enviadas à Autentique ou assinadas nunca são alteradas.
   await prisma.generatedDocument.updateMany({
@@ -65,7 +65,7 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
   if (!admission) throw new Error('Admissão não encontrada.')
   if (admission.processType !== 'ADMISSION') throw new Error('O dossiê para contabilidade está disponível somente para admissões.')
   const pending = pendingRequiredDocuments(admission.documents)
-  if (pending.length) throw new Error(`Ainda existem ${pending.length} documento(s) obrigatório(s) sem aprovação do RH.`)
+  if (pending.length && !options.allowIncomplete) throw new Error(`Ainda existem ${pending.length} documento(s) obrigatório(s) sem aprovação do RH.`)
 
   const field = admission.fields[0]
   const dependents = []
@@ -83,6 +83,7 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
     info: { nome: admission.candidateName, matricula, cargo: admission.jobTitle, unidade: admission.unit.name, admissao: admission.hireDate.toISOString() },
     photo, sources,
     dependents,
+    warning: pending.length ? `DOCUMENTAÇÃO PENDENTE: ${pending.length} documento(s) obrigatório(s) sem aprovação do RH. Dossiê para conferência; documentação ainda incompleta.` : undefined,
     identifier: matricula ? `Matrícula: ${matricula}` : `Protocolo: ${admission.protocol}`,
   })
   return {
@@ -90,5 +91,6 @@ export async function buildAccountingAdmissionDossier(admissionId: string, origi
     fileName: `Dossie_Admissional_${fileSlug(admission.candidateName, 'COLABORADOR')}_${(matricula || admission.protocol).replace(/[^a-zA-Z0-9]/g, '')}.pdf`,
     pages: result.pages,
     documents: result.documents,
+    pendingDocuments: pending.length,
   }
 }

@@ -384,6 +384,7 @@ export async function renderAdmissionDossier(params: {
   sources: { formulario: AttachmentSource[]; documentos: AttachmentSource[]; certificados?: AttachmentSource[] }
   identifier?: string
   juridico?: boolean
+  warning?: string
   dependents?: { name: string; cpf: string; birthDate: Date; relationship: string; irrfDependent: boolean; childUnder14?: boolean; sexo?: string; salarioFamilia?: boolean; planoSaude?: boolean; inclusaoEm?: string; exclusaoEm?: string | null }[]
 }) {
   const { info, photo, sources } = params
@@ -403,6 +404,7 @@ export async function renderAdmissionDossier(params: {
     const dependentPdf = new PdfBuilder({ docLabel, colaboradorNome: info.nome, geradoEm }, null)
     dependentPdf.skipChrome()
     dependentPdf.title('DADOS DOS DEPENDENTES')
+    if (params.warning) dependentPdf.kv([['Situação da documentação', params.warning]])
     if (!params.dependents.length) dependentPdf.kv([['Dependentes', 'Nenhum dependente informado.']])
     for (const [index, dependent] of params.dependents.entries()) {
       dependentPdf.heading(`Dependente ${index + 1}`)

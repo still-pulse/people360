@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import JSZip from 'jszip'
 import { canAccessAdmission, enforceUnitFilter, forbidIfReadOnly, getSessionOrUnauthorized } from '@/lib/apiHelpers'
 import { extractIp } from '@/lib/audit'
-import { ACCOUNTING_DOSSIER_GENERATED, buildAccountingAdmissionDossier, DEPENDENT_DOSSIER_VERSION, needsDependentDossierCorrection } from '@/lib/admission/accountingDossier'
+import { ACCOUNTING_DOSSIER_GENERATED, buildAccountingAdmissionDossier, DEPENDENT_DOSSIER_VERSION } from '@/lib/admission/accountingDossier'
 import { logAdmissionEvent } from '@/lib/admission/audit'
 import { pendingRequiredDocuments } from '@/lib/admission/documentStatus'
 import { safeBadgeArchiveName } from '@/lib/badges/batch'
@@ -22,6 +22,18 @@ const csv = (values: string[]) => values.map((value) => `"${value.replace(/"/g, 
 
 /** Gera em lote os dossiês pré-admissionais de quem já tem todos os documentos aprovados, em um ZIP com uma pasta por colaborador. */
 export async function POST(req: NextRequest) {
+  try {
+    return await generateBatch(req)
+  } catch (caught) {
+    console.error('[admission-accounting-dossier-batch-request]', caught)
+    const code = caught && typeof caught === 'object' && 'code' in caught ? caught.code : null
+    return NextResponse.json({ error: code === 'P2022'
+      ? 'O banco está sem uma coluna necessária. Verifique se as migrações foram aplicadas no deploy.'
+      : 'Falha no servidor ao gerar o lote. Consulte os logs da aplicação para identificar a causa.' }, { status: 500 })
+  }
+}
+
+async function generateBatch(req: NextRequest) {
   const { session, error } = await getSessionOrUnauthorized()
   if (error) return error
   const role = session!.user.actualRole ?? session!.user.role
@@ -44,10 +56,9 @@ export async function POST(req: NextRequest) {
     select: { id: true, protocol: true, candidateName: true, unitId: true, ownerId: true, analysts: { select: { id: true } }, documents: { select: { status: true, type: { select: { required: true } } } }, auditLogs: { where: { action: ACCOUNTING_DOSSIER_GENERATED }, orderBy: { createdAt: 'desc' }, take: 1, select: { metadata: true } } },
   })
   const candidates = admissions.filter((admission) => canAccessAdmission(session!, admission)
-    && (!correction || needsDependentDossierCorrection(admission.auditLogs))
-    && admission.documents.length > 0 && !pendingRequiredDocuments(admission.documents).length)
-  const eligible = correction ? candidates.slice(0, MAX_BATCH) : candidates
-  if (!eligible.length) return NextResponse.json({ error: correction ? 'Nenhum dossiê antigo com dependentes e documentação aprovada precisa ser regenerado.' : 'Nenhuma admissão com todos os documentos aprovados foi encontrada.' }, { status: 404 })
+    && (correction || (admission.documents.length > 0 && !pendingRequiredDocuments(admission.documents).length)))
+  const eligible = candidates
+  if (!eligible.length) return NextResponse.json({ error: correction ? 'Nenhuma admissão com dependentes foi encontrada.' : 'Nenhuma admissão com todos os documentos aprovados foi encontrada.' }, { status: 404 })
   if (eligible.length > MAX_BATCH) {
     return NextResponse.json({ error: `O lote tem ${eligible.length} admissões. Selecione no máximo ${MAX_BATCH} ou filtre por unidade.` }, { status: 413 })
   }
@@ -56,6 +67,7 @@ export async function POST(req: NextRequest) {
   const report = [csv(['Colaborador', 'Protocolo', 'Status', 'Detalhes'])]
   const usedFolders = new Set<string>()
   let generated = 0
+  const failures: string[] = []
 
   for (const admission of eligible) {
     let folderName = safeBadgeArchiveName(admission.candidateName)
@@ -64,25 +76,26 @@ export async function POST(req: NextRequest) {
     usedFolders.add(folderName.toLowerCase())
     const folder = zip.folder(folderName)!
     try {
-      const result = await buildAccountingAdmissionDossier(admission.id, req.nextUrl.origin)
+      const result = await buildAccountingAdmissionDossier(admission.id, req.nextUrl.origin, { allowIncomplete: correction })
       const compressed = await compressPdf(result.buffer)
       folder.file(result.fileName, compressed.buffer)
       await logAdmissionEvent({
         admissionId: admission.id, actorId: session!.user.id, actorName: session!.user.name,
-        actorType: 'USER', action: ACCOUNTING_DOSSIER_GENERATED, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
+        actorType: 'USER', action: result.pendingDocuments ? 'ACCOUNTING_DOSSIER_PREVIEW_GENERATED' : ACCOUNTING_DOSSIER_GENERATED, ip: extractIp(req.headers), userAgent: req.headers.get('user-agent'),
         metadata: { pages: result.pages, documents: result.documents, fileName: result.fileName, batch: true, dependentDataVersion: DEPENDENT_DOSSIER_VERSION },
       })
       generated++
-      report.push(csv([admission.candidateName, admission.protocol, 'GERADO', `${result.documents} documento(s), ${result.pages} página(s)`]))
+      report.push(csv([admission.candidateName, admission.protocol, result.pendingDocuments ? 'GERADO COM PENDÊNCIAS' : 'GERADO', `${result.documents} documento(s), ${result.pages} página(s)${result.pendingDocuments ? `; ${result.pendingDocuments} documento(s) obrigatório(s) sem aprovação do RH` : ''}`]))
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Erro desconhecido.'
+      failures.push(`${admission.protocol}: ${message}`)
       console.error('[admission-accounting-dossier-batch]', admission.protocol, caught)
       folder.file('PENDENCIA.txt', `Dossiê não gerado: ${message}`)
       report.push(csv([admission.candidateName, admission.protocol, 'ERRO', message]))
     }
   }
 
-  if (!generated) return NextResponse.json({ error: 'Não foi possível gerar nenhum dossiê do lote.' }, { status: 422 })
+  if (!generated) return NextResponse.json({ error: `Não foi possível gerar nenhum dossiê do lote. ${failures.slice(0, 3).join(' | ')}` }, { status: 422 })
   zip.file('relatorio.csv', `﻿${report.join('\r\n')}`)
   const archive = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' })
   const fileName = `Dossies_Pre_Admissionais_${new Date().toISOString().slice(0, 10)}.zip`

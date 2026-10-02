@@ -80,12 +80,13 @@ describe('PDF jurídico com capa e índice institucional', () => {
     const kv = vi.spyOn(PdfBuilder.prototype, 'kv')
     const text = vi.spyOn(PdfBuilder.prototype, 'textAt')
     const source = await attachment('Ficha', [[500, 700]])
-    const result = await renderAdmissionDossier({ info, photo: null, sources: { formulario: [source], documentos: [] }, dependents: [
+    const result = await renderAdmissionDossier({ info, photo: null, sources: { formulario: [source], documentos: [] }, warning: 'DOCUMENTAÇÃO PENDENTE: 2 documentos sem aprovação do RH.', dependents: [
       { name: 'Filho Teste', cpf: '11144477735', birthDate: new Date('2020-03-02'), relationship: 'Filho(a)', irrfDependent: true, childUnder14: true },
       { name: 'Dependente antigo', cpf: '', birthDate: new Date('2000-01-01'), relationship: 'Filho(a)', irrfDependent: false, childUnder14: false },
     ] })
     expect(kv).toHaveBeenCalledWith(expect.arrayContaining([['CPF', '111.444.777-35'], ['Nome', 'Filho Teste'], ['Nascimento', '02/03/2020'], ['Dependente de IRRF', 'Sim'], ['Menor de 14 anos', 'Sim']]))
     expect(kv).toHaveBeenCalledWith(expect.arrayContaining([['CPF', 'CPF completo pendente de conferência nos documentos']]))
+    expect(kv).toHaveBeenCalledWith([['Situação da documentação', 'DOCUMENTAÇÃO PENDENTE: 2 documentos sem aprovação do RH.']])
     const pdf = await PDFDocument.load(result.buffer)
     expect(pdf.getPageCount()).toBe(result.pages)
     expect(pdf.getPage(2).getWidth()).toBe(500)
