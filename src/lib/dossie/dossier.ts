@@ -57,29 +57,44 @@ const ANEXO_MAX_BYTES = 50 * 1024 * 1024
 const ANEXO_MAX_PAGES = 500
 
 /** Anexos que passam do limite entram como página de aviso — o dossiê nunca deixa de ser gerado por excesso. */
-async function loadAttachments(sources: AttachmentSource[]): Promise<Attachment[]> {
+async function loadAttachments(sources: AttachmentSource[], strictLegal = false): Promise<Attachment[]> {
+  const maxBytes = strictLegal ? 200 * 1024 * 1024 : ANEXO_MAX_BYTES
+  const maxPages = strictLegal ? 1000 : ANEXO_MAX_PAGES
   const out: Attachment[] = []
   let loadedBytes = 0
   let pages = 0
   for (const src of sources) {
     const bytes = await src.read().catch(() => null)
-    if (!bytes) { out.push({ src, kind: 'error', pages: 1 }); pages += 1; continue }
-    if (loadedBytes + bytes.length > ANEXO_MAX_BYTES || pages >= ANEXO_MAX_PAGES) { out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue }
+    if (!bytes) {
+      if (strictLegal) throw new DossieError(`Não foi possível ler “${src.titulo}”. O dossiê jurídico não foi gerado para evitar documentos ausentes.`, 422)
+      out.push({ src, kind: 'error', pages: 1 }); pages += 1; continue
+    }
+    if (loadedBytes + bytes.length > maxBytes || pages >= maxPages) {
+      if (strictLegal) throw new DossieError('O dossiê jurídico excedeu o limite de 200 MB / 1.000 páginas. Nenhum PDF incompleto foi gerado.', 422)
+      out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue
+    }
     try {
       if (src.mime === 'application/pdf') {
         let pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
         // PDF protegido: sem remover a proteção, as páginas copiadas saem em branco.
         if (pdf.isEncrypted) {
           const decrypted = await decryptPdf(bytes)
-          if (!decrypted) { out.push({ src, kind: 'error', pages: 1 }); pages += 1; continue }
+          if (!decrypted) {
+            if (strictLegal) throw new DossieError(`Não foi possível abrir o PDF protegido “${src.titulo}”.`, 422)
+            out.push({ src, kind: 'error', pages: 1 }); pages += 1; continue
+          }
           pdf = await PDFDocument.load(decrypted)
         }
         const count = Math.max(1, pdf.getPageCount())
-        if (pages + count > ANEXO_MAX_PAGES) { out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue }
+        if (pages + count > maxPages) {
+          if (strictLegal) throw new DossieError('O dossiê jurídico excedeu o limite de 1.000 páginas. Nenhum PDF incompleto foi gerado.', 422)
+          out.push({ src, kind: 'skipped', pages: 1 }); pages += 1; continue
+        }
         pages += count; loadedBytes += bytes.length
         out.push({ src, kind: 'pdf', pdf, pages: count })
       } else { pages += 1; loadedBytes += bytes.length; out.push({ src, kind: 'image', bytes, pages: 1 }) }
-    } catch {
+    } catch (error) {
+      if (strictLegal) throw error instanceof DossieError ? error : new DossieError(`Não foi possível incorporar “${src.titulo}”. O dossiê jurídico não foi gerado.`, 422)
       out.push({ src, kind: 'error', pages: 1 }); pages += 1
     }
   }
@@ -366,23 +381,25 @@ export async function buildAdmissionDossierPdf(params: { colaboradorId: string; 
 export async function renderAdmissionDossier(params: {
   info: CoverInfo
   photo: ColaboradorPhoto | null
-  sources: { formulario: AttachmentSource[]; documentos: AttachmentSource[] }
+  sources: { formulario: AttachmentSource[]; documentos: AttachmentSource[]; certificados?: AttachmentSource[] }
   identifier?: string
   juridico?: boolean
 }) {
   const { info, photo, sources } = params
-  const formulario = await loadAttachments(sources.formulario)
-  const documentos = await loadAttachments(sources.documentos)
+  const loaded = await loadAttachments([...sources.formulario, ...sources.documentos, ...(sources.certificados ?? [])], params.juridico)
+  const formulario = loaded.slice(0, sources.formulario.length)
+  const documentos = loaded.slice(sources.formulario.length, sources.formulario.length + sources.documentos.length)
+  const certificados = loaded.slice(sources.formulario.length + sources.documentos.length)
   if (!formulario.length && !params.juridico) throw new DossieError('O formulário admissional ainda não está disponível para este colaborador.', 422)
-  const attachments = [...formulario, ...documentos]
-  if (!attachments.length) throw new DossieError('Ainda não há contratos ou termos assinados disponíveis para o dossiê jurídico.', 422)
+  const attachments = [...formulario, ...documentos, ...certificados]
+  if (!formulario.length && !documentos.length) throw new DossieError('Ainda não há contratos ou termos assinados disponíveis para o dossiê jurídico.', 422)
   const attachmentPages = attachments.reduce((sum, item) => sum + item.pages, 0)
   const geradoEm = new Date()
   const docLabel = params.juridico ? 'Dossiê Jurídico' : 'Dossiê Admissional'
   const pdf = new PdfBuilder({ docLabel, colaboradorNome: info.nome, matricula: info.matricula || undefined, geradoEm }, await loadLogo())
 
   drawCover(pdf, info, photo, geradoEm, params.juridico ? 'DOSSIÊ JURÍDICO DO COLABORADOR' : 'DOSSIÊ ADMISSIONAL DO COLABORADOR', params.identifier)
-  const indexLines = (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0)
+  const indexLines = (formulario.length ? 1 + (params.juridico ? formulario.length : 0) : 0) + (documentos.length ? 1 + documentos.length : 0) + (certificados.length ? 1 + certificados.length : 0)
   const perIndexPage = Math.floor((PAGE.bottom - PAGE.top - 16) / 6.4)
   const indexPages = Math.max(1, Math.ceil(indexLines / perIndexPage))
   for (let index = 0; index < indexPages; index++) pdf.newPage()
@@ -402,6 +419,14 @@ export async function renderAdmissionDossier(params: {
       attachmentPage += item.pages
     }
     entries.push(documentEntry)
+  }
+  if (certificados.length) {
+    const entry: IndexEntry = { numero: String(entries.length + 1).padStart(2, '0'), titulo: 'Comprovantes de assinatura', page: attachmentPage, sub: [] }
+    for (const item of certificados) {
+      entry.sub.push({ titulo: item.src.titulo, page: attachmentPage })
+      attachmentPage += item.pages
+    }
+    entries.push(entry)
   }
   const mainPages = pdf.page
   drawIndex(pdf, entries, 2, indexPages)

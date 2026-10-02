@@ -5,7 +5,9 @@ import { renderAdmissionDossier, type AttachmentSource } from './dossier'
 import { buildSnapshot } from './snapshot'
 import { loadAdmissionBadgePhoto, loadColaboradorPhoto } from './photo'
 import { findLinkedAdmissionId } from './perfil'
-import { fileSlug } from './format'
+import { fileSlug, fmtDateTime } from './format'
+import { PDFDocument } from 'pdf-lib'
+import { compressPdf } from '@/lib/pdfCompress'
 
 /** Classificação explícita: documentos pessoais e fichas cadastrais ficam fora. */
 export function legalDocumentGroup(key: string): 'contratos' | 'termos' | null {
@@ -15,25 +17,71 @@ export function legalDocumentGroup(key: string): 'contratos' | 'termos' | null {
   return null
 }
 
-type LegalSources = { formulario: AttachmentSource[]; documentos: AttachmentSource[] }
+type LegalSources = { formulario: AttachmentSource[]; documentos: AttachmentSource[]; certificados: AttachmentSource[] }
+
+type PageRange = { documentId: string; start: number; end: number }
+function pageRanges(value: unknown): PageRange[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((row): row is PageRange => !!row && typeof row === 'object' && typeof row.documentId === 'string' && Number.isInteger(row.start) && Number.isInteger(row.end) && row.start >= 1 && row.end >= row.start)
+}
+
+async function extractPages(pdf: PDFDocument, start: number, end: number) {
+  if (start < 1 || end > pdf.getPageCount() || end < start) throw new DossieError('O pacote assinado contém um intervalo de páginas inválido.', 422)
+  const part = await PDFDocument.create()
+  for (const page of await part.copyPages(pdf, Array.from({ length: end - start + 1 }, (_, index) => start - 1 + index))) part.addPage(page)
+  return Buffer.from(await part.save())
+}
 
 export async function admissionLegalSources(admissionId: string): Promise<LegalSources> {
   const documents = await prisma.generatedDocument.findMany({
     where: { admissionId, status: 'SIGNED', signedStoragePath: { not: null } },
     include: { template: { select: { key: true, name: true } } },
-    orderBy: [{ signedAt: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ signedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
   })
-  const sources: LegalSources = { formulario: [], documentos: [] }
+  const requests = await prisma.externalSignatureRequest.findMany({
+    where: { admissionId, status: 'SIGNED', signedPath: { not: null } },
+    select: { id: true, pageMap: true, signedPath: true, signedAt: true },
+    orderBy: [{ signedAt: 'desc' }, { createdAt: 'desc' }],
+  })
+  const packages = requests.map(request => {
+    let loaded: Promise<PDFDocument> | undefined
+    return { request, ranges: pageRanges(request.pageMap), load: () => loaded ??= (async () => {
+      const bytes = await readPrivateAdmissionFile(request.signedPath!)
+      if (!bytes) throw new DossieError('O pacote assinado da Autentique não está disponível.', 422)
+      // Recomprime uma cópia de exportação antes de separar as páginas; o original assinado fica intacto.
+      return PDFDocument.load((await compressPdf(bytes)).buffer)
+    })() }
+  })
+  const sources: LegalSources = { formulario: [], documentos: [], certificados: [] }
+  const seenKeys = new Set<string>(), seenNames = new Set<string>(), usedPackages = new Set<string>()
   for (const doc of documents) {
     const group = legalDocumentGroup(doc.template.key)
     if (!group) continue
+    const name = doc.template.name.trim().toLocaleLowerCase('pt-BR')
+    if (seenKeys.has(doc.template.key) || seenNames.has(name)) continue
+    seenKeys.add(doc.template.key); seenNames.add(name)
+    const bundle = packages.find(item => item.ranges.some(range => range.documentId === doc.id))
+    const range = bundle?.ranges.find(item => item.documentId === doc.id)
+    if (bundle) usedPackages.add(bundle.request.id)
     const source: AttachmentSource = {
       titulo: `${doc.template.name} (assinado)`, categoria: 'Jurídico BHCL',
       data: doc.signedAt ?? doc.createdAt, situacao: 'Assinado', mime: 'application/pdf',
-      read: () => readPrivateAdmissionFile(doc.signedStoragePath!),
+      read: bundle && range ? async () => extractPages(await bundle.load(), range.start, range.end) : () => readPrivateAdmissionFile(doc.signedStoragePath!),
     }
     sources[group === 'contratos' ? 'formulario' : 'documentos'].push(source)
   }
+  for (const bundle of packages) {
+    if (!usedPackages.has(bundle.request.id)) continue
+    const originalPages = Math.max(...bundle.ranges.map(range => range.end))
+    const pdf = await bundle.load()
+    if (pdf.getPageCount() <= originalPages) continue
+    sources.certificados.push({
+      titulo: `Comprovante de assinatura Autentique — ${fmtDateTime(bundle.request.signedAt)}`, categoria: 'Comprovante de assinatura',
+      data: bundle.request.signedAt ?? new Date(), situacao: 'Assinado', mime: 'application/pdf',
+      read: () => extractPages(pdf, originalPages + 1, pdf.getPageCount()),
+    })
+  }
+  for (const group of [sources.formulario, sources.documentos]) group.sort((a, b) => a.data.getTime() - b.data.getTime())
   return sources
 }
 
@@ -55,7 +103,7 @@ export async function buildLegalDossierPdf(params: { colaboradorId: string; acto
   if (!snapshot) throw new DossieError('Colaborador não encontrado.', 404)
   const employee = await prisma.colaborador.findUniqueOrThrow({ where: { id: params.colaboradorId }, select: { erpnextId: true, cpf: true, imagePath: true } })
   const admissionId = await findLinkedAdmissionId(employee)
-  const sources = admissionId ? await admissionLegalSources(admissionId) : { formulario: [], documentos: [] } as LegalSources
+  const sources = admissionId ? await admissionLegalSources(admissionId) : { formulario: [], documentos: [], certificados: [] } as LegalSources
   const documents = await prisma.colaboradorDocumento.findMany({
     where: { colaboradorId: params.colaboradorId, status: 'ASSINADO', ...(admissionId ? { admissaoOrigemId: null } : {}) }, orderBy: { createdAt: 'asc' },
   })

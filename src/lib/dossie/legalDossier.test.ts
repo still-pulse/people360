@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 import { ADMISSION_LAYOUTS } from '@/lib/admission/forms'
 
-const mocks = vi.hoisted(() => ({ findMany: vi.fn(), read: vi.fn() }))
-vi.mock('@/lib/prisma', () => ({ prisma: { generatedDocument: { findMany: mocks.findMany } } }))
+const mocks = vi.hoisted(() => ({ findMany: vi.fn(), requests: vi.fn(), read: vi.fn() }))
+vi.mock('@/lib/prisma', () => ({ prisma: { generatedDocument: { findMany: mocks.findMany }, externalSignatureRequest: { findMany: mocks.requests } } }))
 vi.mock('@/lib/admission/storage', () => ({ readPrivateAdmissionFile: mocks.read }))
+vi.mock('@/lib/pdfCompress', () => ({ compressPdf: async (buffer: Buffer) => ({ buffer }), decryptPdf: vi.fn() }))
 import { admissionLegalSources, legalDocumentGroup } from './legalDossier'
 import { renderAdmissionDossier, type AttachmentSource } from './dossier'
 import { PdfBuilder, PAGE } from './pdf/engine'
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => { vi.clearAllMocks(); mocks.requests.mockResolvedValue([]) })
 afterEach(() => vi.restoreAllMocks())
 
 describe('documentos do dossiê jurídico', () => {
@@ -31,6 +32,38 @@ describe('documentos do dossiê jurídico', () => {
     expect(sources.documentos).toHaveLength(1)
     await sources.formulario[0].read()
     expect(mocks.read).toHaveBeenCalledWith('contrato_trabalho-assinado.pdf')
+  })
+
+  it('mantém somente a versão assinada mais recente de cada termo, inclusive templates renomeados', async () => {
+    const doc = (id: string, key: string, day: number) => ({ id, template: { key, name: 'Termo de Ciência do Controle de Ponto' }, signedStoragePath: `${id}.pdf`, createdAt: new Date(2026, 9, day), signedAt: new Date(2026, 9, day) })
+    mocks.findMany.mockResolvedValue([doc('novo', 'termo_ciencia_ponto', 3), doc('anterior', 'termo_ciencia_ponto', 2), doc('legado', 'termo_ponto', 1)])
+    const sources = await admissionLegalSources('admissao-1')
+    expect(sources.documentos).toHaveLength(1)
+    await sources.documentos[0].read()
+    expect(mocks.read).toHaveBeenCalledWith('novo.pdf')
+    expect(mocks.findMany.mock.calls[0][0].orderBy[0]).toEqual({ signedAt: 'desc' })
+  })
+
+  it('extrai somente as páginas originais de cada documento e inclui uma certificação por pacote', async () => {
+    const packet = await PDFDocument.create()
+    for (const width of [500, 510, 520, 530, 540]) packet.addPage([width, 700])
+    mocks.read.mockResolvedValue(Buffer.from(await packet.save()))
+    mocks.requests.mockResolvedValue([{ id: 'pacote', signedPath: 'pacote.pdf', signedAt: new Date('2026-10-02'), pageMap: [
+      { documentId: 'contrato', start: 1, end: 2 }, { documentId: 'termo', start: 3, end: 3 }, { documentId: 'ficha', start: 4, end: 4 },
+    ] }])
+    const doc = (id: string, key: string) => ({ id, template: { key, name: key }, signedStoragePath: `${id}-assinado.pdf`, createdAt: new Date(), signedAt: new Date() })
+    mocks.findMany.mockResolvedValue([doc('contrato', 'contrato_trabalho'), doc('termo', 'termo_ciencia_ponto'), doc('ficha', 'ficha_registro')])
+    const sources = await admissionLegalSources('admissao-1')
+    expect(sources.certificados).toHaveLength(1)
+    const widths = async (src: AttachmentSource) => (await PDFDocument.load((await src.read())!)).getPages().map(page => page.getWidth())
+    expect(await widths(sources.formulario[0])).toEqual([500, 510])
+    expect(await widths(sources.documentos[0])).toEqual([520])
+    expect(await widths(sources.certificados[0])).toEqual([540])
+    expect(mocks.read).toHaveBeenCalledTimes(1)
+    expect(mocks.read).toHaveBeenCalledWith('pacote.pdf')
+    const result = await renderAdmissionDossier({ info, photo: null, sources, juridico: true })
+    const output = await PDFDocument.load(result.buffer)
+    expect(output.getPages().slice(2).map(page => page.getWidth())).toEqual([500, 510, 520, 540])
   })
 })
 
@@ -77,5 +110,27 @@ describe('PDF jurídico com capa e índice institucional', () => {
     const sources = { formulario: [], documentos: [] }
     await expect(renderAdmissionDossier({ info, photo: null, sources, juridico: true })).rejects.toThrow('Ainda não há contratos ou termos assinados')
     await expect(renderAdmissionDossier({ info, photo: null, sources })).rejects.toThrow('O formulário admissional')
+  })
+
+  it('incorpora anexos que somam mais de 50 MB sem páginas de omissão', async () => {
+    const source = await attachment('Termo grande', [[500, 700]])
+    const bytes = (await source.read())!
+    const padded = Buffer.concat([bytes, Buffer.alloc(26 * 1024 * 1024 - bytes.length, 32)])
+    source.read = async () => padded
+    const result = await renderAdmissionDossier({ info, photo: null, sources: { formulario: [source], documentos: [source] }, juridico: true })
+    expect((await PDFDocument.load(result.buffer)).getPages().slice(2).map(page => page.getWidth())).toEqual([500, 500])
+  })
+
+  it('aceita mais de 500 páginas e recusa um dossiê que ultrapassaria o novo limite', async () => {
+    const source = await attachment('Contrato extenso', Array.from({ length: 501 }, () => [500, 700] as [number, number]))
+    const result = await renderAdmissionDossier({ info, photo: null, sources: { formulario: [source], documentos: [] }, juridico: true })
+    expect(result.pages).toBe(503)
+    await expect(renderAdmissionDossier({ info, photo: null, sources: { formulario: [source], documentos: [source] }, juridico: true })).rejects.toThrow('1.000 páginas')
+  })
+
+  it('não entrega PDF jurídico incompleto quando falta um arquivo', async () => {
+    const source = await attachment('Termo ausente', [[500, 700]])
+    source.read = async () => null
+    await expect(renderAdmissionDossier({ info, photo: null, sources: { formulario: [], documentos: [source] }, juridico: true })).rejects.toThrow('evitar documentos ausentes')
   })
 })
